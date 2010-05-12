@@ -1,0 +1,145 @@
+#! /bin/sh /usr/share/dpatch/dpatch-run
+## 01-remove-shebang.dpatch by Sebastien Delafond <seb@debian.org>
+##
+## All lines beginning with `## DP:' are a description of the patch.
+## DP: Remove extraneous shebang lines, and correct necessary jruby ones.
+
+@DPATCH@
+Index: jruby-1.5.0~rc1/lib/ruby/1.8/abbrev.rb
+===================================================================
+--- jruby-1.5.0~rc1.orig/lib/ruby/1.8/abbrev.rb	2010-04-20 15:14:13.000000000 +0200
++++ jruby-1.5.0~rc1/lib/ruby/1.8/abbrev.rb	2010-04-20 15:14:25.000000000 +0200
+@@ -1,4 +1,3 @@
+-#!/usr/bin/env ruby
+ =begin
+ #
+ # Copyright (c) 2001,2003 Akinori MUSHA <knu@iDaemons.org>
+Index: jruby-1.5.0~rc1/lib/ruby/1.8/irb/cmd/subirb.rb
+===================================================================
+--- jruby-1.5.0~rc1.orig/lib/ruby/1.8/irb/cmd/subirb.rb	2010-04-20 15:14:13.000000000 +0200
++++ jruby-1.5.0~rc1/lib/ruby/1.8/irb/cmd/subirb.rb	2010-04-20 15:14:25.000000000 +0200
+@@ -1,4 +1,3 @@
+-#!/usr/local/bin/ruby
+ #
+ #   multi.rb - 
+ #   	$Release Version: 0.9.5$
+Index: jruby-1.5.0~rc1/lib/ruby/1.8/irb/ext/save-history.rb
+===================================================================
+--- jruby-1.5.0~rc1.orig/lib/ruby/1.8/irb/ext/save-history.rb	2010-04-20 15:14:13.000000000 +0200
++++ jruby-1.5.0~rc1/lib/ruby/1.8/irb/ext/save-history.rb	2010-04-20 15:14:25.000000000 +0200
+@@ -1,4 +1,3 @@
+-#!/usr/local/bin/ruby
+ #
+ #   save-history.rb - 
+ #   	$Release Version: 0.9.5$
+Index: jruby-1.5.0~rc1/lib/ruby/1.8/matrix.rb
+===================================================================
+--- jruby-1.5.0~rc1.orig/lib/ruby/1.8/matrix.rb	2010-04-20 15:14:13.000000000 +0200
++++ jruby-1.5.0~rc1/lib/ruby/1.8/matrix.rb	2010-04-20 15:14:25.000000000 +0200
+@@ -1,4 +1,3 @@
+-#!/usr/local/bin/ruby
+ #--
+ #   matrix.rb - 
+ #       $Release Version: 1.0$
+Index: jruby-1.5.0~rc1/lib/ruby/1.8/rdoc/markup/sample/rdoc2latex.rb
+===================================================================
+--- jruby-1.5.0~rc1.orig/lib/ruby/1.8/rdoc/markup/sample/rdoc2latex.rb	2010-04-20 15:14:12.000000000 +0200
++++ jruby-1.5.0~rc1/lib/ruby/1.8/rdoc/markup/sample/rdoc2latex.rb	2010-04-20 15:14:25.000000000 +0200
+@@ -1,4 +1,3 @@
+-#!/usr/local/bin/ruby
+ # Illustration of a script to convert an RDoc-style file to a LaTeX
+ # document
+ 
+Index: jruby-1.5.0~rc1/lib/ruby/1.8/rdoc/parsers/parse_rb.rb
+===================================================================
+--- jruby-1.5.0~rc1.orig/lib/ruby/1.8/rdoc/parsers/parse_rb.rb	2010-04-20 15:14:13.000000000 +0200
++++ jruby-1.5.0~rc1/lib/ruby/1.8/rdoc/parsers/parse_rb.rb	2010-04-20 15:14:25.000000000 +0200
+@@ -1,4 +1,3 @@
+-#!/usr/local/bin/ruby
+ 
+ # Parse a Ruby source file, building a set of objects
+ # representing the modules, classes, methods,
+Index: jruby-1.5.0~rc1/lib/ruby/1.8/set.rb
+===================================================================
+--- jruby-1.5.0~rc1.orig/lib/ruby/1.8/set.rb	2010-04-20 15:14:13.000000000 +0200
++++ jruby-1.5.0~rc1/lib/ruby/1.8/set.rb	2010-04-20 15:14:25.000000000 +0200
+@@ -1,4 +1,3 @@
+-#!/usr/bin/env ruby
+ #--
+ # set.rb - defines the Set class
+ #++
+Index: jruby-1.5.0~rc1/lib/ruby/1.8/tsort.rb
+===================================================================
+--- jruby-1.5.0~rc1.orig/lib/ruby/1.8/tsort.rb	2010-04-20 15:14:13.000000000 +0200
++++ jruby-1.5.0~rc1/lib/ruby/1.8/tsort.rb	2010-04-20 15:14:25.000000000 +0200
+@@ -1,4 +1,3 @@
+-#!/usr/bin/env ruby
+ #--
+ # tsort.rb - provides a module for topological sorting and strongly connected components.
+ #++
+Index: jruby-1.5.0~rc1/lib/ruby/1.8/wsdl/soap/wsdl2ruby.rb
+===================================================================
+--- jruby-1.5.0~rc1.orig/lib/ruby/1.8/wsdl/soap/wsdl2ruby.rb	2010-04-20 15:14:12.000000000 +0200
++++ jruby-1.5.0~rc1/lib/ruby/1.8/wsdl/soap/wsdl2ruby.rb	2010-04-20 15:14:25.000000000 +0200
+@@ -159,7 +159,6 @@
+   end
+ 
+   def shbang
+-    "#!/usr/bin/env ruby"
+   end
+ 
+   def create_name(name)
+Index: jruby-1.5.0~rc1/lib/ruby/1.9/abbrev.rb
+===================================================================
+--- jruby-1.5.0~rc1.orig/lib/ruby/1.9/abbrev.rb	2010-04-20 15:14:12.000000000 +0200
++++ jruby-1.5.0~rc1/lib/ruby/1.9/abbrev.rb	2010-04-20 15:14:25.000000000 +0200
+@@ -1,4 +1,3 @@
+-#!/usr/bin/env ruby
+ =begin
+ #
+ # Copyright (c) 2001,2003 Akinori MUSHA <knu@iDaemons.org>
+Index: jruby-1.5.0~rc1/lib/ruby/1.9/rake/rake_test_loader.rb
+===================================================================
+--- jruby-1.5.0~rc1.orig/lib/ruby/1.9/rake/rake_test_loader.rb	2010-04-20 15:14:12.000000000 +0200
++++ jruby-1.5.0~rc1/lib/ruby/1.9/rake/rake_test_loader.rb	2010-04-20 15:14:26.000000000 +0200
+@@ -1,4 +1,3 @@
+-#!/usr/bin/env ruby
+ 
+ # Load the test files from the command line.
+ 
+Index: jruby-1.5.0~rc1/lib/ruby/1.9/set.rb
+===================================================================
+--- jruby-1.5.0~rc1.orig/lib/ruby/1.9/set.rb	2010-04-20 15:14:12.000000000 +0200
++++ jruby-1.5.0~rc1/lib/ruby/1.9/set.rb	2010-04-20 15:14:26.000000000 +0200
+@@ -1,4 +1,3 @@
+-#!/usr/bin/env ruby
+ #--
+ # set.rb - defines the Set class
+ #++
+Index: jruby-1.5.0~rc1/lib/ruby/site_ruby/1.8/rubygems/digest/md5.rb
+===================================================================
+--- jruby-1.5.0~rc1.orig/lib/ruby/site_ruby/1.8/rubygems/digest/md5.rb	2010-04-20 15:14:12.000000000 +0200
++++ jruby-1.5.0~rc1/lib/ruby/site_ruby/1.8/rubygems/digest/md5.rb	2010-04-20 15:14:26.000000000 +0200
+@@ -1,4 +1,3 @@
+-#!/usr/bin/env ruby
+ #--
+ # Copyright 2006 by Chad Fowler, Rich Kilmer, Jim Weirich and others.
+ # All rights reserved.
+Index: jruby-1.5.0~rc1/lib/ruby/site_ruby/1.8/rubygems/digest/sha1.rb
+===================================================================
+--- jruby-1.5.0~rc1.orig/lib/ruby/site_ruby/1.8/rubygems/digest/sha1.rb	2010-04-20 15:14:12.000000000 +0200
++++ jruby-1.5.0~rc1/lib/ruby/site_ruby/1.8/rubygems/digest/sha1.rb	2010-04-20 15:14:26.000000000 +0200
+@@ -1,4 +1,3 @@
+-#!/usr/bin/env ruby
+ #--
+ # Copyright 2006 by Chad Fowler, Rich Kilmer, Jim Weirich and others.
+ # All rights reserved.
+Index: jruby-1.5.0~rc1/lib/ruby/site_ruby/1.8/rubygems/digest/sha2.rb
+===================================================================
+--- jruby-1.5.0~rc1.orig/lib/ruby/site_ruby/1.8/rubygems/digest/sha2.rb	2010-04-20 15:14:12.000000000 +0200
++++ jruby-1.5.0~rc1/lib/ruby/site_ruby/1.8/rubygems/digest/sha2.rb	2010-04-20 15:14:26.000000000 +0200
+@@ -1,4 +1,3 @@
+-#!/usr/bin/env ruby
+ #--
+ # Copyright 2006 by Chad Fowler, Rich Kilmer, Jim Weirich and others.
+ # All rights reserved.

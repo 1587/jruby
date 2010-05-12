@@ -1,0 +1,7 @@
+01-shebangs.patch
+#02-drb-client-hang.patch
+03-override-jruby-home.patch
+#04-gcj-build-compatibility.patch
+05-ant-no-gems-no-zip.patch
+#06_add_jruby.bnd.template.patch
+debian-changes-1.5.0~rc3-1

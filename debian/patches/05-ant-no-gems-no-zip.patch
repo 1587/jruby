@@ -1,0 +1,151 @@
+#! /bin/sh /usr/share/dpatch/dpatch-run
+## 05-ant-no-gems.dpatch by Sebastien Delafond <seb@debian.org>
+##
+## All lines beginning with `## DP:' are a description of the patch.
+## DP: No gems.
+
+@DPATCH@
+Index: jruby-1.5.0~rc3/build.xml
+===================================================================
+--- jruby-1.5.0~rc3.orig/build.xml	2010-05-12 16:09:57.000000000 +0200
++++ jruby-1.5.0~rc3/build.xml	2010-05-12 16:17:52.000000000 +0200
+@@ -452,7 +452,6 @@
+         <sysproperty key="jruby.home" value="${build.dir}/jar-complete/META-INF/jruby.home"/>
+         <env key="RUBYOPT" value=""/>
+         <jvmarg value="${run.jvm.model}"/>
+-        <arg line="--command maybe_install_gems ${complete.jar.gems}"/>
+         <arg line="--no-ri --no-rdoc --ignore-dependencies --env-shebang"/>
+       </java>
+ 
+@@ -542,7 +541,6 @@
+         <sysproperty key="jruby.home" value="${build.dir}/jar-complete/META-INF/jruby.home"/>
+         <env key="RUBYOPT" value=""/>
+         <jvmarg value="${run.jvm.model}"/>
+-        <arg line="--command maybe_install_gems ${complete.jar.gems}"/>
+         <arg line="--no-ri --no-rdoc --ignore-dependencies --env-shebang"/>
+       </java>
+ 
+@@ -690,33 +688,8 @@
+     </emma>
+   </target>
+ 
+-  <target name="install-dist-gems" depends="init,jar">
+-    <property name="jruby.home" value="${basedir}"/>
+-    <java classname="org.jruby.Main" fork="true" maxmemory="${jruby.launch.memory}" failonerror="true">
+-      <classpath refid="build.classpath"/>
+-      <classpath path="${jruby.classes.dir}"/>
+-      <sysproperty key="jruby.home" value="${jruby.home}"/>
+-      <env key="GEM_PATH" value=""/> <!-- to ignore any gems installed in ~/.gem -->
+-      <arg line="--command maybe_install_gems ${dev.gems}"/>
+-    </java>
+-  </target>
+-
+-  <target name="install-jruby-launcher-gem" depends="init,jar">
+-    <property name="jruby.home" value="${basedir}"/>
+-    <java classname="org.jruby.Main" fork="true" maxmemory="${jruby.launch.memory}" failonerror="false">
+-      <classpath refid="build.classpath"/>
+-      <classpath path="${jruby.classes.dir}"/>
+-      <sysproperty key="jruby.home" value="${jruby.home}"/>
+-      <env key="GEM_PATH" value=""/> <!-- to ignore any gems installed in ~/.gem -->
+-      <arg line="--command maybe_install_gems ${jruby.launcher.gem}"/>
+-    </java>
+-  </target>
+-
+-  <target name="install-gems" depends="install-dist-gems,install-jruby-launcher-gem"/>
+-
+   <target name="test" depends="
+     copy-test-files,
+-    install-gems,
+     run-junit-interpreted-short,
+     test-rake-targets"
+     description="Runs unit tests.">
+@@ -724,7 +697,6 @@
+ 
+   <target name="test-indy" depends="
+     copy-test-files,
+-    install-gems,
+     run-junit-indy-short,
+     test-rake-targets"
+     description="Runs unit tests.">
+@@ -732,7 +704,6 @@
+ 
+   <target name="test-extended" depends="
+     copy-test-files,
+-    install-gems,
+     run-junit-compiled,
+     run-junit-embed,
+     test-rake-targets"
+@@ -1066,48 +1037,6 @@
+     </sequential>
+   </macrodef>
+ 
+-  <!-- Utilities to manage rubyspecs/mspec files -->
+-  <target name="fetch-stable-specs" depends="init">
+-    <rake task="spec:fetch_stable_specs"/>
+-  </target>
+-  <target name="fetch-latest-specs" depends="init">
+-    <rake task="spec:fetch_latest_specs"/>
+-  </target>
+-
+-  <!-- Main spec runs (See rakelib/spec.rake for definitions/descriptions) -->
+-  <target name="spec:ci_18" depends="install-gems"><rake task="spec:ci_18"/></target>
+-  <target name="spec:ci_19" depends="install-gems"><rake task="spec:ci_19"/></target>
+-  <target name="spec:ci_interpreted_18_19" depends="install-gems">
+-    <rake task="spec:ci_interpreted_18_19"/>
+-  </target>
+-  <target name="spec:ci_interpreted_18" depends="install-gems">
+-    <rake task="spec:ci_interpreted_18"/>
+-  </target>
+-  <target name="spec:ci_interpreted_19" depends="install-gems">
+-    <rake task="spec:ci_interpreted_19"/>
+-  </target>
+-  <target name="spec:ci_all_precompiled_18" depends="install-gems">
+-    <rake task="spec:ci_all_precompiled_18"/>
+-  </target>
+-  <target name="spec:ci_all_interpreted_18" depends="install-gems">
+-    <rake task="spec:ci_all_interpreted_18"/>
+-  </target>
+-  <target name="spec:ci_all" depends="install-gems"><rake task="spec:ci_all"/></target>
+-  <target name="spec:ci_latest" depends="install-gems"><rake task="spec:ci_latest"/></target>
+-
+-  <!-- Old compatibility targets which call to newer Rake-based ones -->
+-  <target name="spec" depends="spec:ci_18"/>
+-  <target name="spec-ci" depends="spec:ci_18"/>
+-  <target name="spec-short" depends="spec:ci_interpreted_18_19"/>
+-  <target name="spec-ci-1.9" depends="spec:ci_19"/>
+-  <target name="spec-short-1.9" depends="spec:ci_interpreted_19"/>
+-  <target name="spec-all" depends="spec:ci_all_precompiled_18"/>
+-  <target name="spec-all-interpreted" depends="spec:ci_all_interpreted_18"/>
+-
+-  <!-- latest, unstable specs -->
+-  <target name="spec-latest-all" depends="spec:ci_all"/>
+-  <target name="spec-latest" depends="spec:ci_latest"/>
+-
+   <target name="update-excludes">
+     <java classname="org.jruby.Main" fork="true" maxmemory="${jruby.launch.memory}" failonerror="false" dir="${spec.dir}">
+       <classpath refid="jruby.execute.classpath"/>
+@@ -1289,7 +1218,6 @@
+     <mkdir dir="${dist.stage.bin.dir}/lib/native"/>
+     <unzip-native-libs destination.dir="${dist.stage.bin.dir}/lib/native"/>
+     <fixEOLs dist-stage-dir="${dist.stage.bin.dir}"/>
+-    <rake task="install_dist_gems"/>
+     <tar destfile="${dist.dir}/jruby-bin-${version.jruby}.tar.gz" compression="gzip">
+       <tarfileset dir="${dist.stage.bin.dir}" mode="755" prefix="jruby-${version.jruby}">
+         <include name="bin/**"/>
+@@ -1339,7 +1267,6 @@
+         <patternset refid="dist.lib.files"/>
+       </fileset>
+     </copy>
+-    <rake task="install_dist_gems"/>
+     <fixEOLs dist-stage-dir="${dist.stage.src.dir}"/>
+     <tar destfile="${dist.dir}/jruby-src-${version.jruby}.tar.gz" compression="gzip">
+       <tarfileset dir="${dist.stage.src.dir}" mode="755" prefix="jruby-${version.jruby}">
+@@ -1425,7 +1352,7 @@
+     </antcall>
+   </target>
+ 
+-  <target name="dist" depends="install-dist-gems,dist-bin,dist-src,dist-jar-complete"/>
++  <target name="dist" depends="dist-bin,dist-src,dist-jar-complete"/>
+ 
+   <target name="dist-clean">
+     <delete dir="${dist.dir}"/>

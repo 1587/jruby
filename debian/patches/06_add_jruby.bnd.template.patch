@@ -1,0 +1,17 @@
+#! /bin/sh /usr/share/dpatch/dpatch-run
+## 06_add_jruby.bnd.template.dpatch by Sebastien Delafond <seb@debian.org>
+##
+## All lines beginning with `## DP:' are a description of the patch.
+## DP: jruby.bnd.template is missing from the source tarball.
+
+@DPATCH@
+diff -urNad jruby-1.1.4~/jruby.bnd.template jruby-1.1.4/jruby.bnd.template
+--- jruby-1.1.4~/jruby.bnd.template	1969-12-31 16:00:00.000000000 -0800
++++ jruby-1.1.4/jruby.bnd.template	2008-10-20 16:08:32.000000000 -0700
+@@ -0,0 +1,6 @@
++Export-Package: org.jruby.*;version="@JRUBY_VERSION@"
++Import-Package: !org.jruby.*, *;resolution:=optional
++Bundle-Version: @JRUBY_VERSION@
++Bundle-Description: JRuby @JRUBY_VERSION@ OSGi bundle
++Bundle-Name: JRuby @JRUBY_VERSION@
++Bundle-SymbolicName: org.jruby.jruby

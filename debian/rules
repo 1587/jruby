@@ -1,0 +1,108 @@
+#!/usr/bin/make -f
+
+SOURCE_NAME := jruby
+JRUBY_VERSION := $(shell pwd | perl -pe 's/.+-//')
+
+DEST_DIR := $(CURDIR)/debian/$(SOURCE_NAME)
+
+JRUBY_LIB_DIR := $(DEST_DIR)/usr/lib/$(SOURCE_NAME)
+JRUBY_DOC_DIR := $(DEST_DIR)/usr/share/doc/$(SOURCE_NAME)
+
+BUILD_TAR := $(shell echo dist/jruby-bin-*.tar.gz)
+BUILD_CHEKSUM_MD5 := $(BUILD_TAR).md5
+BUILD_CHEKSUM_SHA1 := $(BUILD_TAR).sha1
+
+ANT := /usr/bin/ant
+
+JRUBY_MANPAGE := debian/jruby.1
+JIRB_MANPAGE := debian/jirb.1
+
+clean:
+	dh_testdir
+	dh_testroot
+
+	# Add here commands to clean up after the build process.
+	$(ANT) clean-all
+	if [ -d dist ] ; then $(ANT) dist-clean ; fi
+	rm -f $(BUILD_TAR) $(BUILD_CHEKSUM_SHA1) $(BUILD_CHEKSUM_MD5)
+	rm -fr share
+
+	rm -f build-stamp
+	dh_clean 
+
+build: build-stamp
+
+build-stamp:
+	dh_testdir
+
+	# Add here commands to compile the package.
+	$(ANT) -Ddev.gems=false compile
+#	docbook-to-man $(JRUBY_DOCBOOK_MANPAGE) > $(JRUBY_MANPAGE)
+#	docbook-to-man $(JIRB_DOCBOOK_MANPAGE) > $(JIRB_MANPAGE)
+
+	touch build-stamp
+
+install: build
+	dh_testdir
+	dh_testroot
+	dh_installdirs
+
+	# Add here commands to install the package into debian/jruby
+	$(ANT) dist-bin
+
+	tar -zxf $(BUILD_TAR) --strip 1 -C $(JRUBY_LIB_DIR)
+	# Remove all the bat/dll/exe files
+	find $(JRUBY_LIB_DIR) -iregex '.*\.\(bat\|\|dll\|exe\)$$' | xargs rm -f
+	# Remove all of the VCS directories
+	find $(JRUBY_LIB_DIR) -name '.svn' | xargs rm -rf
+	find $(JRUBY_LIB_DIR) -name '.git*' | xargs rm -rf
+	# remove extra docs
+	rm -fr $(JRUBY_LIB_DIR)/docs $(JRUBY_LIB_DIR)/COPYING* $(JRUBY_LIB_DIR)/LICENSE.RUBY
+	# remove libjnidispatch.so, to keep the package 
+	# architecture-independent; will put it in itw own
+	# separate package later on, if need be.
+	rm -fr $(JRUBY_LIB_DIR)/lib/native
+
+# Build architecture-independent files here.
+binary-indep: install
+	dh_testdir
+	dh_testroot
+	dh_installchangelogs 
+	dh_installdocs docs/ COPYING* README
+	rm -fr $(JRUBY_LIB_DIR)/docs $(JRUBY_LIB_DIR)/COPYING*
+	find $(JRUBY_DOC_DIR) -regex '.*/\(COPYING\|LICEN[CS]E\).*' | xargs rm -fr
+	dh_installexamples
+	# Remove all empty directories
+	find $(DEST_DIR) -depth -follow -type d -empty -delete
+#	dh_install
+#	dh_installmenu
+#	dh_installdebconf	
+#	dh_installlogrotate
+#	dh_installemacsen
+#	dh_installpam
+#	dh_installmime
+#	dh_installinit
+#	dh_installcron
+#	dh_installinfo
+	dh_installman
+	dh_link
+#	dh_strip
+	dh_compress
+	dh_fixperms
+#	dh_perl
+#	dh_python
+#	dh_makeshlibs
+	dh_lintian
+	dh_installdeb
+#	dh_shlibdeps
+	dh_gencontrol
+	dh_md5sums
+	dh_builddeb
+
+# Build architecture-dependent files here.
+binary-arch:
+	# We have nothing to do by default.
+
+binary: binary-indep binary-arch
+
+.PHONY: build clean binary-indep binary-arch binary install

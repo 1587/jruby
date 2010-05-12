@@ -1,0 +1,43 @@
+#! /bin/sh /usr/share/dpatch/dpatch-run
+## 04-gcj-build-compatibility.dpatch by Sebastien Delafond <seb@debian.org>
+##
+## All lines beginning with `## DP:' are a description of the patch.
+## DP: No description.
+
+@DPATCH@
+diff -urNad jruby-1.1.0~/src/org/jruby/RubyZlib.java jruby-1.0.2/src/org/jruby/RubyZlib.java
+--- jruby-1.1.0~/src/org/jruby/RubyZlib.java	2007-11-01 08:32:20.000000000 -0700
++++ jruby-1.1.0/src/org/jruby/RubyZlib.java	2007-11-06 13:17:51.000000000 -0800
+@@ -663,7 +663,7 @@
+             return orig_name == null ? getRuntime().getNil() : getRuntime().newString(orig_name);
+         }
+         
+-        public Object to_io() {
++        public IRubyObject to_io() {
+             return realIo;
+         }
+         
+diff -urNad jruby-1.1.0~/src/org/jruby/compiler/impl/StandardASMCompiler.java jruby-1.0.2/src/org/jruby/compiler/impl/StandardASMCompiler.java
+--- jruby-1.1.0~/src/org/jruby/compiler/impl/StandardASMCompiler.java	2007-11-06 13:17:06.000000000 -0800
++++ jruby-1.1.0/src/org/jruby/compiler/impl/StandardASMCompiler.java	2007-11-06 13:17:14.000000000 -0800
+@@ -289,7 +289,7 @@
+         cv.visitField(ACC_STATIC | ACC_PRIVATE | ACC_FINAL, "$isClassLoaded", cg.ci(Boolean.TYPE), null, Boolean.FALSE);
+         cv.visitField(ACC_STATIC | ACC_PRIVATE | ACC_FINAL, "$class", cg.ci(Class.class), null, null);
+         
+-        SkinnyMethodAdapter mv = new SkinnyMethodAdapter(cv.visitMethod(ACC_PUBLIC, "<clinit>", cg.sig(Void.TYPE), null, null));
++	SkinnyMethodAdapter mv = new SkinnyMethodAdapter(cv.visitMethod(ACC_PUBLIC | ACC_STATIC, "<clinit>", cg.sig(Void.TYPE), null, null));
+         mv.start();
+         
+         // This is a little hacky...since clinit recurses, set a boolean so we don't continue trying to load class
+diff -urNad jruby-1.1.0~/src/org/jruby/libraries/ThreadLibrary.java jruby-1.0.2/src/org/jruby/libraries/ThreadLibrary.java
+--- jruby-1.1.0~/src/org/jruby/libraries/ThreadLibrary.java	2007-11-01 08:32:20.000000000 -0700
++++ jruby-1.1.0/src/org/jruby/libraries/ThreadLibrary.java	2007-11-06 13:19:07.000000000 -0800
+@@ -249,7 +249,7 @@
+             return RubyNumeric.int2fix(getRuntime(), entries.size());
+         }
+ 
+-        public int num_waiting() { return 0; }
++        public IRubyObject num_waiting() { return getRuntime().newFixnum(0); }
+ 
+         public synchronized IRubyObject pop(IRubyObject[] args) {
+             boolean should_block = true;

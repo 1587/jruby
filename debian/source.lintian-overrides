@@ -1,0 +1,3 @@
+# java and ant are needed to clean
+#jruby source: build-depends-without-arch-dep openjdk-6-jdk | java6-sdk
+#jruby source: build-depends-without-arch-dep ant

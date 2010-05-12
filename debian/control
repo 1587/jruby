@@ -1,0 +1,21 @@
+Source: jruby
+Section: non-free/ruby
+Priority: optional
+Maintainer: Sebastien Delafond <seb@debian.org>
+Build-Depends: debhelper (>= 6.0.7~), openjdk-6-jdk | java6-sdk, ant
+Standards-Version: 3.8.4
+Homepage: http://jruby.org
+
+Package: jruby
+Architecture: all
+Replaces: jruby1.0, jruby1.1, jruby1.2
+Depends: openjdk-6-jre | java6-runtime, ${misc:Depends}
+Description: 100% pure-Java implementation of Ruby
+ JRuby is a 100% pure-Java implementation of the Ruby programming language.
+ .
+ JRuby provides a complete set of core "builtin" classes and syntax
+ for the Ruby language, as well as most of the Ruby Standard
+ Libraries. The standard libraries are mostly Ruby's own complement of
+ ".rb" files, but a few that depend on C language-based extensions have
+ been reimplemented. Some are still missing, but JRuby hopes to
+ implement as many as is feasible.
