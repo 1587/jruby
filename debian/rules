@@ -25,7 +25,7 @@ clean:
 	$(ANT) clean-all
 	if [ -d dist ] ; then $(ANT) dist-clean ; fi
 	rm -f $(BUILD_TAR) $(BUILD_CHEKSUM_SHA1) $(BUILD_CHEKSUM_MD5)
-	rm -fr share
+	rm -fr share bin/jruby
 
 	rm -f build-stamp
 	dh_clean 
