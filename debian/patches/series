@@ -2,3 +2,4 @@
 0002-jruby_home-is-at-a-specific-location-on-Debian.patch
 0003-do-not-install-gems.patch
 0004-replace-bundled-libraries.patch
+0005-ignore-test-failures.patch

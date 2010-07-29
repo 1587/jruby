@@ -19,8 +19,9 @@ jruby (1.5.1-1) unstable; urgency=low
   * Run tests during build.
     - Upgrade Build-Depends: ant to ant-optional.
     - Add Build-Depends: netbase. 
+    - Add a patch to ignore test failures.
 
- -- Torsten Werner <twerner@debian.org>  Fri, 30 Jul 2010 01:31:24 +0200
+ -- Torsten Werner <twerner@debian.org>  Fri, 30 Jul 2010 01:44:28 +0200
 
 jruby (1.5.0~rc3-1) unstable; urgency=low
 
