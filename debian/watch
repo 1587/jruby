@@ -7,4 +7,4 @@ version=3
 
 opts="uversionmangle=s/RC/~rc/"\
   http://jruby.org/download \
-  .+/jruby-src-(1\..*)\.tar\.gz
+  .+/jruby-src-(1\..*)\.tar\.gz debian debian/orig-tar.sh
