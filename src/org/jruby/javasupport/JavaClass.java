@@ -49,6 +49,9 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.ReflectPermission;
+import java.security.AccessControlException;
+import java.security.AccessController;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -85,11 +88,34 @@ import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.runtime.callback.Callback;
 import org.jruby.util.ByteList;
 import org.jruby.util.IdUtil;
+import org.jruby.util.SafePropertyAccessor;
 
 
 @JRubyClass(name="Java::JavaClass", parent="Java::JavaObject")
 public class JavaClass extends JavaObject {
     public static final String METHOD_MANGLE = "__method";
+
+    public static final boolean CAN_SET_ACCESSIBLE;
+
+    static {
+        boolean canSetAccessible = false;
+
+        try {
+            AccessController.checkPermission(new ReflectPermission("suppressAccessChecks"));
+            canSetAccessible = true;
+        } catch (Throwable t) {
+            // added this so if things are weird in the future we can debug without
+            // spinning a new binary
+            if (SafePropertyAccessor.getBoolean("jruby.ji.logCanSetAccessible")) {
+                t.printStackTrace();
+            }
+            
+            // assume any exception means we can't suppress access checks
+            canSetAccessible = false;
+        }
+
+        CAN_SET_ACCESSIBLE = canSetAccessible;
+    }
     
     // An object that's never wrapped, so we can safely compare it with a
     // wrapped null and not treat
@@ -255,7 +281,8 @@ public class JavaClass extends JavaObject {
                 methods = new ArrayList<Method>(4);
             }
             methods.add(method);
-            haveLocalMethod |= javaClass == method.getDeclaringClass();
+            haveLocalMethod |= javaClass == method.getDeclaringClass() ||
+                    method.getDeclaringClass().isInterface();
         }
 
         // called only by initializing thread; no synchronization required
@@ -1854,64 +1881,85 @@ public class JavaClass extends JavaObject {
                 && Modifier.isProtected(child.getModifiers()) == Modifier.isProtected(parent.getModifiers())
                 && Modifier.isStatic(child.getModifiers()) == Modifier.isStatic(parent.getModifiers());
     }
+
+
+    private static void addNewMethods(HashMap<String, List<Method>> nameMethods, Method[] methods, boolean includeStatic, boolean removeDuplicate) {
+        Methods: for (Method m : methods) {
+            if (Modifier.isStatic(m.getModifiers()) && !includeStatic) {
+                // Skip static methods if we're not suppose to include them.
+                // Generally for superclasses; we only bind statics from the actual
+                // class.
+                continue;
+            }
+            List<Method> childMethods = nameMethods.get(m.getName());
+            if (childMethods == null) {
+                // first method of this name, add a collection for it
+                childMethods = new ArrayList<Method>();
+                childMethods.add(m);
+                nameMethods.put(m.getName(), childMethods);
+            } else {
+                // we have seen other methods; check if we already have
+                // an equivalent one
+                for (Method m2 : childMethods) {
+                    if (methodsAreEquivalent(m2, m)) {
+                        if (removeDuplicate) {
+                            // Replace the existing method, since the super call is more general
+                            // and virtual dispatch will call the subclass impl anyway.
+                            // Used for instance methods, for which we usually want to use the highest-up
+                            // callable implementation.
+                            childMethods.remove(m2);
+                            childMethods.add(m);
+                        } else {
+                            // just skip the new method, since we don't need it (already found one)
+                            // used for interface methods, which we want to add unconditionally
+                            // but only if we need them
+                        }
+                        continue Methods;
+                    }
+                }
+                // no equivalent; add it
+                childMethods.add(m);
+            }
+        }
+    }
     
     private static Method[] getMethods(Class<?> javaClass) {
         HashMap<String, List<Method>> nameMethods = new HashMap<String, List<Method>>();
-        ArrayList<Method> list2 = new ArrayList<Method>();
 
-        // aggregate all candidate method names from child, with their method objects
-
-        // instance methods only; static methods are local to the class and always bound
-        for (Method m: javaClass.getDeclaredMethods()) {
-            int modifiers = m.getModifiers();
-            if (Modifier.isPublic(modifiers) || Modifier.isProtected(modifiers)) {
-                if (Modifier.isStatic(modifiers)) {
-                    // static methods are always bound
-                    list2.add(m);
-                } else {
-                    List<Method> methods = nameMethods.get(m.getName());
-                    if (methods == null) {
-                        nameMethods.put(m.getName(), methods = new ArrayList<Method>());
-                    }
-                    methods.add(m);
+        // we scan all superclasses, but avoid adding superclass methods with
+        // same name+signature as subclass methods (see JRUBY-3130)
+        for (Class c = javaClass; c != null; c = c.getSuperclass()) {
+            // only add class's methods if it's public or we can set accessible
+            // (see JRUBY-4799)
+            if (Modifier.isPublic(c.getModifiers()) || CAN_SET_ACCESSIBLE) {
+                // for each class, scan declared methods for new signatures
+                try {
+                    // add methods, including static if this is the actual class,
+                    // and replacing child methods with equivalent parent methods
+                    addNewMethods(nameMethods, c.getDeclaredMethods(), c == javaClass, true);
+                } catch (SecurityException e) {
                 }
             }
-        }
 
-        // we all all superclasses, but avoid adding superclass methods with same name+signature as subclass methods
-        // see JRUBY-3130
-        for (Class c = javaClass.getSuperclass(); c != null; c = c.getSuperclass()) {
-            try {
-                Methods: for (Method m : c.getDeclaredMethods()) {
-                    List<Method> childMethods = nameMethods.get(m.getName());
-                    if (childMethods == null) continue;
-                    
-                    for (Method m2 : childMethods) {
-                        if (methodsAreEquivalent(m2, m)) {
-                            childMethods.remove(m2);
-                            if (childMethods.isEmpty()) nameMethods.remove(m.getName());
-                            continue Methods;
-                        }
-                    }
+            // then do the same for each interface
+            for (Class i : c.getInterfaces()) {
+                try {
+                    // add methods, not including static (should be none on
+                    // interfaces anyway) and not replacing child methods with
+                    // parent methods
+                    addNewMethods(nameMethods, i.getMethods(), false, false);
+                } catch (SecurityException e) {
                 }
-            } catch (SecurityException e) {
             }
         }
         
         // now only bind the ones that remain
-        for (Class c = javaClass; c != null; c = c.getSuperclass()) {
-            try {
-                for (Method m : c.getDeclaredMethods()) {
-                    int modifiers = m.getModifiers();
-                    if (Modifier.isPublic(modifiers) || Modifier.isProtected(modifiers)) {
-                        if (!nameMethods.containsKey(m.getName())) continue;
-                        list2.add(m);
-                    }
-                }
-            } catch (SecurityException e) {
-            }
+        ArrayList<Method> finalList = new ArrayList<Method>();
+
+        for (Map.Entry<String, List<Method>> entry : nameMethods.entrySet()) {
+            finalList.addAll(entry.getValue());
         }
         
-        return list2.toArray(new Method[list2.size()]);
+        return finalList.toArray(new Method[finalList.size()]);
     }
 }
