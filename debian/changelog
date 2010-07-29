@@ -1,4 +1,4 @@
-jruby (1.5.0~rc3-2) unstable; urgency=low
+jruby (1.5.1-1) unstable; urgency=low
 
   * UNRELEASED
   [ Hideki Yamane ]
@@ -8,6 +8,7 @@ jruby (1.5.0~rc3-2) unstable; urgency=low
     libbsf-java, libconstantine-java" (Closes: #581390)
 
   [ Torsten Werner ]
+  * New upstream release
   * Changed Maintainer to pkg-java-maintainers with the agreement of Sebastien.
   * Add Sebastien and myself to the Uploaders list.
   * Add Vcs headers to debian/control.
