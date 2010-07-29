@@ -1,6 +1,13 @@
 jruby (1.5.0~rc3-2) unstable; urgency=low
 
   * UNRELEASED
+  [ Hideki Yamane ]
+  * use already packaged jar files to build jruby.
+    add "Build-Depends: libasm3-java, libcommons-logging-java, libjarjar-java,
+    libjoda-time-java, junit, libemma-java, libbsf-java, libjline-java, bnd,
+    libbsf-java, libconstantine-java" (Closes: #581390)
+
+  [ Torsten Werner ]
   * Changed Maintainer to pkg-java-maintainers with the agreement of Sebastien.
   * Add Sebastien and myself to the Uploaders list.
   * Add Vcs headers to debian/control.

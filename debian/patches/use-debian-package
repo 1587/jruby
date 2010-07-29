@@ -1,0 +1,351 @@
+Index: jruby-1.5.0~rc3/build.xml
+===================================================================
+--- jruby-1.5.0~rc3.orig/build.xml	2010-05-14 10:20:05.496799984 +0900
++++ jruby-1.5.0~rc3/build.xml	2010-05-14 10:53:40.972796919 +0900
+@@ -16,6 +16,7 @@
+ 
+   <path id="build.classpath">
+     <fileset dir="${build.lib.dir}" includes="*.jar"/>
++    <fileset dir="${local.build.lib.dir}" includes="*.jar"/>
+   </path>
+ 
+   <path id="jruby.execute.classpath">
+@@ -289,40 +290,40 @@
+ 
+       <jar destfile="${lib.dir}/jruby.jar" compress="true" index="true">
+         <fileset dir="${jruby.classes.dir}"/>
+-        <zipfileset src="${build.lib.dir}/asm-3.2.jar"/>
+-        <zipfileset src="${build.lib.dir}/asm-commons-3.2.jar"/>
+-        <zipfileset src="${build.lib.dir}/asm-util-3.2.jar"/>
+-        <zipfileset src="${build.lib.dir}/asm-analysis-3.2.jar"/>
+-        <zipfileset src="${build.lib.dir}/asm-tree-3.2.jar"/>
+-        <zipfileset src="${build.lib.dir}/bytelist.jar"/>
+-        <zipfileset src="${build.lib.dir}/constantine.jar"/>
+-        <zipfileset src="${build.lib.dir}/jline-0.9.93.jar"/>
+-        <zipfileset src="${build.lib.dir}/jcodings.jar"/>
+-        <zipfileset src="${build.lib.dir}/joni.jar"/>
+-        <zipfileset src="${build.lib.dir}/jnr-netdb.jar"/>
+-        <zipfileset src="${build.lib.dir}/jnr-posix.jar"/>
+-        <zipfileset src="${build.lib.dir}/jaffl.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-i386-Linux.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-x86_64-Linux.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-Darwin.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-i386-SunOS.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-x86_64-SunOS.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-ppc-AIX.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-ppc-Linux.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-ppc64-Linux.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-sparc-SunOS.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-sparcv9-SunOS.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-i386-FreeBSD.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-x86_64-FreeBSD.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-i386-OpenBSD.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-x86_64-OpenBSD.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-i386-Windows.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-x86_64-Windows.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-s390x-Linux.jar"/>
++        <zipfileset src="${build.lib.dir}/asm3-3.2.jar"/>
++        <zipfileset src="${build.lib.dir}/asm3-commons-3.2.jar"/>
++        <zipfileset src="${build.lib.dir}/asm3-util-3.2.jar"/>
++        <zipfileset src="${build.lib.dir}/asm3-analysis-3.2.jar"/>
++        <zipfileset src="${build.lib.dir}/asm3-tree-3.2.jar"/>
++        <zipfileset src="${local.build.lib.dir}/bytelist.jar"/>
++        <zipfileset src="${build.lib.dir}/libconstantine-java.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jline-0.9.93.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jcodings.jar"/>
++        <zipfileset src="${local.build.lib.dir}/joni.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jnr-netdb.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jnr-posix.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jaffl.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-i386-Linux.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-x86_64-Linux.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-Darwin.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-i386-SunOS.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-x86_64-SunOS.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-ppc-AIX.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-ppc-Linux.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-ppc64-Linux.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-sparc-SunOS.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-sparcv9-SunOS.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-i386-FreeBSD.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-x86_64-FreeBSD.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-i386-OpenBSD.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-x86_64-OpenBSD.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-i386-Windows.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-x86_64-Windows.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-s390x-Linux.jar"/>
+         <zipfileset src="${build.lib.dir}/joda-time-1.6.jar"/>
+-        <zipfileset src="${build.lib.dir}/yydebug.jar"/>
+-        <zipfileset src="${build.lib.dir}/nailgun-0.7.1.jar"/>
++        <zipfileset src="${local.build.lib.dir}/yydebug.jar"/>
++        <zipfileset src="${local.build.lib.dir}/nailgun-0.7.1.jar"/>
+         <metainf dir="${base.dir}/spi">
+           <include name="services/**"/>
+         </metainf>
+@@ -345,14 +346,14 @@
+             <exclude name="org/jruby/ext/ffi/**/*"/>
+             <exclude name="org/jruby/embed/**/*"/>
+         </fileset>
+-        <zipfileset src="${build.lib.dir}/asm-3.2.jar"/>
+-        <zipfileset src="${build.lib.dir}/asm-util-3.2.jar"/>
+-        <zipfileset src="${build.lib.dir}/bytelist.jar"/>
+-        <zipfileset src="${build.lib.dir}/constantine.jar"/>
+-        <zipfileset src="${build.lib.dir}/jcodings.jar"/>
+-        <zipfileset src="${build.lib.dir}/joni.jar"/>
+-        <zipfileset src="${build.lib.dir}/jnr-netdb.jar"/>
+-        <zipfileset src="${build.lib.dir}/jnr-posix.jar"/>
++        <zipfileset src="${build.lib.dir}/asm3-3.2.jar"/>
++        <zipfileset src="${build.lib.dir}/asm3-util-3.2.jar"/>
++        <zipfileset src="${local.build.lib.dir}/bytelist.jar"/>
++        <zipfileset src="${build.lib.dir}/libconstantine-java.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jcodings.jar"/>
++        <zipfileset src="${local.build.lib.dir}/joni.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jnr-netdb.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jnr-posix.jar"/>
+         <zipfileset src="${build.lib.dir}/joda-time-1.6.jar"/>
+         <manifest>
+           <attribute name="Built-By" value="${user.name}"/>
+@@ -367,40 +368,40 @@
+       <taskdef name="jarjar" classname="com.tonicsystems.jarjar.JarJarTask" classpath="${build.lib.dir}/jarjar-1.0.jar"/>
+       <jarjar destfile="${lib.dir}/jruby.jar" compress="true">
+         <fileset dir="${jruby.classes.dir}"/>
+-        <zipfileset src="${build.lib.dir}/asm-3.2.jar"/>
+-        <zipfileset src="${build.lib.dir}/asm-commons-3.2.jar"/>
+-        <zipfileset src="${build.lib.dir}/asm-util-3.2.jar"/>
+-        <zipfileset src="${build.lib.dir}/asm-analysis-3.2.jar"/>
+-        <zipfileset src="${build.lib.dir}/asm-tree-3.2.jar"/>
+-        <zipfileset src="${build.lib.dir}/constantine.jar"/>
+-        <zipfileset src="${build.lib.dir}/bytelist.jar"/>
+-        <zipfileset src="${build.lib.dir}/jline-0.9.93.jar"/>
+-        <zipfileset src="${build.lib.dir}/jcodings.jar"/>
+-        <zipfileset src="${build.lib.dir}/joni.jar"/>
+-        <zipfileset src="${build.lib.dir}/jnr-netdb.jar"/>
+-        <zipfileset src="${build.lib.dir}/jnr-posix.jar"/>
+-        <zipfileset src="${build.lib.dir}/jaffl.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-i386-Linux.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-x86_64-Linux.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-Darwin.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-i386-SunOS.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-x86_64-SunOS.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-ppc-AIX.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-ppc-Linux.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-ppc64-Linux.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-sparc-SunOS.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-sparcv9-SunOS.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-i386-FreeBSD.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-x86_64-FreeBSD.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-i386-OpenBSD.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-x86_64-OpenBSD.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-i386-Windows.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-x86_64-Windows.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-s390x-Linux.jar"/>
++        <zipfileset src="${build.lib.dir}/asm3-3.2.jar"/>
++        <zipfileset src="${build.lib.dir}/asm3-commons-3.2.jar"/>
++        <zipfileset src="${build.lib.dir}/asm3-util-3.2.jar"/>
++        <zipfileset src="${build.lib.dir}/asm3-analysis-3.2.jar"/>
++        <zipfileset src="${build.lib.dir}/asm3-tree-3.2.jar"/>
++        <zipfileset src="${build.lib.dir}/libconstantine-java.jar"/>
++        <zipfileset src="${local.build.lib.dir}/bytelist.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jline-0.9.93.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jcodings.jar"/>
++        <zipfileset src="${local.build.lib.dir}/joni.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jnr-netdb.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jnr-posix.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jaffl.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-i386-Linux.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-x86_64-Linux.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-Darwin.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-i386-SunOS.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-x86_64-SunOS.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-ppc-AIX.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-ppc-Linux.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-ppc64-Linux.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-sparc-SunOS.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-sparcv9-SunOS.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-i386-FreeBSD.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-x86_64-FreeBSD.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-i386-OpenBSD.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-x86_64-OpenBSD.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-i386-Windows.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-x86_64-Windows.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-s390x-Linux.jar"/>
+         <zipfileset src="${build.lib.dir}/joda-time-1.6.jar"/>
+-        <zipfileset src="${build.lib.dir}/yydebug.jar"/>
+-        <zipfileset src="${build.lib.dir}/nailgun-0.7.1.jar"/>
++        <zipfileset src="${local.build.lib.dir}/yydebug.jar"/>
++        <zipfileset src="${local.build.lib.dir}/nailgun-0.7.1.jar"/>
+         <metainf dir="${base.dir}/spi">
+           <include name="services/**"/>
+         </metainf>
+@@ -462,41 +463,41 @@
+           <exclude name="META-INF/jruby.home/lib/ruby/site_ruby/shared/builtin/**"/>
+           <exclude name="META-INF/jruby.home/lib/ruby/1.9/**"/>
+         </fileset>
+-        <zipfileset src="${build.lib.dir}/asm-3.2.jar"/>
+-        <zipfileset src="${build.lib.dir}/asm-commons-3.2.jar"/>
+-        <zipfileset src="${build.lib.dir}/asm-util-3.2.jar"/>
+-        <zipfileset src="${build.lib.dir}/asm-analysis-3.2.jar"/>
+-        <zipfileset src="${build.lib.dir}/asm-tree-3.2.jar"/>
+-        <zipfileset src="${build.lib.dir}/bytelist.jar"/>
+-        <zipfileset src="${build.lib.dir}/constantine.jar"/>
+-        <zipfileset src="${build.lib.dir}/jline-0.9.93.jar"/>
+-        <zipfileset src="${build.lib.dir}/jcodings.jar"/>
+-        <zipfileset src="${build.lib.dir}/joni.jar"/>
+-        <zipfileset src="${build.lib.dir}/jnr-netdb.jar"/>
+-        <zipfileset src="${build.lib.dir}/jnr-posix.jar"/>
+-        <zipfileset src="${build.lib.dir}/jaffl.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-i386-Linux.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-x86_64-Linux.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-Darwin.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-i386-SunOS.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-x86_64-SunOS.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-ppc-AIX.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-ppc-Linux.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-ppc64-Linux.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-sparc-SunOS.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-sparcv9-SunOS.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-i386-FreeBSD.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-x86_64-FreeBSD.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-i386-OpenBSD.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-x86_64-OpenBSD.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-i386-Windows.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-x86_64-Windows.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-s390x-Linux.jar"/>
++        <zipfileset src="${build.lib.dir}/asm3-3.2.jar"/>
++        <zipfileset src="${build.lib.dir}/asm3-commons-3.2.jar"/>
++        <zipfileset src="${build.lib.dir}/asm3-util-3.2.jar"/>
++        <zipfileset src="${build.lib.dir}/asm3-analysis-3.2.jar"/>
++        <zipfileset src="${build.lib.dir}/asm3-tree-3.2.jar"/>
++        <zipfileset src="${local.build.lib.dir}/bytelist.jar"/>
++        <zipfileset src="${build.lib.dir}/libconstantine-java.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jline-0.9.93.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jcodings.jar"/>
++        <zipfileset src="${local.build.lib.dir}/joni.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jnr-netdb.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jnr-posix.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jaffl.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-i386-Linux.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-x86_64-Linux.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-Darwin.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-i386-SunOS.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-x86_64-SunOS.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-ppc-AIX.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-ppc-Linux.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-ppc64-Linux.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-sparc-SunOS.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-sparcv9-SunOS.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-i386-FreeBSD.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-x86_64-FreeBSD.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-i386-OpenBSD.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-x86_64-OpenBSD.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-i386-Windows.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-x86_64-Windows.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-s390x-Linux.jar"/>
+         <zipfileset src="${build.lib.dir}/joda-time-1.6.jar"/>
+-        <zipfileset src="${build.lib.dir}/yydebug.jar"/>
+-        <zipfileset src="${build.lib.dir}/nailgun-0.7.1.jar"/>
+-        <zipfileset src="${shared.lib.dir}/yecht.jar"/>
++        <zipfileset src="${local.build.lib.dir}/yydebug.jar"/>
++        <zipfileset src="${local.build.lib.dir}/nailgun-0.7.1.jar"/>
++        <zipfileset src="${local.shared.lib.dir}/yecht.jar"/>
+         <metainf dir="${base.dir}/spi">
+           <include name="services/**"/>
+         </metainf>
+@@ -550,41 +551,41 @@
+         <fileset dir="${build.dir}/jar-complete">
+           <exclude name="META-INF/jruby.home/lib/ruby/1.8/**"/>
+         </fileset>
+-        <zipfileset src="${build.lib.dir}/asm-3.2.jar"/>
+-        <zipfileset src="${build.lib.dir}/asm-commons-3.2.jar"/>
+-        <zipfileset src="${build.lib.dir}/asm-util-3.2.jar"/>
+-        <zipfileset src="${build.lib.dir}/asm-analysis-3.2.jar"/>
+-        <zipfileset src="${build.lib.dir}/asm-tree-3.2.jar"/>
+-        <zipfileset src="${build.lib.dir}/bytelist.jar"/>
+-        <zipfileset src="${build.lib.dir}/constantine.jar"/>
+-        <zipfileset src="${build.lib.dir}/jline-0.9.93.jar"/>
+-        <zipfileset src="${build.lib.dir}/jcodings.jar"/>
+-        <zipfileset src="${build.lib.dir}/joni.jar"/>
+-        <zipfileset src="${build.lib.dir}/jnr-netdb.jar"/>
+-        <zipfileset src="${build.lib.dir}/jnr-posix.jar"/>
+-        <zipfileset src="${build.lib.dir}/jaffl.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-i386-Linux.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-x86_64-Linux.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-Darwin.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-i386-SunOS.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-x86_64-SunOS.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-ppc-AIX.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-ppc-Linux.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-ppc64-Linux.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-sparc-SunOS.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-sparcv9-SunOS.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-i386-FreeBSD.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-x86_64-FreeBSD.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-i386-OpenBSD.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-x86_64-OpenBSD.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-i386-Windows.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-x86_64-Windows.jar"/>
+-        <zipfileset src="${build.lib.dir}/jffi-s390x-Linux.jar"/>
++        <zipfileset src="${build.lib.dir}/asm3-3.2.jar"/>
++        <zipfileset src="${build.lib.dir}/asm3-commons-3.2.jar"/>
++        <zipfileset src="${build.lib.dir}/asm3-util-3.2.jar"/>
++        <zipfileset src="${build.lib.dir}/asm3-analysis-3.2.jar"/>
++        <zipfileset src="${build.lib.dir}/asm3-tree-3.2.jar"/>
++        <zipfileset src="${local.build.lib.dir}/bytelist.jar"/>
++        <zipfileset src="${build.lib.dir}/libconstantine-java.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jline-0.9.93.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jcodings.jar"/>
++        <zipfileset src="${local.build.lib.dir}/joni.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jnr-netdb.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jnr-posix.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jaffl.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-i386-Linux.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-x86_64-Linux.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-Darwin.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-i386-SunOS.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-x86_64-SunOS.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-ppc-AIX.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-ppc-Linux.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-ppc64-Linux.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-sparc-SunOS.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-sparcv9-SunOS.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-i386-FreeBSD.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-x86_64-FreeBSD.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-i386-OpenBSD.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-x86_64-OpenBSD.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-i386-Windows.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-x86_64-Windows.jar"/>
++        <zipfileset src="${local.build.lib.dir}/jffi-s390x-Linux.jar"/>
+         <zipfileset src="${build.lib.dir}/joda-time-1.6.jar"/>
+-        <zipfileset src="${build.lib.dir}/yydebug.jar"/>
+-        <zipfileset src="${build.lib.dir}/nailgun-0.7.1.jar"/>
+-        <zipfileset src="${shared.lib.dir}/yecht.jar"/>
++        <zipfileset src="${local.build.lib.dir}/yydebug.jar"/>
++        <zipfileset src="${local.build.lib.dir}/nailgun-0.7.1.jar"/>
++        <zipfileset src="${local.shared.lib.dir}/yecht.jar"/>
+         <metainf dir="${base.dir}/spi">
+           <include name="services/**"/>
+         </metainf>
+@@ -757,7 +758,7 @@
+ 
+   <path id="test.class.path">
+     <pathelement path="${build.lib.dir}/junit.jar"/>
+-    <pathelement path="${build.lib.dir}/livetribe-jsr223-2.0.6.jar"/>
++    <pathelement path="${local.build.lib.dir}/livetribe-jsr223-2.0.6.jar"/>
+     <pathelement path="${build.lib.dir}/bsf.jar"/>
+     <pathelement path="${build.lib.dir}/commons-logging-1.1.1.jar"/>
+     <pathelement path="${java.class.path}"/>
+Index: jruby-1.5.0~rc3/build.properties
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ jruby-1.5.0~rc3/build.properties	2010-05-14 10:28:04.924796850 +0900
+@@ -0,0 +1,2 @@
++build.lib.dir=/usr/share/java/
++local.build.lib.dir=build_lib
