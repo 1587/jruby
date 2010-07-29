@@ -4,10 +4,10 @@ Priority: optional
 Maintainer: Debian Java Maintainers <pkg-java-maintainers@lists.alioth.debian.org>
 Uploaders: Sebastien Delafond <seb@debian.org>,
  Torsten Werner <twerner@debian.org>
-Build-Depends: debhelper (>= 6.0.7~), openjdk-6-jdk | java6-sdk, ant,
+Build-Depends: debhelper (>= 6.0.7~), openjdk-6-jdk | java6-sdk, ant-optional,
  libasm3-java, libcommons-logging-java, libjarjar-java, libjoda-time-java,
  junit, libemma-java, libbsf-java, libjline-java, bnd, libbsf-java,
- libconstantine-java
+ libconstantine-java, netbase
 Standards-Version: 3.8.4
 Homepage: http://jruby.org
 Vcs-Git: git://git.debian.org/git/pkg-java/jruby.git

@@ -15,8 +15,12 @@ jruby (1.5.1-1) unstable; urgency=low
   * Remove bin/jruby in clean target.
   * Convert patches to dep3 format.
   * Remove unneeded jar files from orig tarball.
+  * Define JAVA_HOME and set it to default-java.
+  * Run tests during build.
+    - Upgrade Build-Depends: ant to ant-optional.
+    - Add Build-Depends: netbase. 
 
- -- Torsten Werner <twerner@debian.org>  Thu, 29 Jul 2010 20:13:16 +0200
+ -- Torsten Werner <twerner@debian.org>  Fri, 30 Jul 2010 01:31:24 +0200
 
 jruby (1.5.0~rc3-1) unstable; urgency=low
 

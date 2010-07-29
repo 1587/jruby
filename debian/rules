@@ -13,6 +13,7 @@ BUILD_CHEKSUM_MD5 := $(BUILD_TAR).md5
 BUILD_CHEKSUM_SHA1 := $(BUILD_TAR).sha1
 
 ANT := /usr/bin/ant
+export JAVA_HOME := /usr/lib/jvm/default-java
 
 JRUBY_MANPAGE := debian/jruby.1
 JIRB_MANPAGE := debian/jirb.1
@@ -36,7 +37,7 @@ build-stamp:
 	dh_testdir
 
 	# Add here commands to compile the package.
-	$(ANT) -Ddev.gems=false compile
+	$(ANT) -Ddev.gems=false test
 #	docbook-to-man $(JRUBY_DOCBOOK_MANPAGE) > $(JRUBY_MANPAGE)
 #	docbook-to-man $(JIRB_DOCBOOK_MANPAGE) > $(JIRB_MANPAGE)
 
