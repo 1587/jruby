@@ -1,7 +1,26 @@
-Index: jruby-1.5.0~rc3/build.xml
-===================================================================
---- jruby-1.5.0~rc3.orig/build.xml	2010-05-14 10:20:05.496799984 +0900
-+++ jruby-1.5.0~rc3/build.xml	2010-05-14 10:53:40.972796919 +0900
+From: Hideki Yamane <henrich@debian.or.jp>
+Date: Thu, 29 Jul 2010 19:46:58 +0200
+Subject: [PATCH] replace bundled libraries
+
+... and use Debian packages instead
+---
+ build.properties |    2 +
+ build.xml        |  287 +++++++++++++++++++++++++++---------------------------
+ 2 files changed, 146 insertions(+), 143 deletions(-)
+ create mode 100644 build.properties
+
+diff --git a/build.properties b/build.properties
+new file mode 100644
+index 0000000..5308747
+--- /dev/null
++++ b/build.properties
+@@ -0,0 +1,2 @@
++build.lib.dir=/usr/share/java/
++local.build.lib.dir=build_lib
+diff --git a/build.xml b/build.xml
+index 5fd40cf..2e55666 100644
+--- a/build.xml
++++ b/build.xml
 @@ -16,6 +16,7 @@
  
    <path id="build.classpath">
@@ -342,10 +361,4 @@ Index: jruby-1.5.0~rc3/build.xml
      <pathelement path="${build.lib.dir}/bsf.jar"/>
      <pathelement path="${build.lib.dir}/commons-logging-1.1.1.jar"/>
      <pathelement path="${java.class.path}"/>
-Index: jruby-1.5.0~rc3/build.properties
-===================================================================
---- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ jruby-1.5.0~rc3/build.properties	2010-05-14 10:28:04.924796850 +0900
-@@ -0,0 +1,2 @@
-+build.lib.dir=/usr/share/java/
-+local.build.lib.dir=build_lib
+-- 

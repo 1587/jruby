@@ -12,8 +12,9 @@ jruby (1.5.0~rc3-2) unstable; urgency=low
   * Add Sebastien and myself to the Uploaders list.
   * Add Vcs headers to debian/control.
   * Remove bin/jruby in clean target.
+  * Convert patches to dep3 format.
 
- -- Torsten Werner <twerner@debian.org>  Wed, 19 May 2010 20:22:57 +0200
+ -- Torsten Werner <twerner@debian.org>  Thu, 29 Jul 2010 19:52:29 +0200
 
 jruby (1.5.0~rc3-1) unstable; urgency=low
 

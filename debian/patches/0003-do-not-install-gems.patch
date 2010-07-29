@@ -1,14 +1,15 @@
-#! /bin/sh /usr/share/dpatch/dpatch-run
-## 05-ant-no-gems.dpatch by Sebastien Delafond <seb@debian.org>
-##
-## All lines beginning with `## DP:' are a description of the patch.
-## DP: No gems.
+From: Sebastien Delafond <seb@debian.org>
+Date: Thu, 29 Jul 2010 19:46:44 +0200
+Subject: [PATCH] do not install gems
 
-@DPATCH@
-Index: jruby-1.5.0~rc3/build.xml
-===================================================================
---- jruby-1.5.0~rc3.orig/build.xml	2010-05-12 16:09:57.000000000 +0200
-+++ jruby-1.5.0~rc3/build.xml	2010-05-12 16:17:52.000000000 +0200
+---
+ build.xml |   75 +------------------------------------------------------------
+ 1 files changed, 1 insertions(+), 74 deletions(-)
+
+diff --git a/build.xml b/build.xml
+index 9857cd2..5fd40cf 100644
+--- a/build.xml
++++ b/build.xml
 @@ -452,7 +452,6 @@
          <sysproperty key="jruby.home" value="${build.dir}/jar-complete/META-INF/jruby.home"/>
          <env key="RUBYOPT" value=""/>
@@ -149,3 +150,4 @@ Index: jruby-1.5.0~rc3/build.xml
  
    <target name="dist-clean">
      <delete dir="${dist.dir}"/>
+-- 
