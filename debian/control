@@ -7,7 +7,7 @@ Uploaders: Sebastien Delafond <seb@debian.org>,
 Build-Depends: debhelper (>= 6.0.7~), openjdk-6-jdk | java6-sdk, ant-optional,
  libasm3-java, libcommons-logging-java, libjarjar-java, libjoda-time-java,
  junit4, libemma-java, libbsf-java, libjline-java, bnd, libconstantine-java,
- netbase
+ netbase, libjgrapht0.8-java
 Standards-Version: 3.8.4
 Homepage: http://jruby.org
 Vcs-Git: git://git.debian.org/git/pkg-java/jruby.git
