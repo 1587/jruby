@@ -1,6 +1,5 @@
 jruby (1.5.1-1) unstable; urgency=low
 
-  * UNRELEASED
   [ Hideki Yamane ]
   * use already packaged jar files to build jruby.
     add "Build-Depends: libasm3-java, libcommons-logging-java, libjarjar-java,
