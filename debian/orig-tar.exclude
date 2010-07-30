@@ -6,3 +6,4 @@ commons-logging-*.jar
 jarjar-*.jar
 emma*.jar
 bsf.jar
+jline-*.jar
