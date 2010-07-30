@@ -9,3 +9,4 @@ bsf.jar
 jline-*.jar
 junit.jar
 jgrapht-*.jar
+apt-mirror-api.jar
