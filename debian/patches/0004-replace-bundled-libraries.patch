@@ -5,8 +5,8 @@ Subject: [PATCH] replace bundled libraries
 ... and use Debian packages instead
 ---
  build.properties |    2 +
- build.xml        |  310 ++++++++++++++++++++++++++++--------------------------
- 2 files changed, 163 insertions(+), 149 deletions(-)
+ build.xml        |  311 ++++++++++++++++++++++++++++--------------------------
+ 2 files changed, 164 insertions(+), 149 deletions(-)
  create mode 100644 build.properties
 
 diff --git a/build.properties b/build.properties
@@ -18,10 +18,10 @@ index 0000000..5308747
 +build.lib.dir=/usr/share/java/
 +local.build.lib.dir=build_lib
 diff --git a/build.xml b/build.xml
-index 5fd40cf..7b6e149 100644
+index 5fd40cf..ab1aabc 100644
 --- a/build.xml
 +++ b/build.xml
-@@ -15,7 +15,19 @@
+@@ -15,7 +15,20 @@
    <property name="shared.lib.dir" value="lib/ruby/site_ruby/shared"/>
  
    <path id="build.classpath">
@@ -37,12 +37,13 @@ index 5fd40cf..7b6e149 100644
 +      <include name="bsf.jar"/>
 +      <include name="jline.jar"/>
 +      <include name="junit4.jar"/>
++      <include name="jgrapht0.8.jar"/>
 +    </fileset>
 +    <fileset dir="${local.build.lib.dir}" includes="*.jar"/>
    </path>
  
    <path id="jruby.execute.classpath">
-@@ -289,40 +301,40 @@
+@@ -289,40 +302,40 @@
  
        <jar destfile="${lib.dir}/jruby.jar" compress="true" index="true">
          <fileset dir="${jruby.classes.dir}"/>
@@ -117,7 +118,7 @@ index 5fd40cf..7b6e149 100644
          <metainf dir="${base.dir}/spi">
            <include name="services/**"/>
          </metainf>
-@@ -345,15 +357,15 @@
+@@ -345,15 +358,15 @@
              <exclude name="org/jruby/ext/ffi/**/*"/>
              <exclude name="org/jruby/embed/**/*"/>
          </fileset>
@@ -142,7 +143,7 @@ index 5fd40cf..7b6e149 100644
          <manifest>
            <attribute name="Built-By" value="${user.name}"/>
            <attribute name="Main-Class" value="org.jruby.Main"/>
-@@ -367,40 +379,40 @@
+@@ -367,40 +380,40 @@
        <taskdef name="jarjar" classname="com.tonicsystems.jarjar.JarJarTask" classpath="${build.lib.dir}/jarjar-1.0.jar"/>
        <jarjar destfile="${lib.dir}/jruby.jar" compress="true">
          <fileset dir="${jruby.classes.dir}"/>
@@ -217,7 +218,7 @@ index 5fd40cf..7b6e149 100644
          <metainf dir="${base.dir}/spi">
            <include name="services/**"/>
          </metainf>
-@@ -462,41 +474,41 @@
+@@ -462,41 +475,41 @@
            <exclude name="META-INF/jruby.home/lib/ruby/site_ruby/shared/builtin/**"/>
            <exclude name="META-INF/jruby.home/lib/ruby/1.9/**"/>
          </fileset>
@@ -294,7 +295,7 @@ index 5fd40cf..7b6e149 100644
          <metainf dir="${base.dir}/spi">
            <include name="services/**"/>
          </metainf>
-@@ -550,41 +562,41 @@
+@@ -550,41 +563,41 @@
          <fileset dir="${build.dir}/jar-complete">
            <exclude name="META-INF/jruby.home/lib/ruby/1.8/**"/>
          </fileset>
@@ -371,7 +372,7 @@ index 5fd40cf..7b6e149 100644
          <metainf dir="${base.dir}/spi">
            <include name="services/**"/>
          </metainf>
-@@ -757,7 +769,7 @@
+@@ -757,7 +770,7 @@
  
    <path id="test.class.path">
      <pathelement path="${build.lib.dir}/junit.jar"/>
