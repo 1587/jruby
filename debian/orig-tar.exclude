@@ -7,3 +7,4 @@ jarjar-*.jar
 emma*.jar
 bsf.jar
 jline-*.jar
+junit.jar
