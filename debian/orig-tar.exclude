@@ -3,3 +3,4 @@ constantine.jar
 joda-time-*.jar
 bnd.jar
 commons-logging-*.jar
+jarjar-*.jar
