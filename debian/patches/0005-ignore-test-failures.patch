@@ -7,7 +7,7 @@ Subject: [PATCH] ignore test failures
  1 files changed, 3 insertions(+), 3 deletions(-)
 
 diff --git a/build.xml b/build.xml
-index 6a662e7..1c58884 100644
+index 7b6e149..e76f571 100644
 --- a/build.xml
 +++ b/build.xml
 @@ -793,7 +793,7 @@

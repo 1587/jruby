@@ -18,7 +18,7 @@ index 0000000..5308747
 +build.lib.dir=/usr/share/java/
 +local.build.lib.dir=build_lib
 diff --git a/build.xml b/build.xml
-index 5fd40cf..6a662e7 100644
+index 5fd40cf..7b6e149 100644
 --- a/build.xml
 +++ b/build.xml
 @@ -15,7 +15,19 @@
@@ -36,7 +36,7 @@ index 5fd40cf..6a662e7 100644
 +      <include name="joda-time.jar"/>
 +      <include name="bsf.jar"/>
 +      <include name="jline.jar"/>
-+      <include name="junit.jar"/>
++      <include name="junit4.jar"/>
 +    </fileset>
 +    <fileset dir="${local.build.lib.dir}" includes="*.jar"/>
    </path>
