@@ -5,3 +5,4 @@ bnd.jar
 commons-logging-*.jar
 jarjar-*.jar
 emma*.jar
+bsf.jar
