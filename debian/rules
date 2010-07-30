@@ -14,6 +14,7 @@ BUILD_CHEKSUM_SHA1 := $(BUILD_TAR).sha1
 
 ANT := /usr/bin/ant
 export JAVA_HOME := /usr/lib/jvm/default-java
+export CLASSPATH := /usr/share/java/junit4.jar
 
 JRUBY_MANPAGE := debian/jruby.1
 JIRB_MANPAGE := debian/jirb.1

@@ -20,8 +20,9 @@ jruby (1.5.1-1) unstable; urgency=low
     - Upgrade Build-Depends: ant to ant-optional.
     - Add Build-Depends: netbase. 
     - Add a patch to ignore test failures.
+    - Set CLASSPATH=/usr/share/java/junit4.jar in debian/rules.
 
- -- Torsten Werner <twerner@debian.org>  Fri, 30 Jul 2010 01:44:28 +0200
+ -- Torsten Werner <twerner@debian.org>  Fri, 30 Jul 2010 03:07:08 +0200
 
 jruby (1.5.0~rc3-1) unstable; urgency=low
 
