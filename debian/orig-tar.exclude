@@ -4,3 +4,4 @@ joda-time-*.jar
 bnd.jar
 commons-logging-*.jar
 jarjar-*.jar
+emma*.jar
