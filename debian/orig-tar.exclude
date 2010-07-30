@@ -8,3 +8,4 @@ emma*.jar
 bsf.jar
 jline-*.jar
 junit.jar
+jgrapht-*.jar
