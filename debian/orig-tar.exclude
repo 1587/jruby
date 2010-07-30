@@ -2,3 +2,4 @@ asm*.jar
 constantine.jar
 joda-time-*.jar
 bnd.jar
+commons-logging-*.jar
