@@ -111,3 +111,6 @@ binary-arch:
 binary: binary-indep binary-arch
 
 .PHONY: build clean binary-indep binary-arch binary install
+
+get-orig-source:
+	uscan --force-download --rename
