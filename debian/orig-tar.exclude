@@ -15,3 +15,4 @@ bytelist*.jar
 jcodings*.jar
 jaffl*.jar
 jffi*.jar
+joni.jar
