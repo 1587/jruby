@@ -10,3 +10,5 @@ jline-*.jar
 junit.jar
 jgrapht-*.jar
 apt-mirror-api.jar
+dynalib*.jar
+bytelist*.jar

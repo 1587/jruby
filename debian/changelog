@@ -1,3 +1,10 @@
+jruby (1.5.1-2) experimental; urgency=low
+
+  UNRELEASED
+  * Remove more prebuilt jars.
+
+ -- Torsten Werner <twerner@debian.org>  Sat, 14 Aug 2010 12:04:10 +0200
+
 jruby (1.5.1-1) unstable; urgency=low
 
   [ Hideki Yamane ]
