@@ -15,8 +15,6 @@ License:
    GNU General Public License
    GNU Lesser General Public License
 
-  lib/ruby/1.9/drb/* are released under the same copyright/license.
-
   Some additional libraries/files distributed with JRuby are not
   covered by JRuby's license:
 
@@ -39,25 +37,10 @@ License:
    build_lib/jna*jar (http://jna.dev.java.net) are distributed
    under the LGPL-2.1+ license.
 
-   build_lib/jsr292-mock.jar (http://code.google.com/p/jvm-language-runtime)
-   are distributed under the LGPL license.
-
-   Bouncycastle is released under the MIT license, and is Copyright (c)
-   2000 - 2006 The Legion Of The Bouncy Castle.
-
-   Jyvaml and rbyaml are released under the MIT license, and are
-   Copyright (c) 2006 Ola Bini.
-
-On Debian systems, the complete text of the GNU General Public License
-can be found in `/usr/share/common-licenses/GPL-1', the complete text
-of the GNU General Public License version 3 can be found in
-`/usr/share/common-licenses/GPL-3', the complete text of the GNU
+On Debian systems, the complete text of the GNU General Public License can be
+found in `/usr/share/common-licenses/GPL-2' and the complete text of the GNU
 Lesser General Public License can be found in
-`/usr/share/common-licenses/LGPL-1', the complete text of the GNU
-Lesser General Public License 2.1 can be found in
-`/usr/share/common-licenses/LGPL-2.1', and the complete text of the BSD license
-can be found in
-`/usr/share/common-licenses/BSD'.
+`/usr/share/common-licenses/LGPL-2.1'.
 
 The complete text of the MIT license is as follow:
 
