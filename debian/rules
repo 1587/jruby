@@ -19,6 +19,9 @@ export CLASSPATH := /usr/share/java/junit4.jar
 JRUBY_MANPAGE := debian/jruby.1
 JIRB_MANPAGE := debian/jirb.1
 
+# must be set to avoid test failures
+export BUILDING_JRUBY := true
+
 clean:
 	dh_testdir
 	dh_testroot

@@ -3,28 +3,23 @@ Date: Thu, 29 Jul 2010 19:46:38 +0200
 Subject: [PATCH] jruby_home is at a specific location on Debian
 
 ---
- bin/jruby.sh |    3 ++-
- 1 files changed, 2 insertions(+), 1 deletions(-)
+ bin/jruby.sh |    5 +++++
+ 1 files changed, 5 insertions(+), 0 deletions(-)
 
 diff --git a/bin/jruby.sh b/bin/jruby.sh
-index 395da7c..27b0359 100755
+index 395da7c..67fe065 100755
 --- a/bin/jruby.sh
 +++ b/bin/jruby.sh
-@@ -46,6 +46,7 @@ if [ "$JRUBY_HOME_1" = '.' ] ; then
- else
+@@ -47,6 +47,11 @@ else
    JRUBY_HOME=`dirname "$JRUBY_HOME_1"`  # the . dir
  fi
-+JRUBY_HOME=/usr/lib/jruby/
  
++# set JRUBY_HOME to /u/l/jruby except for its own build process
++if [ -z "$BUILDING_JRUBY" ]; then
++  JRUBY_HOME=/usr/lib/jruby/
++fi
++
  if [ -z "$JRUBY_OPTS" ] ; then
    JRUBY_OPTS=""
-@@ -288,7 +289,7 @@ fi
- JFFI_OPTS="-Djffi.boot.library.path=$JFFI_BOOT"
- 
- if $cygwin; then
--  JRUBY_HOME=`cygpath --mixed "$JRUBY_HOME"`
-+  JRUBY_HOME=/usr/lib/jruby/
-   JRUBY_SHELL=`cygpath --mixed "$JRUBY_SHELL"`
-   
-   if [[ ( "${1:0:1}" = "/" ) && ( ( -f "$1" ) || ( -d "$1" )) ]]; then
+ fi
 -- 
