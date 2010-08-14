@@ -12,3 +12,6 @@ jgrapht-*.jar
 apt-mirror-api.jar
 dynalib*.jar
 bytelist*.jar
+jcodings*.jar
+jaffl*.jar
+jffi*.jar
