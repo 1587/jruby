@@ -7,10 +7,10 @@ Subject: [PATCH] ignore test failures
  1 files changed, 3 insertions(+), 3 deletions(-)
 
 diff --git a/build.xml b/build.xml
-index 778cdfa..09ade9a 100644
+index a08c16d..1ed3224 100644
 --- a/build.xml
 +++ b/build.xml
-@@ -731,7 +731,7 @@
+@@ -732,7 +732,7 @@
        <echo message="compile=@{compile.mode}, jit.threshold=@{jit.threshold}, jit.maxsize=@{jit.maxsize}, jit.max=@{jit.max}, objectspace=@{objectspace.enabled} threadpool=@{thread.pooling} reflection=@{reflection} version=@{jruby.version}"/>
        <taskdef name="junit" classname="org.apache.tools.ant.taskdefs.optional.junit.JUnitTask" classpath="${build.lib.dir}/junit.jar"/>
  
@@ -19,7 +19,7 @@ index 778cdfa..09ade9a 100644
  	<classpath refid="test.class.path"/>
  
          <sysproperty key="jruby.compile.invokedynamic" value="true"/>
-@@ -787,7 +787,7 @@
+@@ -788,7 +788,7 @@
        <echo message="compile=@{compile.mode}, jit.threshold=@{jit.threshold}, jit.maxsize=@{jit.maxsize}, jit.max=@{jit.max}, objectspace=@{objectspace.enabled} threadpool=@{thread.pooling} reflection=@{reflection} version=@{jruby.version}"/>
        <taskdef name="junit" classname="org.apache.tools.ant.taskdefs.optional.junit.JUnitTask" classpath="${build.lib.dir}/junit.jar"/>
  
@@ -28,7 +28,7 @@ index 778cdfa..09ade9a 100644
  	<classpath refid="test.class.path"/>
  
  	<sysproperty key="java.awt.headless" value="true"/>
-@@ -914,7 +914,7 @@
+@@ -915,7 +915,7 @@
    <macrodef name="run-junit-embed-all">
      <sequential>
        <taskdef name="junit" classname="org.apache.tools.ant.taskdefs.optional.junit.JUnitTask" classpath="${build.lib.dir}/junit.jar"/>

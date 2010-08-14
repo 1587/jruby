@@ -5,8 +5,8 @@ Subject: [PATCH] replace bundled libraries
 ... and use Debian packages instead
 ---
  build.properties |    2 +
- build.xml        |  202 ++++++++++++++++++++---------------------------------
- 2 files changed, 78 insertions(+), 126 deletions(-)
+ build.xml        |  195 ++++++++++++++++++++----------------------------------
+ 2 files changed, 75 insertions(+), 122 deletions(-)
  create mode 100644 build.properties
 
 diff --git a/build.properties b/build.properties
@@ -18,10 +18,10 @@ index 0000000..5308747
 +build.lib.dir=/usr/share/java/
 +local.build.lib.dir=build_lib
 diff --git a/build.xml b/build.xml
-index 5fd40cf..778cdfa 100644
+index 5fd40cf..a08c16d 100644
 --- a/build.xml
 +++ b/build.xml
-@@ -15,7 +15,25 @@
+@@ -15,7 +15,26 @@
    <property name="shared.lib.dir" value="lib/ruby/site_ruby/shared"/>
  
    <path id="build.classpath">
@@ -43,12 +43,13 @@ index 5fd40cf..778cdfa 100644
 +      <include name="jaffl.jar"/>
 +      <include name="jffi.jar"/>
 +      <include name="joni.jar"/>
++      <include name="nailgun.jar"/>
 +    </fileset>
 +    <fileset dir="${local.build.lib.dir}" includes="*.jar"/>
    </path>
  
    <path id="jruby.execute.classpath">
-@@ -289,40 +307,23 @@
+@@ -289,39 +308,22 @@
  
        <jar destfile="${lib.dir}/jruby.jar" compress="true" index="true">
          <fileset dir="${jruby.classes.dir}"/>
@@ -94,14 +95,12 @@ index 5fd40cf..778cdfa 100644
 -        <zipfileset src="${build.lib.dir}/jffi-s390x-Linux.jar"/>
 -        <zipfileset src="${build.lib.dir}/joda-time-1.6.jar"/>
 -        <zipfileset src="${build.lib.dir}/yydebug.jar"/>
--        <zipfileset src="${build.lib.dir}/nailgun-0.7.1.jar"/>
 +        <zipfileset src="${build.lib.dir}/joda-time.jar"/>
 +        <zipfileset src="${local.build.lib.dir}/yydebug.jar"/>
-+        <zipfileset src="${local.build.lib.dir}/nailgun-0.7.1.jar"/>
+         <zipfileset src="${build.lib.dir}/nailgun-0.7.1.jar"/>
          <metainf dir="${base.dir}/spi">
            <include name="services/**"/>
-         </metainf>
-@@ -345,15 +346,15 @@
+@@ -345,15 +347,15 @@
              <exclude name="org/jruby/ext/ffi/**/*"/>
              <exclude name="org/jruby/embed/**/*"/>
          </fileset>
@@ -123,7 +122,7 @@ index 5fd40cf..778cdfa 100644
          <manifest>
            <attribute name="Built-By" value="${user.name}"/>
            <attribute name="Main-Class" value="org.jruby.Main"/>
-@@ -367,40 +368,23 @@
+@@ -367,39 +369,22 @@
        <taskdef name="jarjar" classname="com.tonicsystems.jarjar.JarJarTask" classpath="${build.lib.dir}/jarjar-1.0.jar"/>
        <jarjar destfile="${lib.dir}/jruby.jar" compress="true">
          <fileset dir="${jruby.classes.dir}"/>
@@ -169,14 +168,12 @@ index 5fd40cf..778cdfa 100644
 -        <zipfileset src="${build.lib.dir}/jffi-s390x-Linux.jar"/>
 -        <zipfileset src="${build.lib.dir}/joda-time-1.6.jar"/>
 -        <zipfileset src="${build.lib.dir}/yydebug.jar"/>
--        <zipfileset src="${build.lib.dir}/nailgun-0.7.1.jar"/>
 +        <zipfileset src="${build.lib.dir}/joda-time.jar"/>
 +        <zipfileset src="${local.build.lib.dir}/yydebug.jar"/>
-+        <zipfileset src="${local.build.lib.dir}/nailgun-0.7.1.jar"/>
+         <zipfileset src="${build.lib.dir}/nailgun-0.7.1.jar"/>
          <metainf dir="${base.dir}/spi">
            <include name="services/**"/>
-         </metainf>
-@@ -462,41 +446,24 @@
+@@ -462,41 +447,24 @@
            <exclude name="META-INF/jruby.home/lib/ruby/site_ruby/shared/builtin/**"/>
            <exclude name="META-INF/jruby.home/lib/ruby/1.9/**"/>
          </fileset>
@@ -222,16 +219,15 @@ index 5fd40cf..778cdfa 100644
 -        <zipfileset src="${build.lib.dir}/jffi-s390x-Linux.jar"/>
 -        <zipfileset src="${build.lib.dir}/joda-time-1.6.jar"/>
 -        <zipfileset src="${build.lib.dir}/yydebug.jar"/>
--        <zipfileset src="${build.lib.dir}/nailgun-0.7.1.jar"/>
--        <zipfileset src="${shared.lib.dir}/yecht.jar"/>
 +        <zipfileset src="${build.lib.dir}/joda-time.jar"/>
 +        <zipfileset src="${local.build.lib.dir}/yydebug.jar"/>
-+        <zipfileset src="${local.build.lib.dir}/nailgun-0.7.1.jar"/>
+         <zipfileset src="${build.lib.dir}/nailgun-0.7.1.jar"/>
+-        <zipfileset src="${shared.lib.dir}/yecht.jar"/>
 +        <zipfileset src="${local.shared.lib.dir}/yecht.jar"/>
          <metainf dir="${base.dir}/spi">
            <include name="services/**"/>
          </metainf>
-@@ -550,41 +517,24 @@
+@@ -550,41 +518,24 @@
          <fileset dir="${build.dir}/jar-complete">
            <exclude name="META-INF/jruby.home/lib/ruby/1.8/**"/>
          </fileset>
@@ -277,16 +273,15 @@ index 5fd40cf..778cdfa 100644
 -        <zipfileset src="${build.lib.dir}/jffi-s390x-Linux.jar"/>
 -        <zipfileset src="${build.lib.dir}/joda-time-1.6.jar"/>
 -        <zipfileset src="${build.lib.dir}/yydebug.jar"/>
--        <zipfileset src="${build.lib.dir}/nailgun-0.7.1.jar"/>
--        <zipfileset src="${shared.lib.dir}/yecht.jar"/>
 +        <zipfileset src="${build.lib.dir}/joda-time.jar"/>
 +        <zipfileset src="${local.build.lib.dir}/yydebug.jar"/>
-+        <zipfileset src="${local.build.lib.dir}/nailgun-0.7.1.jar"/>
+         <zipfileset src="${build.lib.dir}/nailgun-0.7.1.jar"/>
+-        <zipfileset src="${shared.lib.dir}/yecht.jar"/>
 +        <zipfileset src="${local.shared.lib.dir}/yecht.jar"/>
          <metainf dir="${base.dir}/spi">
            <include name="services/**"/>
          </metainf>
-@@ -757,7 +707,7 @@
+@@ -757,7 +708,7 @@
  
    <path id="test.class.path">
      <pathelement path="${build.lib.dir}/junit.jar"/>
