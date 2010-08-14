@@ -21,3 +21,5 @@
 */build_lib/yydebug*.jar
 */nailgun/*
 */lib/profile.jar
+*.dll
+*.exe
