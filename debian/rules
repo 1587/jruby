@@ -41,7 +41,7 @@ build-stamp:
 	dh_testdir
 
 	# Add here commands to compile the package.
-	$(ANT) -Ddev.gems=false test
+	$(ANT) -Ddev.gems=false -DdocsNotNeeded=true test
 #	docbook-to-man $(JRUBY_DOCBOOK_MANPAGE) > $(JRUBY_MANPAGE)
 #	docbook-to-man $(JIRB_DOCBOOK_MANPAGE) > $(JIRB_MANPAGE)
 
@@ -53,7 +53,7 @@ install: build
 	dh_installdirs
 
 	# Add here commands to install the package into debian/jruby
-	$(ANT) dist-bin
+	$(ANT) -DdocsNotNeeded=true dist-bin
 
 	tar -zxf $(BUILD_TAR) --strip 1 -C $(JRUBY_LIB_DIR)
 	# Remove all the bat/dll/exe files
