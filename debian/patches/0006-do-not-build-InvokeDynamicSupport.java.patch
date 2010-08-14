@@ -1,0 +1,23 @@
+From: Torsten Werner <twerner@debian.org>
+Date: Sun, 15 Aug 2010 00:02:18 +0200
+Subject: [PATCH] do not build InvokeDynamicSupport.java
+
+... because it requires a dependency from the Java7 world which is not packaged
+yet.
+---
+ build.xml |    1 +
+ 1 files changed, 1 insertions(+), 0 deletions(-)
+
+diff --git a/build.xml b/build.xml
+index d6ccad9..f72a3d3 100644
+--- a/build.xml
++++ b/build.xml
+@@ -55,6 +55,7 @@
+     <include name="**/*.java"/>
+     <exclude unless="bsf.present" name="org/jruby/javasupport/bsf/**/*.java"/>
+     <exclude unless="sun-misc-signal" name="**/SunSignalFacade.java"/>
++    <exclude name="org/jruby/runtime/invokedynamic/InvokeDynamicSupport.java"/>
+   </patternset>
+ 
+   <patternset id="ruby.src.pattern">
+-- 

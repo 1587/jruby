@@ -7,8 +7,10 @@ jruby (1.5.1-2) experimental; urgency=low
   * Add get-orig-source target.
   * Clean more files in clean target.
   * Clean up debian/copyright.
+  * Do not build InvokeDynamicSupport.java because it requires some backport
+    (jsr292-mock.jar) from Java7.
 
- -- Torsten Werner <twerner@debian.org>  Sat, 14 Aug 2010 19:58:51 +0200
+ -- Torsten Werner <twerner@debian.org>  Sun, 15 Aug 2010 00:04:03 +0200
 
 jruby (1.5.1-1) unstable; urgency=low
 

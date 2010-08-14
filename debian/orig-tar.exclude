@@ -19,6 +19,7 @@
 */build_lib/livetribe-*.jar
 */build_lib/nailgun*.jar
 */build_lib/yydebug*.jar
+*/build_lib/jsr292-mock*.jar
 */nailgun/*
 */lib/profile.jar
 *.dll

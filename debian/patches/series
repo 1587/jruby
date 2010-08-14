@@ -3,3 +3,4 @@
 0003-do-not-install-gems.patch
 0004-replace-bundled-libraries.patch
 0005-ignore-test-failures.patch
+0006-do-not-build-InvokeDynamicSupport.java.patch
