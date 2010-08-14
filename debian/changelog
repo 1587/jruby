@@ -1,13 +1,14 @@
 jruby (1.5.1-2) experimental; urgency=low
 
   UNRELEASED
-  * Remove more prebuilt jars.
+  * Replace more prebuilt jars by Build-Depends.
   * Modify 0002-jruby_home-is-at-a-specific-location-on-Debian.patch to avoid
     test failures.
   * Add get-orig-source target.
   * Clean more files in clean target.
+  * Clean up debian/copyright.
 
- -- Torsten Werner <twerner@debian.org>  Sat, 14 Aug 2010 19:26:06 +0200
+ -- Torsten Werner <twerner@debian.org>  Sat, 14 Aug 2010 19:58:51 +0200
 
 jruby (1.5.1-1) unstable; urgency=low
 

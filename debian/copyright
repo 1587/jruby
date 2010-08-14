@@ -15,11 +15,7 @@ License:
    GNU General Public License
    GNU Lesser General Public License
 
-  lib/ruby/1.9/drb/*, build_lib/bytelist.jar
-  (http://github.com/jruby/bytelist), build_lib/jruby-embed.jar
-  (http://kenai.com/projects/jruby-embed) and build_lib/yydebug.jar
-  (http://svn.codehaus.org/jruby/trunk/jay/yydebug) are released under
-  the same copyright/license.
+  lib/ruby/1.9/drb/* are released under the same copyright/license.
 
   Some additional libraries/files distributed with JRuby are not
   covered by JRuby's license:
@@ -40,73 +36,11 @@ License:
 
      prototype.js is Copyright (c) 2005-2007 Sam Stephenson.
 
-   build_lib/*asm*jar (http://asm.objectweb.org) are distributed under the BSD license.
-
-   build_lib/apt-mirror-api.jar, build_lib/bnd-0.0.249.jar,
-   build_lib/commons-logging-1.1.1.jar, build_lib/joda-time-1.5.1.jar,
-   BSF and ant are distributed under the Apache Software License,
-   Version 1.1 (license file inside the jars).
-
-   build_lib/constantine.jar (http://kenai.com/projects/constantine),
-   build_lib/jcodings.jar (http://github.com/jruby/jcodings),
-   build_lib/jaffl.jar (http://projectkenai.com/projects/jaffl) and
-   build_lib/joni.jar (http://github.com/jruby/joni) are distributed
-   under the MIT license.
-
-   build_lib/jarjar-1.0rc8.jar (http://code.google.com/p/jarjar),
-   build_lib/joda-time-1.5.1.jar (http://joda-time.sourceforge.net),
-   build_lib/dynalang-0.3.jar (http://dynalang.sourceforge.net),
-   build_lib/nailgun-0.7.1.jar and tool/nailgun/ng.exe
-   (http://martiansoftware.com/nailgun) are distributed under the
-   Apache License version 2.0.
-
-   build_lib/emma*jar (http://emma.sourceforge.net) and
-   build_lib/junit.jar (http://www.junit.org) are distributed under the
-   Common Public License v1.0.
-
-   build_lib/jffi*jar (http://kenai.com/projects/jffi) and
-   build_lib/jgrapht-jdk1.5.jar (http://jgrapht.sourceforge.net) are
-   distributed under the GPL v3.
-
-   build_lib/jline-0.9.93 (http://jline.sourceforge.net) is distributed
-   under the following license:
-
-     Redistribution and use in source and binary forms, with or
-     without modification, are permitted provided that the following
-     conditions are met:
-
-     Redistributions of source code must retain the above copyright
-     notice, this list of conditions and the following disclaimer.
-
-     Redistributions in binary form must reproduce the above copyright
-     notice, this list of conditions and the following disclaimer
-     in the documentation and/or other materials provided with
-     the distribution.
-
-     Neither the name of JLine nor the names of its contributors
-     may be used to endorse or promote products derived from this
-     software without specific prior written permission.
-
-     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-     "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING,
-     BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
-     AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO
-     EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
-     FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY,
-     OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-     PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-     DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
-     AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-     LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
-     IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
-     OF THE POSSIBILITY OF SUCH DAMAGE.
-
    build_lib/jna*jar (http://jna.dev.java.net) are distributed
    under the LGPL-2.1+ license.
 
-   build_lib/invokedynamic.jar and build_lib/jsr292-mock.jar
-   (http://code.google.com/p/jvm-language-runtime) are distributed
-   under the LGPL license.
+   build_lib/jsr292-mock.jar (http://code.google.com/p/jvm-language-runtime)
+   are distributed under the LGPL license.
 
    Bouncycastle is released under the MIT license, and is Copyright (c)
    2000 - 2006 The Legion Of The Bouncy Castle.
@@ -121,69 +55,9 @@ of the GNU General Public License version 3 can be found in
 Lesser General Public License can be found in
 `/usr/share/common-licenses/LGPL-1', the complete text of the GNU
 Lesser General Public License 2.1 can be found in
-`/usr/share/common-licenses/LGPL-2.1', the complete text of the Apache
-2.0 License can be found in `/usr/share/common-licenses/Apache-2.0',
-and the complete text of the BSD license can be found in
+`/usr/share/common-licenses/LGPL-2.1', and the complete text of the BSD license
+can be found in
 `/usr/share/common-licenses/BSD'.
-
-The complete text of the Apache Software License Version 1.1 license
-is as follow:
-
-   /*                                      
-    * ================================================================
-    *                   The Apache Software License, Version 1.1
-    * ================================================================
-    * 
-    *    Copyright (C) 2000-2002 The Apache Software Foundation. All
-    *    rights reserved.
-    * 
-    * Redistribution and use in source and binary forms, with or without 
-    * modification, are permitted provided that the following
-    * conditions are met:
-    * 
-    * 1. Redistributions of  source code must  retain the above copyright
-    *    notice, this list of conditions and the following disclaimer.
-    * 
-    * 2. Redistributions in binary form must reproduce the above copyright
-    *    notice, this list of conditions and the following disclaimer in
-    *    the documentation and/or other materials provided with the 
-    *    distribution.
-    * 
-    * 3. The end-user documentation included with the redistribution, if
-    *    any, must include  the following  acknowledgment:  "This product
-    *    includes  software developed  by the  Apache Software Foundation
-    *    (http://www.apache.org/)." Alternately, this  acknowledgment may
-    *    appear in the software itself, if and wherever such third-party
-    *    acknowledgments normally appear.
-    * 
-    * 4. The names "Ant" and  "Apache Software Foundation" must not be
-    *    used to endorse  or promote  products derived  from this software
-    *    without prior written permission. For written permission, please
-    *    contact apache@apache.org.
-    * 
-    * 5. Products derived from this software may not  be called "Apache",
-    *    nor may "Apache" appear  in their name,  without prior written
-    *    permission of the Apache Software Foundation.
-    * 
-    * THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
-    * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES 
-    * OF MERCHANTABILITY AND FITNESS  FOR A PARTICULAR PURPOSE ARE 
-    * DISCLAIMED. IN NO EVENT SHALL THE APACHE SOFTWARE FOUNDATION
-    * OR ITS CONTRIBUTORS BE LIABLE FOR  ANY DIRECT, INDIRECT, INCIDENTAL,
-    * SPECIAL,  EXEMPLARY, OR CONSEQUENTIAL  DAMAGES (INCLUDING, BUT NOT
-    * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-    * DATA, OR  PROFITS; OR BUSINESS  INTERRUPTION)  HOWEVER CAUSED AND ON
-    * ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
-    * TORT (INCLUDING  NEGLIGENCE OR  OTHERWISE) ARISING IN ANY WAY OUT
-    * OF THE  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
-    * OF SUCH DAMAGE.
-    * 
-    * This software  consists of voluntary contributions made by many
-    * individuals on behalf of the  Apache Software Foundation. For more
-    * information on the Apache Software Foundation, please see
-    * <http://www.apache.org/>.
-    *
-    */
 
 The complete text of the MIT license is as follow:
 
