@@ -1,6 +1,5 @@
-jruby (1.5.1-2) experimental; urgency=low
+jruby (1.5.1+dfsg1-1) experimental; urgency=low
 
-  UNRELEASED
   * Replace more prebuilt jars by Build-Depends.
   * Modify 0002-jruby_home-is-at-a-specific-location-on-Debian.patch to avoid
     test failures.
