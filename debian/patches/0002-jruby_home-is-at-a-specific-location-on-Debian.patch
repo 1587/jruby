@@ -1,6 +1,6 @@
 From: Sebastien Delafond <seb@debian.org>
 Date: Thu, 29 Jul 2010 19:46:38 +0200
-Subject: [PATCH] jruby_home is at a specific location on Debian
+Subject: jruby_home is at a specific location on Debian
 
 ---
  bin/jruby.sh |    5 +++++

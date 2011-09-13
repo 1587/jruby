@@ -9,8 +9,9 @@ jruby (1.5.1+dfsg1-1) experimental; urgency=low
   * Do not build InvokeDynamicSupport.java because it requires some backport
     (jsr292-mock.jar) from Java7.
   * Replace rdocs by a symlink and add Recommends: ri1.8.
+  * Add a patch for the unversioned jarjar.jar.
 
- -- Torsten Werner <twerner@debian.org>  Sun, 15 Aug 2010 00:36:06 +0200
+ -- Torsten Werner <twerner@debian.org>  Tue, 13 Sep 2011 22:43:35 +0200
 
 jruby (1.5.1-1) unstable; urgency=low
 

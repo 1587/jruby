@@ -4,3 +4,4 @@
 0004-replace-bundled-libraries.patch
 0005-ignore-test-failures.patch
 0006-do-not-build-InvokeDynamicSupport.java.patch
+0007-use-unversioned-jarjar.jar.patch

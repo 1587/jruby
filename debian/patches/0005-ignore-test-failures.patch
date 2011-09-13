@@ -1,6 +1,6 @@
 From: Torsten Werner <twerner@debian.org>
 Date: Fri, 30 Jul 2010 01:43:51 +0200
-Subject: [PATCH] ignore test failures
+Subject: ignore test failures
 
 ---
  build.xml |    6 +++---

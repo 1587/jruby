@@ -1,6 +1,6 @@
 From: Hideki Yamane <henrich@debian.or.jp>
 Date: Thu, 29 Jul 2010 19:46:58 +0200
-Subject: [PATCH] replace bundled libraries
+Subject: replace bundled libraries
 
 ... and use Debian packages instead
 ---

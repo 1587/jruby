@@ -1,6 +1,6 @@
 From: Torsten Werner <twerner@debian.org>
 Date: Sun, 15 Aug 2010 00:02:18 +0200
-Subject: [PATCH] do not build InvokeDynamicSupport.java
+Subject: do not build InvokeDynamicSupport.java
 
 ... because it requires a dependency from the Java7 world which is not packaged
 yet.
