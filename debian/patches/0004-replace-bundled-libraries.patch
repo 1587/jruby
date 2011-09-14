@@ -5,8 +5,8 @@ Subject: replace bundled libraries
 ... and use Debian packages instead
 ---
  build.properties |    2 +
- build.xml        |  188 ++++++++++++++++++++----------------------------------
- 2 files changed, 72 insertions(+), 118 deletions(-)
+ build.xml        |  179 ++++++++++++++++++++----------------------------------
+ 2 files changed, 68 insertions(+), 113 deletions(-)
  create mode 100644 build.properties
 
 diff --git a/build.properties b/build.properties
@@ -18,10 +18,10 @@ index 0000000..5308747
 +build.lib.dir=/usr/share/java/
 +local.build.lib.dir=build_lib
 diff --git a/build.xml b/build.xml
-index 5fd40cf..de8255c 100644
+index 5fd40cf..c0c6c68 100644
 --- a/build.xml
 +++ b/build.xml
-@@ -15,7 +15,27 @@
+@@ -15,7 +15,28 @@
    <property name="shared.lib.dir" value="lib/ruby/site_ruby/shared"/>
  
    <path id="build.classpath">
@@ -45,12 +45,13 @@ index 5fd40cf..de8255c 100644
 +      <include name="joni.jar"/>
 +      <include name="nailgun.jar"/>
 +      <include name="yydebug.jar"/>
++      <include name="jnr-posix.jar"/>
 +    </fileset>
 +    <fileset dir="${local.build.lib.dir}" includes="*.jar"/>
    </path>
  
    <path id="jruby.execute.classpath">
-@@ -289,38 +309,21 @@
+@@ -289,38 +310,21 @@
  
        <jar destfile="${lib.dir}/jruby.jar" compress="true" index="true">
          <fileset dir="${jruby.classes.dir}"/>
@@ -72,9 +73,8 @@ index 5fd40cf..de8255c 100644
          <zipfileset src="${build.lib.dir}/jcodings.jar"/>
          <zipfileset src="${build.lib.dir}/joni.jar"/>
 -        <zipfileset src="${build.lib.dir}/jnr-netdb.jar"/>
--        <zipfileset src="${build.lib.dir}/jnr-posix.jar"/>
 +        <zipfileset src="${local.build.lib.dir}/jnr-netdb.jar"/>
-+        <zipfileset src="${local.build.lib.dir}/jnr-posix.jar"/>
+         <zipfileset src="${build.lib.dir}/jnr-posix.jar"/>
          <zipfileset src="${build.lib.dir}/jaffl.jar"/>
          <zipfileset src="${build.lib.dir}/jffi.jar"/>
 -        <zipfileset src="${build.lib.dir}/jffi-i386-Linux.jar"/>
@@ -99,7 +99,7 @@ index 5fd40cf..de8255c 100644
          <zipfileset src="${build.lib.dir}/yydebug.jar"/>
          <zipfileset src="${build.lib.dir}/nailgun-0.7.1.jar"/>
          <metainf dir="${base.dir}/spi">
-@@ -345,15 +348,15 @@
+@@ -345,15 +349,15 @@
              <exclude name="org/jruby/ext/ffi/**/*"/>
              <exclude name="org/jruby/embed/**/*"/>
          </fileset>
@@ -113,15 +113,14 @@ index 5fd40cf..de8255c 100644
          <zipfileset src="${build.lib.dir}/jcodings.jar"/>
          <zipfileset src="${build.lib.dir}/joni.jar"/>
 -        <zipfileset src="${build.lib.dir}/jnr-netdb.jar"/>
--        <zipfileset src="${build.lib.dir}/jnr-posix.jar"/>
--        <zipfileset src="${build.lib.dir}/joda-time-1.6.jar"/>
 +        <zipfileset src="${local.build.lib.dir}/jnr-netdb.jar"/>
-+        <zipfileset src="${local.build.lib.dir}/jnr-posix.jar"/>
+         <zipfileset src="${build.lib.dir}/jnr-posix.jar"/>
+-        <zipfileset src="${build.lib.dir}/joda-time-1.6.jar"/>
 +        <zipfileset src="${build.lib.dir}/joda-time.jar"/>
          <manifest>
            <attribute name="Built-By" value="${user.name}"/>
            <attribute name="Main-Class" value="org.jruby.Main"/>
-@@ -367,38 +370,21 @@
+@@ -367,38 +371,21 @@
        <taskdef name="jarjar" classname="com.tonicsystems.jarjar.JarJarTask" classpath="${build.lib.dir}/jarjar-1.0.jar"/>
        <jarjar destfile="${lib.dir}/jruby.jar" compress="true">
          <fileset dir="${jruby.classes.dir}"/>
@@ -143,9 +142,8 @@ index 5fd40cf..de8255c 100644
          <zipfileset src="${build.lib.dir}/jcodings.jar"/>
          <zipfileset src="${build.lib.dir}/joni.jar"/>
 -        <zipfileset src="${build.lib.dir}/jnr-netdb.jar"/>
--        <zipfileset src="${build.lib.dir}/jnr-posix.jar"/>
 +        <zipfileset src="${local.build.lib.dir}/jnr-netdb.jar"/>
-+        <zipfileset src="${local.build.lib.dir}/jnr-posix.jar"/>
+         <zipfileset src="${build.lib.dir}/jnr-posix.jar"/>
          <zipfileset src="${build.lib.dir}/jaffl.jar"/>
          <zipfileset src="${build.lib.dir}/jffi.jar"/>
 -        <zipfileset src="${build.lib.dir}/jffi-i386-Linux.jar"/>
@@ -170,7 +168,7 @@ index 5fd40cf..de8255c 100644
          <zipfileset src="${build.lib.dir}/yydebug.jar"/>
          <zipfileset src="${build.lib.dir}/nailgun-0.7.1.jar"/>
          <metainf dir="${base.dir}/spi">
-@@ -462,41 +448,24 @@
+@@ -462,41 +449,24 @@
            <exclude name="META-INF/jruby.home/lib/ruby/site_ruby/shared/builtin/**"/>
            <exclude name="META-INF/jruby.home/lib/ruby/1.9/**"/>
          </fileset>
@@ -192,9 +190,8 @@ index 5fd40cf..de8255c 100644
          <zipfileset src="${build.lib.dir}/jcodings.jar"/>
          <zipfileset src="${build.lib.dir}/joni.jar"/>
 -        <zipfileset src="${build.lib.dir}/jnr-netdb.jar"/>
--        <zipfileset src="${build.lib.dir}/jnr-posix.jar"/>
 +        <zipfileset src="${local.build.lib.dir}/jnr-netdb.jar"/>
-+        <zipfileset src="${local.build.lib.dir}/jnr-posix.jar"/>
+         <zipfileset src="${build.lib.dir}/jnr-posix.jar"/>
          <zipfileset src="${build.lib.dir}/jaffl.jar"/>
          <zipfileset src="${build.lib.dir}/jffi.jar"/>
 -        <zipfileset src="${build.lib.dir}/jffi-i386-Linux.jar"/>
@@ -223,7 +220,7 @@ index 5fd40cf..de8255c 100644
          <metainf dir="${base.dir}/spi">
            <include name="services/**"/>
          </metainf>
-@@ -550,41 +519,24 @@
+@@ -550,41 +520,24 @@
          <fileset dir="${build.dir}/jar-complete">
            <exclude name="META-INF/jruby.home/lib/ruby/1.8/**"/>
          </fileset>
@@ -245,9 +242,8 @@ index 5fd40cf..de8255c 100644
          <zipfileset src="${build.lib.dir}/jcodings.jar"/>
          <zipfileset src="${build.lib.dir}/joni.jar"/>
 -        <zipfileset src="${build.lib.dir}/jnr-netdb.jar"/>
--        <zipfileset src="${build.lib.dir}/jnr-posix.jar"/>
 +        <zipfileset src="${local.build.lib.dir}/jnr-netdb.jar"/>
-+        <zipfileset src="${local.build.lib.dir}/jnr-posix.jar"/>
+         <zipfileset src="${build.lib.dir}/jnr-posix.jar"/>
          <zipfileset src="${build.lib.dir}/jaffl.jar"/>
          <zipfileset src="${build.lib.dir}/jffi.jar"/>
 -        <zipfileset src="${build.lib.dir}/jffi-i386-Linux.jar"/>
@@ -276,7 +272,7 @@ index 5fd40cf..de8255c 100644
          <metainf dir="${base.dir}/spi">
            <include name="services/**"/>
          </metainf>
-@@ -757,7 +709,7 @@
+@@ -757,7 +710,7 @@
  
    <path id="test.class.path">
      <pathelement path="${build.lib.dir}/junit.jar"/>

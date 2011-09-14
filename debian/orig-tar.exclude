@@ -20,6 +20,7 @@
 */build_lib/nailgun*.jar
 */build_lib/yydebug*.jar
 */build_lib/jsr292-mock*.jar
+*/build_lib/jnr-posix.jar
 */build_lib/*.gem
 */nailgun/*
 */lib/profile.jar

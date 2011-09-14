@@ -1,3 +1,9 @@
+jruby (1.5.1+dfsg2-1) experimental; urgency=low
+
+  * Remove bundled jnr-posix.jar from orig tarball.
+
+ -- Torsten Werner <twerner@debian.org>  Wed, 14 Sep 2011 20:32:31 +0200
+
 jruby (1.5.1+dfsg1-1) experimental; urgency=low
 
   * Replace more prebuilt jars by Build-Depends.
