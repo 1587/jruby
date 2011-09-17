@@ -7,10 +7,10 @@ Subject: use unversioned jarjar.jar
  1 files changed, 6 insertions(+), 6 deletions(-)
 
 diff --git a/build.xml b/build.xml
-index f18e4e4..b900a14 100644
+index ed8cf76..ecb0227 100644
 --- a/build.xml
 +++ b/build.xml
-@@ -369,7 +369,7 @@
+@@ -370,7 +370,7 @@
    <target name="jar-jruby-dist" depends="generate-method-classes, generate-unsafe" unless="jar-up-to-date">
        <antcall target="_update_scm_revision_"/>
  
@@ -19,7 +19,7 @@ index f18e4e4..b900a14 100644
        <jarjar destfile="${lib.dir}/jruby.jar" compress="true">
          <fileset dir="${jruby.classes.dir}"/>
          <zipfileset src="${build.lib.dir}/asm3.jar"/>
-@@ -422,7 +422,7 @@
+@@ -423,7 +423,7 @@
        <property name="mainclass" value="org.jruby.Main"/>
        <property name="filename" value="jruby-complete.jar"/>
        <property name="bilename" value="jruby-complete.bar"/>
@@ -28,7 +28,7 @@ index f18e4e4..b900a14 100644
        <property name="jar-complete-home" value="${build.dir}/jar-complete/META-INF/jruby.home"/>
        <mkdir dir="${jar-complete-home}"/>
        <copy todir="${jar-complete-home}">
-@@ -443,7 +443,7 @@
+@@ -444,7 +444,7 @@
          <arg line="--no-ri --no-rdoc --ignore-dependencies --env-shebang"/>
        </java>
  
@@ -37,7 +37,7 @@ index f18e4e4..b900a14 100644
        <jarjar destfile="${dest.lib.dir}/${filename}">
          <fileset dir="${jruby.classes.dir}"/>
          <fileset dir="${build.dir}/jar-complete">
-@@ -494,7 +494,7 @@
+@@ -495,7 +495,7 @@
      <target name="jar-complete-1.9" depends="generate-method-classes, generate-unsafe" description="Create the 'complete' JRuby jar. Pass 'mainclass' and 'filename' to adjust.">
        <property name="mainclass" value="org.jruby.Main"/>
        <property name="filename" value="jruby-complete.jar"/>
@@ -46,7 +46,7 @@ index f18e4e4..b900a14 100644
        <property name="jar-complete-home" value="${build.dir}/jar-complete/META-INF/jruby.home"/>
        <mkdir dir="${jar-complete-home}"/>
        <copy todir="${jar-complete-home}">
-@@ -515,7 +515,7 @@
+@@ -516,7 +516,7 @@
          <arg line="--no-ri --no-rdoc --ignore-dependencies --env-shebang"/>
        </java>
  
@@ -55,7 +55,7 @@ index f18e4e4..b900a14 100644
        <jarjar destfile="${dest.lib.dir}/${filename}">
          <fileset dir="${jruby.classes.dir}"/>
          <fileset dir="${build.dir}/jar-complete">
-@@ -1115,7 +1115,7 @@
+@@ -1116,7 +1116,7 @@
      <exclude name="lib/emma.jar"/>
      <exclude name="lib/emma_ant.jar"/>
      <exclude name="lib/junit.jar"/>

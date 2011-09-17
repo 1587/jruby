@@ -1,3 +1,9 @@
+jruby (1.5.1+dfsg3-1) experimental; urgency=low
+
+  * Remove bundled jnr-netdb.jar from orig tarball.
+
+ -- Torsten Werner <twerner@debian.org>  Sat, 17 Sep 2011 10:01:06 +0200
+
 jruby (1.5.1+dfsg2-1) experimental; urgency=low
 
   * Remove bundled jnr-posix.jar from orig tarball.
