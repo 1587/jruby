@@ -1,8 +1,10 @@
 jruby (1.5.1+dfsg4-1) unstable; urgency=low
 
+  UNRELEASED
   * Remove bundled yecht.jar from orig tarball.
+  * Move package to main.
 
- -- Torsten Werner <twerner@debian.org>  Sun, 18 Sep 2011 00:00:17 +0200
+ -- Torsten Werner <twerner@debian.org>  Sun, 18 Sep 2011 00:01:11 +0200
 
 jruby (1.5.1+dfsg3-1) unstable; urgency=low
 
