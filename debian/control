@@ -18,7 +18,7 @@ Vcs-Browser: http://git.debian.org/?p=pkg-java/jruby.git
 Package: jruby
 Architecture: all
 Replaces: jruby1.0, jruby1.1, jruby1.2
-Depends: openjdk-6-jre | java6-runtime, ${misc:Depends}
+Depends: openjdk-6-jre | java6-runtime, ${misc:Depends}, libjffi-jni
 Recommends: ri1.8
 Description: 100% pure-Java implementation of Ruby
  JRuby is a 100% pure-Java implementation of the Ruby programming language.
