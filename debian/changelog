@@ -1,3 +1,9 @@
+jruby (1.5.1+dfsg4-1) unstable; urgency=low
+
+  * Remove bundled yecht.jar from orig tarball.
+
+ -- Torsten Werner <twerner@debian.org>  Sun, 18 Sep 2011 00:00:17 +0200
+
 jruby (1.5.1+dfsg3-1) unstable; urgency=low
 
   * Remove bundled jnr-netdb.jar from orig tarball.

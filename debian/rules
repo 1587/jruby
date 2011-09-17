@@ -32,6 +32,7 @@ clean:
 	rm -f $(BUILD_TAR) $(BUILD_CHEKSUM_SHA1) $(BUILD_CHEKSUM_MD5)
 	rm -fr share bin/jruby test/testapp/testapp
 
+	rm -f lib/ruby/site_ruby/shared/yecht.jar
 	rm -f build-stamp
 	dh_clean 
 
@@ -39,9 +40,10 @@ build: build-stamp
 
 build-stamp:
 	dh_testdir
+	ln -s /usr/share/java/yecht.jar lib/ruby/site_ruby/shared/
 
 	# Add here commands to compile the package.
-	$(ANT) -Ddev.gems=false -DdocsNotNeeded=true test
+	$(ANT) -Ddev.gems=false -DdocsNotNeeded=true -Dshared.lib.dir=/usr/share/java test
 #	docbook-to-man $(JRUBY_DOCBOOK_MANPAGE) > $(JRUBY_MANPAGE)
 #	docbook-to-man $(JIRB_DOCBOOK_MANPAGE) > $(JIRB_MANPAGE)
 
