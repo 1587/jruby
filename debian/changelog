@@ -1,6 +1,5 @@
 jruby (1.5.1+dfsg4-1) unstable; urgency=low
 
-  UNRELEASED
   * Remove bundled yecht.jar from orig tarball.
   * Move package to main.
 
