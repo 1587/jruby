@@ -40,7 +40,8 @@ build: build-stamp
 
 build-stamp:
 	dh_testdir
-	ln -s /usr/share/java/yecht.jar lib/ruby/site_ruby/shared/
+	# symlink system yecht-ruby jar into shared directory
+	ln -s /usr/share/java/yecht-ruby.jar lib/ruby/site_ruby/shared/yecht.jar
 
 	# Add here commands to compile the package.
 	$(ANT) -Ddev.gems=false -DdocsNotNeeded=true -Dshared.lib.dir=/usr/share/java test
