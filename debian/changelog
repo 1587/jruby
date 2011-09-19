@@ -1,6 +1,5 @@
 jruby (1.5.1+dfsg4-2) unstable; urgency=low
 
-  UNRELEASED (needs libyecht-java version 0.0.2-2)
   * Use yecht-ruby.jar for building.
 
  -- Torsten Werner <twerner@debian.org>  Sun, 18 Sep 2011 19:24:44 +0200
