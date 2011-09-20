@@ -38,6 +38,7 @@ import java.nio.channels.Channel;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
+import java.nio.channels.spi.SelectorProvider;
 import java.util.WeakHashMap;
 import java.util.HashMap;
 import java.util.Map;
@@ -64,6 +65,7 @@ import org.jruby.runtime.ClassIndex;
 import org.jruby.runtime.ObjectMarshal;
 import org.jruby.runtime.Visibility;
 import org.jruby.util.io.BlockingIO;
+import org.jruby.util.io.SelectorFactory;
 
 /**
  * Implementation of Ruby's <code>Thread</code> class.  Each Ruby thread is
@@ -111,18 +113,20 @@ public class RubyThread extends RubyObject implements ExecutionContext {
         errorInfo = runtime.getNil();
     }
 
-    public synchronized void receiveMail(ThreadService.Event event) {
-        // if we're already aborting, we can receive no further mail
-        if (status == Status.ABORTING) return;
-        
-        mail = event;
-        switch (event.type) {
-        case KILL:
-            status = Status.ABORTING;
+    public void receiveMail(ThreadService.Event event) {
+        synchronized (this) {
+            // if we're already aborting, we can receive no further mail
+            if (status == Status.ABORTING) return;
+
+            mail = event;
+            switch (event.type) {
+            case KILL:
+                status = Status.ABORTING;
+            }
+
+            // If this thread is sleeping or stopped, wake it
+            notify();
         }
-        
-        // If this thread is sleeping or stopped, wake it
-        notify();
 
         // interrupt the target thread in case it's blocking or waiting
         // WARNING: We no longer interrupt the target thread, since this usually means
@@ -309,10 +313,6 @@ public class RubyThread extends RubyObject implements ExecutionContext {
 
     public synchronized void beDead() {
         status = status.DEAD;
-        try {
-            if (selector != null) selector.close();
-        } catch (IOException ioe) {
-        }
     }
 
     public void pollThreadEvents() {
@@ -860,11 +860,8 @@ public class RubyThread extends RubyObject implements ExecutionContext {
         return select(io, SelectionKey.OP_ACCEPT);
     }
 
-    private volatile Selector selector;
-
     private synchronized Selector getSelector(SelectableChannel channel) throws IOException {
-        if (selector == null) selector = Selector.open();
-        return selector;
+        return SelectorFactory.openWithRetryFrom(getRuntime(), channel.provider());
     }
     
     public boolean select(RubyIO io, int ops) {
@@ -883,7 +880,7 @@ public class RubyThread extends RubyObject implements ExecutionContext {
                     selectable.configureBlocking(false);
                     
                     if (io != null) io.addBlockingThread(this);
-                    currentSelector = getSelector(selectable);
+                    currentSelector = getRuntime().getSelectorPool().get();
 
                     key = selectable.register(currentSelector, ops);
 
@@ -905,22 +902,43 @@ public class RubyThread extends RubyObject implements ExecutionContext {
                 } catch (IOException ioe) {
                     throw getRuntime().newRuntimeError("Error with selector: " + ioe);
                 } finally {
+                    // Note: I don't like ignoring these exceptions, but it's
+                    // unclear how likely they are to happen or what damage we
+                    // might do by ignoring them. Note that the pieces are separate
+                    // so that we can ensure one failing does not affect the others
+                    // running.
+
+                    // clean up the key in the selector
                     try {
-                        if (key != null) {
-                            key.cancel();
-                            currentSelector.selectNow();
-                        }
-                        afterBlockingCall();
-                        currentSelector = null;
-                        if (io != null) io.removeBlockingThread(this);
-                        selectable.configureBlocking(oldBlocking);
-                    } catch (IOException ioe) {
-                        // ignore; I don't like doing it, but it seems like we
-                        // really just need to make all channels non-blocking by
-                        // default and use select when implementing blocking ops,
-                        // so if this remains set non-blocking, perhaps it's not
-                        // such a big deal...
+                        if (key != null) key.cancel();
+                        if (currentSelector != null) currentSelector.selectNow();
+                    } catch (Exception e) {
+                        // ignore
                     }
+
+                    // shut down and null out the selector
+                    try {
+                        if (currentSelector != null) {
+                            getRuntime().getSelectorPool().put(currentSelector);
+                        }
+                    } catch (Exception e) {
+                        // ignore
+                    } finally {
+                        currentSelector = null;
+                    }
+
+                    // remove this thread as a blocker against the given IO
+                    if (io != null) io.removeBlockingThread(this);
+
+                    // go back to previous blocking state on the selectable
+                    try {
+                        selectable.configureBlocking(oldBlocking);
+                    } catch (Exception e) {
+                        // ignore
+                    }
+
+                    // clear thread state from blocking call
+                    afterBlockingCall();
                 }
             }
         } else {
@@ -996,11 +1014,12 @@ public class RubyThread extends RubyObject implements ExecutionContext {
                 try {
                     currentWaitObject = o;
                     status = Status.SLEEP;
+                    pollThreadEvents();
                     o.wait(delay_ms, delay_ns_remainder);
                 } finally {
-                    pollThreadEvents();
                     status = Status.RUN;
                     currentWaitObject = null;
+                    pollThreadEvents();
                 }
             }
             long end_ns = System.nanoTime();
@@ -1009,11 +1028,12 @@ public class RubyThread extends RubyObject implements ExecutionContext {
             try {
                 currentWaitObject = o;
                 status = Status.SLEEP;
+                pollThreadEvents();
                 o.wait();
             } finally {
-                pollThreadEvents();
                 status = Status.RUN;
                 currentWaitObject = null;
+                pollThreadEvents();
             }
             return true;
         }

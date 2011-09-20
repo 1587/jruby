@@ -23,4 +23,56 @@ class TestUnmarshal < Test::Unit::TestCase
     flunk "Unmarshalling failed with EOF error at " + result + " string."
   end
 
+  def test_fixnum_unbuffered
+    # need to read unbuffered value from ChannelStream.
+    obj = Array.new(2000, 60803)
+    dump = Marshal.dump(obj)
+    piper, pipew = IO.pipe
+    pipew << dump
+    Marshal.load(piper).each do |e|
+      assert_equal(60803, e, 'JRUBY-5064')
+    end
+  end
+
+  # TYPE_IVAR from built-in class
+  class C
+    def _dump(depth)
+      "foo"
+    end
+
+    def self._load(str)
+      new
+    end
+  end
+
+  def test_ivar_in_built_in_class
+    (o = "").instance_variable_set("@ivar", C.new)
+    assert_nothing_raised do
+      Marshal.load(Marshal.dump(o))
+    end
+  end
+
+  # JRUBY-5123: nested TYPE_IVAR from _dump
+  class D
+    def initialize(ivar = nil)
+      @ivar = ivar
+    end
+
+    def _dump(depth)
+      str = ""
+      str.instance_variable_set("@ivar", @ivar)
+      str
+    end
+
+    def self._load(str)
+      new(str.instance_variable_get("@ivar"))
+    end
+  end
+
+  def test_ivar_through_s_dump
+    o = D.new(D.new)
+    assert_nothing_raised do
+      Marshal.load(Marshal.dump(o))
+    end
+  end
 end
