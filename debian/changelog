@@ -5,8 +5,9 @@ jruby (1.5.6-1) unstable; urgency=low
     jruby-launcher-1.0.3-java.gem.
   * Change debian/watch to read tags from github. Remove get-orig-source
     target from debian/rules because we mirror the github repo in our repo.
+  * Use cdbs to build the package.
 
- -- Torsten Werner <twerner@debian.org>  Tue, 20 Sep 2011 20:37:19 +0200
+ -- Torsten Werner <twerner@debian.org>  Tue, 20 Sep 2011 21:17:04 +0200
 
 jruby (1.5.1+dfsg4-2) unstable; urgency=low
 
