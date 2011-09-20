@@ -167,21 +167,18 @@ public class SystemPropertyCatcher {
     }
 
     private static String findFromJar(Object instance) throws URISyntaxException {
-        URL resource = instance.getClass().getResource("/META-INF/jruby.home/bin/jruby");
+        URL resource = instance.getClass().getResource("/META-INF/jruby.home");
         if (resource == null) {
             return null;
         }
-        String location = resource.toURI().getSchemeSpecificPart();
-        if (location == null) {
-            return null;
+
+        String location = null;
+        if (resource.getProtocol().equals("jar")) {
+            location = resource.getPath();
+        } else {
+            location = "classpath:/META-INF/jruby.home";
         }
-        Pattern p = Pattern.compile("jruby\\.home");
-        Matcher m = p.matcher(location);
-        while(m.find()) {
-            location = location.substring(0, m.end());
-            return location;
-        }
-        return null;
+        return location;
     }
 
     /**
@@ -192,11 +189,26 @@ public class SystemPropertyCatcher {
      */
     public static List<String> findLoadPaths() {
         String paths = System.getProperty(PropertyName.CLASSPATH.toString());
+        List<String> loadPaths = new ArrayList<String>();
         if (paths == null) {
             paths = System.getProperty("java.class.path");
         }
-        if (paths == null) return new ArrayList<String>();
-        else return Arrays.asList(paths.split(File.pathSeparator));
+        if (paths == null) return loadPaths;
+        String[] possiblePaths = paths.split(File.pathSeparator);
+        String[] prefixes = {"file", "url"};
+        for (int i=0; i<possiblePaths.length; i++) {
+            int startIndex = i;
+            for (int j=0; j < prefixes.length; j++) {
+                if (prefixes[j].equals(possiblePaths[i]) && i < possiblePaths.length - 1) {
+                    loadPaths.add(possiblePaths[i] + ":" + possiblePaths[++i]);
+                    break;
+                }
+            }
+            if (startIndex == i) {
+                loadPaths.add(possiblePaths[i]);
+            }
+        }
+        return loadPaths;
     }
 
     /**

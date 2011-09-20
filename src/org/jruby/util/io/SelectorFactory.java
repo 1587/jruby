@@ -1,5 +1,4 @@
-/**
- * **** BEGIN LICENSE BLOCK *****
+/***** BEGIN LICENSE BLOCK *****
  * Version: CPL 1.0/GPL 2.0/LGPL 2.1
  *
  * The contents of this file are subject to the Common Public
@@ -12,8 +11,8 @@
  * implied. See the License for the specific language governing
  * rights and limitations under the License.
  *
- * Copyright (C) 2009 Yoko Harada <yokolet@gmail.com>
- *
+ * Copyright (C) 2010 Ola Bini <ola.bini@gmail.com>
+ * 
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
  * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
@@ -25,37 +24,42 @@
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
  * the terms of any one of the CPL, the GPL or the LGPL.
- * **** END LICENSE BLOCK *****
- */
-package org.jruby.embed.jsr223;
+ ***** END LICENSE BLOCK *****/
+package org.jruby.util.io;
 
-import javax.script.ScriptContext;
-import javax.script.ScriptEngine;
-import org.jruby.embed.AttributeName;
+import java.io.IOException;
+import java.nio.channels.Selector;
+import java.nio.channels.spi.SelectorProvider;
+
+import java.net.BindException;
+
+import org.jruby.Ruby;
 
 /**
- * A collection of JSR223 specific utility methods.
- *
- * @author Yoko Harada <yokolet@gmail.com>
+ * @author <a href="mailto:ola.bini@gmail.com">Ola Bini</a>
  */
-public class Utils {
-    /**
-     * Gets line number value from engine's attribute map.
-     *
-     * @param engine JSR223 JRuby Engine
-     * @return line number
-     */
-    static int getLineNumber(ScriptEngine engine) {
-        Object obj = engine.getContext().getAttribute(AttributeName.LINENUMBER.toString(), ScriptContext.ENGINE_SCOPE);
-        if (obj instanceof Integer) {
-            return (Integer)obj;
+public class SelectorFactory {
+    // If it doesn't work after 20 times it's unlikely to ever work. Bailout is only option.
+    private final static int RETRY_MAX = 20; 
+    
+    public static Selector openWithRetryFrom(Ruby runtime, SelectorProvider provider) throws IOException {
+        int retryCount = 0;
+        while(true) {
+            try {
+                return provider.openSelector();
+            } catch(IOException e) {
+                if(e.getMessage() != null && 
+                   e.getMessage().contains("Unable to establish loopback connection") && 
+                   e.getCause() instanceof BindException &&
+                   retryCount < RETRY_MAX) {
+                    retryCount++;
+                    if(runtime != null) {
+                        runtime.getWarnings().warn("try number " + retryCount + " to get a selector");
+                    }
+                } else {
+                    throw e;
+                }
+            }
         }
-        return 0;
     }
-
-    static String getFilename(ScriptEngine engine) {
-        Object filename = engine.getContext().getAttribute(ScriptEngine.FILENAME);
-        return filename != null ? (String)filename : "<script>";
-    }
-
-}
+}// SelectorFactory

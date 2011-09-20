@@ -84,6 +84,8 @@ import org.jruby.runtime.Block;
 import org.jruby.runtime.ObjectAllocator;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.Visibility;
+import static org.jruby.runtime.Visibility.*;
+import static org.jruby.internal.runtime.methods.CallConfiguration.*;
 import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.runtime.callback.Callback;
 import org.jruby.util.ByteList;
@@ -168,6 +170,8 @@ public class JavaClass extends JavaObject {
         RESERVED_NAMES.put("private", new AssignedName("private", Priority.RESERVED));
         RESERVED_NAMES.put("protected", new AssignedName("protected", Priority.RESERVED));
         RESERVED_NAMES.put("public", new AssignedName("public", Priority.RESERVED));
+        // JRUBY-5132: java.awt.Component.instance_of?() expects 2 args
+        RESERVED_NAMES.put("instance_of?", new AssignedName("instance_of?", Priority.RESERVED));
     }
     private static final Map<String, AssignedName> STATIC_RESERVED_NAMES = new HashMap<String, AssignedName>(RESERVED_NAMES);
     static {
@@ -323,13 +327,13 @@ public class JavaClass extends JavaObject {
             haveLocalConstructor |= javaClass == ctor.getDeclaringClass();
         }
         
-        void install(RubyModule proxy) {
+        void install(final RubyModule proxy) {
             if (haveLocalConstructor) {
                 DynamicMethod method = new ConstructorInvoker(proxy, constructors);
                 proxy.addMethod(name, method);
             } else {
                 // if there's no constructor, we must prevent construction
-                proxy.addMethod(name, new org.jruby.internal.runtime.methods.JavaMethod() {
+                proxy.addMethod(name, new org.jruby.internal.runtime.methods.JavaMethod(proxy, PUBLIC) {
                     @Override
                     public IRubyObject call(ThreadContext context, IRubyObject self, RubyModule clazz, String name, IRubyObject[] args, Block block) {
                         throw context.getRuntime().newTypeError("no public constructors for " + clazz);
@@ -1844,6 +1848,12 @@ public class JavaClass extends JavaObject {
         try {
             return javaClass.getDeclaredClasses();
         } catch (SecurityException e) {
+            return new Class<?>[] {};
+        } catch (NoClassDefFoundError cnfe) {
+            // This is a Scala-specific hack, since Scala uses peculiar
+            // naming conventions and class attributes that confuse Java's
+            // reflection logic and cause a blow up in getDeclaredClasses.
+            // See http://lampsvn.epfl.ch/trac/scala/ticket/2749
             return new Class<?>[] {};
         }
     }

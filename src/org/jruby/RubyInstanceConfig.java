@@ -160,6 +160,7 @@ public class RubyInstanceConfig {
     private int jitMaxSize;
     private final boolean samplingEnabled;
     private CompatVersion compatVersion;
+    private boolean profiling;
 
     private ClassLoader contextLoader = Thread.currentThread().getContextClassLoader();
     private ClassLoader loader = contextLoader == null ? RubyInstanceConfig.class.getClassLoader() : contextLoader;
@@ -465,6 +466,7 @@ public class RubyInstanceConfig {
                 .append("  --jdb           runs JRuby process under JDB\n")
                 .append("  --properties    List all configuration Java properties (pass -J-Dproperty=value)\n")
                 .append("  --sample        run with profiling using the JVM's sampling profiler\n")
+                .append("  --profile       run with instrumented (timed) profiling\n")
                 .append("  --client        use the non-optimizing \"client\" JVM (improves startup; default)\n")
                 .append("  --server        use the optimizing \"server\" JVM (improves perf)\n")
                 .append("  --manage        enable remote JMX management and monitoring of the VM and JRuby\n")
@@ -625,9 +627,11 @@ public class RubyInstanceConfig {
 
     private void tryProcessArgumentsWithRubyopts(String[] arguments) {
         try {
-            String rubyopt = System.getenv("RUBYOPT");
-            if (rubyopt == null && environment != null && environment.containsKey("RUBYOPT")) {
+            String rubyopt = null;
+            if (environment != null && environment.containsKey("RUBYOPT")) {
                 rubyopt = environment.get("RUBYOPT").toString();
+            } else {
+                rubyopt = System.getenv("RUBYOPT");
             }
             if (rubyopt != null) {
                 String[] rubyoptArgs = rubyopt.split("\\s+");
@@ -804,14 +808,13 @@ public class RubyInstanceConfig {
             } else {
                 try {
                     // try loading from classloader resources
-                    URI jrubyHomeURI = getClass().getResource("/META-INF/jruby.home").toURI();
-                    String scheme = jrubyHomeURI.getScheme();
-                    String path = jrubyHomeURI.getSchemeSpecificPart();
-                    if ("jar".equals(scheme) && path.startsWith("file:")) {
-                        // special case for jar:file (most typical case)
-                        jrubyHome = path;
+                    final String jrubyHomePath = "/META-INF/jruby.home";
+                    URL jrubyHomeURL = getClass().getResource(jrubyHomePath);
+                    // special case for jar:file (most typical case)
+                    if (jrubyHomeURL.getProtocol().equals("jar")) {
+                        jrubyHome = jrubyHomeURL.getPath();
                     } else {
-                        jrubyHome = "classpath:/META-INF/jruby.home";
+                        jrubyHome = "classpath:" + jrubyHomePath;
                         return jrubyHome;
                     }
                 } catch (Exception e) {}
@@ -1162,6 +1165,9 @@ public class RubyInstanceConfig {
                         FASTSEND_COMPILE_ENABLED = true;
                         INLINE_DYNCALL_ENABLED = true;
                         RubyException.TRACE_TYPE = RubyException.RUBY_COMPILED;
+                        break FOR;
+                    } else if (argument.equals("--profile")) {
+                        profiling = true;
                         break FOR;
                     } else if (argument.equals("--1.9")) {
                         setCompatVersion(CompatVersion.RUBY1_9);
@@ -1539,5 +1545,13 @@ public class RubyInstanceConfig {
 
     public String getThreadDumpSignal() {
         return threadDumpSignal;
+    }
+
+    public boolean isProfiling() {
+        return profiling;
+    }
+
+    public void setProfiling(boolean profiling) {
+        this.profiling = profiling;
     }
 }

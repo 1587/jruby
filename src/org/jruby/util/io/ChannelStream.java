@@ -55,6 +55,8 @@ import org.jruby.platform.Platform;
 import org.jruby.util.ByteList;
 import org.jruby.util.JRubyFile;
 
+import java.nio.channels.spi.SelectorProvider;
+
 /**
  * This file implements a seekable IO file.
  */
@@ -1148,7 +1150,7 @@ public class ChannelStream implements Stream, Finalizable {
         }
 
         // FIXME: I got a bunch of NPEs when I didn't check for nulls here...HOW?!
-        if (descriptor != null && descriptor.isSeekable() && descriptor.isOpen()) {
+        if (descriptor != null && descriptor.isOpen()) {
             closeForFinalize(); // close without removing from finalizers
         }
     }
@@ -1156,7 +1158,7 @@ public class ChannelStream implements Stream, Finalizable {
     public int ready() throws IOException {
         if (descriptor.getChannel() instanceof SelectableChannel) {
             int ready_stat = 0;
-            java.nio.channels.Selector sel = java.nio.channels.Selector.open();
+            java.nio.channels.Selector sel = SelectorFactory.openWithRetryFrom(null, SelectorProvider.provider());;
             SelectableChannel selchan = (SelectableChannel)descriptor.getChannel();
             synchronized (selchan.blockingLock()) {
                 boolean is_block = selchan.isBlocking();
@@ -1460,7 +1462,8 @@ public class ChannelStream implements Stream, Finalizable {
             }
 
             byte[] b = new byte[1];
-            return read(b, 0, 1) == 1 ? b[0] : -1;
+            // java.io.InputStream#read must return an unsigned value;
+            return read(b, 0, 1) == 1 ? b[0] & 0xff: -1;
         }
 
         @Override

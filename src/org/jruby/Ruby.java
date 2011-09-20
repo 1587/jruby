@@ -130,6 +130,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.lang.ref.Reference;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jruby.ast.RootNode;
@@ -140,6 +141,7 @@ import org.jruby.management.BeanManager;
 import org.jruby.management.BeanManagerFactory;
 import org.jruby.runtime.CallBlock;
 import org.jruby.threading.DaemonThreadFactory;
+import org.jruby.util.io.SelectorPool;
 
 /**
  * The Ruby object represents the top-level of a JRuby "instance" in a given VM.
@@ -415,6 +417,9 @@ public final class Ruby {
             }
         } finally {
             context.setFileAndLine(oldFile, oldLine);
+            if (config.isProfiling()) {
+                context.getProfileData().printProfile(context, profiledNames, profiledMethods, System.out);
+            }
         }
     }
 
@@ -1468,6 +1473,12 @@ public final class Ruby {
         addBuiltinIfAllowed("openssl.jar", new Library() {
             public void load(Ruby runtime, boolean wrap) throws IOException {
                 runtime.getLoadService().require("jruby/openssl/stub");
+            }
+        });
+
+        addBuiltinIfAllowed("win32ole.jar", new Library() {
+            public void load(Ruby runtime, boolean wrap) throws IOException {
+                runtime.getLoadService().require("jruby/win32ole/stub");
             }
         });
         
@@ -3744,6 +3755,41 @@ public final class Ruby {
         return hierarchyLock;
     }
 
+    /**
+     * Get the runtime-global selector pool
+     *
+     * @return a SelectorPool from which to get Selector instances
+     */
+    public SelectorPool getSelectorPool() {
+        return selectorPool;
+    }
+
+    /**
+     * Add a method and its name to the profiling arrays, so it can be printed out
+     * later.
+     *
+     * @param name the name of the method
+     * @param method
+     */
+    public void addProfiledMethod(String name, DynamicMethod method) {
+        if (!config.isProfiling()) return;
+        if (method.isUndefined()) return;
+        if (method.getSerialNumber() > MAX_PROFILE_METHODS) return;
+
+        int index = (int)method.getSerialNumber();
+        if (profiledMethods.length <= index) {
+            int newSize = Math.min((int)index * 2 + 1, MAX_PROFILE_METHODS);
+            String[] newProfiledNames = new String[newSize];
+            System.arraycopy(profiledNames, 0, newProfiledNames, 0, profiledNames.length);
+            profiledNames = newProfiledNames;
+            DynamicMethod[] newProfiledMethods = new DynamicMethod[newSize];
+            System.arraycopy(profiledMethods, 0, newProfiledMethods, 0, profiledMethods.length);
+            profiledMethods = newProfiledMethods;
+        }
+        profiledNames[index] = name;
+        profiledMethods[index] = method;
+    }
+
     private volatile int constantGeneration = 1;
     private final ThreadService threadService;
     
@@ -3931,5 +3977,17 @@ public final class Ruby {
     private final Object hierarchyLock = new Object();
 
     // An atomic long for generating DynamicMethod serial numbers
-    private final AtomicLong dynamicMethodSerial = new AtomicLong(0);
+    private final AtomicLong dynamicMethodSerial = new AtomicLong(1);
+
+    // A soft pool of selectors for blocking IO operations
+    private final SelectorPool selectorPool = new SelectorPool();
+
+    // The maximum number of methods we will track for profiling purposes
+    private static final int MAX_PROFILE_METHODS = 100000;
+
+    // The list of method names associated with method serial numbers
+    private String[] profiledNames = new String[0];
+
+    // The method objects for serial numbers
+    private DynamicMethod[] profiledMethods = new DynamicMethod[0];
 }
