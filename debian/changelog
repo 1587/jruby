@@ -1,8 +1,10 @@
 jruby (1.5.6-1) unstable; urgency=low
 
   * New upstream version (Closes: #636554)
+  * Document licenses and copyright holders of code in
+    jruby-launcher-1.0.3-java.gem.
 
- -- Torsten Werner <twerner@debian.org>  Tue, 20 Sep 2011 19:48:40 +0200
+ -- Torsten Werner <twerner@debian.org>  Tue, 20 Sep 2011 20:19:31 +0200
 
 jruby (1.5.1+dfsg4-2) unstable; urgency=low
 
