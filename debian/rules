@@ -14,6 +14,8 @@ export BUILDING_JRUBY := true
 
 clean::
 	$(RM) lib/ruby/site_ruby/shared/yecht.jar debian/stamp-yecht
+	# strange workaround for dpkg-source
+	$(RM) bin/jruby
 
 pre-build:: debian/stamp-yecht
 debian/stamp-yecht:

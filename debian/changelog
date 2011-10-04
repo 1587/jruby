@@ -1,3 +1,9 @@
+jruby (1.5.6-2) unstable; urgency=high
+
+  * Add workaround for strange dpkg-source error. (Closes: #643516)
+
+ -- Torsten Werner <twerner@debian.org>  Tue, 04 Oct 2011 22:24:31 +0200
+
 jruby (1.5.6-1) unstable; urgency=low
 
   * New upstream version (Closes: #636554)
