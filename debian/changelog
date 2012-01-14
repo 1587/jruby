@@ -1,3 +1,10 @@
+jruby (1.5.6-3) UNRELEASED; urgency=low
+
+  * Team upload.
+  * Switch to default-jdk. (Closes: #655823).
+
+ -- Miguel Landaeta <miguel@miguel.cc>  Sat, 14 Jan 2012 14:13:54 -0430
+
 jruby (1.5.6-2) unstable; urgency=high
 
   * Add workaround for strange dpkg-source error. (Closes: #643516)
