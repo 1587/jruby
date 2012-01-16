@@ -342,8 +342,8 @@ This code is licensed under either the CDDL Version 1.0 (see below) or the GPL 2
 The file rb_w32_cmdvector.h within jruby-launcher-1.0.3-java.gem is
 Copyright (c) 1993, Intergraph Corporation
 
-You may distribute under the terms of either the GNU General Public License (see
-/usr/share/common-licenses/GPL) or the Artistic License (see
+You may distribute under the terms of either the GNU General Public License
+(see /usr/share/common-licenses/GPL-2) or the Artistic License (see
 /usr/share/common-licenses/Artistic), as specified in the perl README file.
 
 ---

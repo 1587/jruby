@@ -1,7 +1,12 @@
-jruby (1.5.6-3) UNRELEASED; urgency=low
+jruby (1.5.6-3) unstable; urgency=low
 
+  [Miguel Landaeta]
   * Team upload.
   * Switch to default-jdk. (Closes: #655823).
+
+  [tony mancill]
+  * Bump Standards-Version to 3.9.2 (no changes).
+  * Address lintian warning in d/copyright (update path to GPL-2).
 
  -- Miguel Landaeta <miguel@miguel.cc>  Sat, 14 Jan 2012 14:13:54 -0430
 
