@@ -5,3 +5,4 @@
 0005-ignore-test-failures.patch
 0006-do-not-build-InvokeDynamicSupport.java.patch
 0007-use-unversioned-jarjar.jar.patch
+0008-CVE-2011-4838.patch

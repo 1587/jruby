@@ -1,3 +1,11 @@
+jruby (1.5.6-4) UNRELEASED; urgency=low
+
+  * Team upload.
+  * Add patch for CVE-2011-4838 (Closes: #686867)
+    - Thanks to Moritz Muehlenhoff
+
+ -- tony mancill <tmancill@debian.org>  Wed, 19 Sep 2012 20:44:57 -0700
+
 jruby (1.5.6-3) unstable; urgency=low
 
   [Miguel Landaeta]
