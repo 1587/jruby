@@ -1,4 +1,4 @@
-jruby (1.5.6-4) UNRELEASED; urgency=low
+jruby (1.5.6-4) UNRELEASED; urgency=high
 
   * Team upload.
   * Add patch for CVE-2011-4838 (Closes: #686867)
