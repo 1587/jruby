@@ -6,3 +6,4 @@
 0006-do-not-build-InvokeDynamicSupport.java.patch
 0007-use-unversioned-jarjar.jar.patch
 0008-CVE-2011-4838.patch
+0009-CVE-2012-5370.patch
