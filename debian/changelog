@@ -1,11 +1,11 @@
-jruby (1.5.6-5) unstable; urgency=low
+jruby (1.5.6-5) unstable; urgency=medium
 
   * Team upload.
   * Add patch for CVE-2012-5370: Use PerlHash instead of MurmurHash
     (that is vulnerable to DoS attacks). (Closes: #694694)
     [Patch adapted from 5e4aab28 upstream]
 
- -- Martin Quinson <mquinson@debian.org>  Tue, 11 Dec 2012 00:07:45 +0100
+ -- Martin Quinson <mquinson@debian.org>  Tue, 11 Dec 2012 21:22:36 +0100
 
 jruby (1.5.6-4) unstable; urgency=medium
 
