@@ -1,4 +1,4 @@
-jruby (1.5.6-5) UNRELEASED; urgency=low
+jruby (1.5.6-5) unstable; urgency=low
 
   * Team upload.
   * Add patch for CVE-2012-5370: Use PerlHash instead of MurmurHash
