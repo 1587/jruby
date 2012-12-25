@@ -1,0 +1,73 @@
+From e6ba288b93628e231dbb1a067b30f6f928be87d5 Mon Sep 17 00:00:00 2001
+From: Guillem Jover <guillem@hadrons.org>
+Date: Tue, 18 Dec 2012 18:33:48 +0100
+Subject: [PATCH] jruby: Set FD_CLOEXEC correctly using F_SETFD not F_SETFL
+
+Using that value on F_SETFL is just wrong, and might make the call fail
+on some systems, as it's requesting to set an undetermined flag. For
+example on GNU/* FD_CLOEXEC has value 1, which matches with O_WRONLY.
+
+This might cause the code to at least leak file descriptors, and at worst
+to terminate execution.
+---
+ lib/ruby/1.8/drb/unix.rb      | 2 +-
+ lib/ruby/1.8/webrick/utils.rb | 2 +-
+ lib/ruby/1.9/drb/unix.rb      | 2 +-
+ lib/ruby/1.9/webrick/utils.rb | 2 +-
+ 4 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/lib/ruby/1.8/drb/unix.rb b/lib/ruby/1.8/drb/unix.rb
+index 57feed8..90ca292 100644
+--- a/lib/ruby/1.8/drb/unix.rb
++++ b/lib/ruby/1.8/drb/unix.rb
+@@ -100,7 +100,7 @@ module DRb
+     end
+ 
+     def set_sockopt(soc)
+-      soc.fcntl(Fcntl::F_SETFL, Fcntl::FD_CLOEXEC) if defined? Fcntl::FD_CLOEXEC
++      soc.fcntl(Fcntl::F_SETFD, Fcntl::FD_CLOEXEC) if defined? Fcntl::FD_CLOEXEC
+     end
+   end
+ 
+diff --git a/lib/ruby/1.8/webrick/utils.rb b/lib/ruby/1.8/webrick/utils.rb
+index cf9da6f..1c29ef5 100644
+--- a/lib/ruby/1.8/webrick/utils.rb
++++ b/lib/ruby/1.8/webrick/utils.rb
+@@ -29,7 +29,7 @@ module WEBrick
+ 
+     def set_close_on_exec(io)
+       if defined?(Fcntl::FD_CLOEXEC)
+-        io.fcntl(Fcntl::FD_CLOEXEC, 1)
++        io.fcntl(Fcntl::F_SETFD, Fcntl::FD_CLOEXEC)
+       end
+     end
+     module_function :set_close_on_exec
+diff --git a/lib/ruby/1.9/drb/unix.rb b/lib/ruby/1.9/drb/unix.rb
+index ebecc22..e56008c 100644
+--- a/lib/ruby/1.9/drb/unix.rb
++++ b/lib/ruby/1.9/drb/unix.rb
+@@ -100,7 +100,7 @@ module DRb
+     end
+ 
+     def set_sockopt(soc)
+-      soc.fcntl(Fcntl::F_SETFL, Fcntl::FD_CLOEXEC) if defined? Fcntl::FD_CLOEXEC
++      soc.fcntl(Fcntl::F_SETFD, Fcntl::FD_CLOEXEC) if defined? Fcntl::FD_CLOEXEC
+     end
+   end
+ 
+diff --git a/lib/ruby/1.9/webrick/utils.rb b/lib/ruby/1.9/webrick/utils.rb
+index dee9363..677ecb8 100644
+--- a/lib/ruby/1.9/webrick/utils.rb
++++ b/lib/ruby/1.9/webrick/utils.rb
+@@ -29,7 +29,7 @@ module WEBrick
+ 
+     def set_close_on_exec(io)
+       if defined?(Fcntl::FD_CLOEXEC)
+-        io.fcntl(Fcntl::FD_CLOEXEC, 1)
++        io.fcntl(Fcntl::F_SETFD, Fcntl::FD_CLOEXEC)
+       end
+     end
+     module_function :set_close_on_exec
+-- 
+1.8.1.rc0
+
