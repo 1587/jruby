@@ -1,10 +1,24 @@
-jruby (1.5.6-6) UNRELEASED; urgency=low
+jruby (1.5.6-6) unstable; urgency=low
 
   * Team upload.
+
+  [ tony mancill ]
   * Apply patch to set FD_CLOEXEC correctly using F_SETFD not F_SETFL.
     - Thank you to Guillem Jover. (Closes: #696283)
 
- -- tony mancill <tmancill@debian.org>  Mon, 24 Dec 2012 21:39:27 -0800
+  [ gregor herrmann ]
+  * Apply all changes from the Ubuntu package:
+    - Depend on default-jre.
+    - Add patch 0011-java7-compat.patch. Fix build issue with OpenJDK 7.
+      Thanks, Julian Taylor.
+    - Add patch 0012-nailgun.patch. Use unversioned nailgun.jar.
+      Thanks, Julian Taylor.
+      Change re the Ubuntu version: nailgun.jar instead of nailgun-0.9.0.jar.
+      (Closes: #713159)
+  * debian/control: use canonical URLs for Vcs-*.
+  * Declare compliance with Debian Policy 3.9.5.
+
+ -- gregor herrmann <gregoa@debian.org>  Fri, 01 Nov 2013 17:55:29 +0100
 
 jruby (1.5.6-5) unstable; urgency=medium
 
