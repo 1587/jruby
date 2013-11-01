@@ -10,7 +10,7 @@ Build-Depends: debhelper (>= 6.0.7~), default-jdk, ant-optional,
  netbase, libjgrapht0.8-java, libjcodings-java, libbytelist-java, libjffi-java,
  libjaffl-java, libjruby-joni-java, yydebug, nailgun, libjnr-posix-java,
  libjnr-netdb-java, libyecht-java (>= 0.0.2-2~), cdbs
-Standards-Version: 3.9.2
+Standards-Version: 3.9.5
 Homepage: http://jruby.org
 Vcs-Git: git://anonscm.debian.org/pkg-java/jruby.git
 Vcs-Browser: http://anonscm.debian.org/gitweb/?p=pkg-java/jruby.git
