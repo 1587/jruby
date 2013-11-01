@@ -1,0 +1,704 @@
+Description:  Fix compilation issues under OpenJDK 7 after b142 with primitive
+ + varargs now resolving as ambiguous.
+Origin: https://github.com/jruby/jruby/commit/7588393ca5bfeba6182b87b8b47669ecab2fe403
+
+--- a/src/org/jruby/Ruby.java
++++ b/src/org/jruby/Ruby.java
+@@ -909,7 +909,7 @@
+ 
+         if (superClass == null) {
+             String className = parentIsObject ? name : parent.getName() + "::" + name;  
+-            warnings.warn(ID.NO_SUPER_CLASS, "no super class for `" + className + "', Object assumed", className);
++            warnings.warn(ID.NO_SUPER_CLASS, "no super class for `" + className + "', Object assumed");
+             
+             superClass = objectClass;
+         }
+--- a/src/org/jruby/RubyArray.java
++++ b/src/org/jruby/RubyArray.java
+@@ -2272,7 +2272,7 @@
+      */
+     @JRubyMethod(name = {"indexes", "indices"}, required = 1, rest = true)
+     public IRubyObject indexes(IRubyObject[] args) {
+-        getRuntime().getWarnings().warn(ID.DEPRECATED_METHOD, "Array#indexes is deprecated; use Array#values_at", "Array#indexes", "Array#values_at");
++        getRuntime().getWarnings().warn(ID.DEPRECATED_METHOD, "Array#indexes is deprecated; use Array#values_at");
+ 
+         RubyArray ary = new RubyArray(getRuntime(), args.length);
+ 
+--- a/src/org/jruby/RubyBignum.java
++++ b/src/org/jruby/RubyBignum.java
+@@ -543,7 +543,7 @@
+             long fixValue = fix.getLongValue();
+             // MRI issuses warning here on (RBIGNUM(x)->len * SIZEOF_BDIGITS * yy > 1024*1024)
+             if (((value.bitLength() + 7) / 8) * 4 * Math.abs(fixValue) > 1024 * 1024) {
+-                getRuntime().getWarnings().warn(ID.MAY_BE_TOO_BIG, "in a**b, b may be too big", fixValue);
++                getRuntime().getWarnings().warn(ID.MAY_BE_TOO_BIG, "in a**b, b may be too big");
+             }
+             if (fixValue >= 0) {
+                 return bignorm(getRuntime(), value.pow((int) fixValue)); // num2int is also implemented
+@@ -552,7 +552,7 @@
+             }
+         } else if (other instanceof RubyBignum) {
+             d = ((RubyBignum) other).getDoubleValue();
+-            getRuntime().getWarnings().warn(ID.MAY_BE_TOO_BIG, "in a**b, b may be too big", d);
++            getRuntime().getWarnings().warn(ID.MAY_BE_TOO_BIG, "in a**b, b may be too big");
+         } else if (other instanceof RubyFloat) {
+             d = ((RubyFloat) other).getDoubleValue();
+         } else {
+@@ -579,7 +579,7 @@
+             }
+             // MRI issuses warning here on (RBIGNUM(x)->len * SIZEOF_BDIGITS * yy > 1024*1024)
+             if (((value.bitLength() + 7) / 8) * 4 * Math.abs(fixValue) > 1024 * 1024) {
+-                getRuntime().getWarnings().warn(ID.MAY_BE_TOO_BIG, "in a**b, b may be too big", fixValue);
++                getRuntime().getWarnings().warn(ID.MAY_BE_TOO_BIG, "in a**b, b may be too big");
+             }
+             if (fixValue >= 0) {
+                 return bignorm(runtime, value.pow((int) fixValue)); // num2int is also implemented
+@@ -588,7 +588,7 @@
+             }
+         } else if (other instanceof RubyBignum) {
+             d = ((RubyBignum) other).getDoubleValue();
+-            getRuntime().getWarnings().warn(ID.MAY_BE_TOO_BIG, "in a**b, b may be too big", d);
++            getRuntime().getWarnings().warn(ID.MAY_BE_TOO_BIG, "in a**b, b may be too big");
+         } else if (other instanceof RubyFloat) {
+             d = ((RubyFloat) other).getDoubleValue();
+             if (this.compareTo(RubyFixnum.zero(runtime)) == -1
+--- a/src/org/jruby/RubyEtc.java
++++ b/src/org/jruby/RubyEtc.java
+@@ -117,7 +117,7 @@
+             throw re;
+         } catch (Exception e) {
+             if (runtime.getDebug().isTrue()) {
+-                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.getpwuid is not supported by JRuby on this platform", e);
++                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.getpwuid is not supported by JRuby on this platform");
+             }
+             return runtime.getNil();
+         }
+@@ -138,7 +138,7 @@
+             return setupPasswd(recv.getRuntime(), pwd);
+         } catch (Exception e) {
+             if (runtime.getDebug().isTrue()) {
+-                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.getpwnam is not supported by JRuby on this platform", e);
++                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.getpwnam is not supported by JRuby on this platform");
+             }
+             return runtime.getNil();
+         }
+@@ -169,7 +169,7 @@
+             }
+         } catch (Exception e) {
+             if (runtime.getDebug().isTrue()) {
+-                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.passwd is not supported by JRuby on this platform", e);
++                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.passwd is not supported by JRuby on this platform");
+             }
+             return runtime.getNil();
+         }
+@@ -204,7 +204,7 @@
+             runtime.getPosix().endpwent();
+         } catch (Exception e) {
+             if (runtime.getDebug().isTrue()) {
+-                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.endpwent is not supported by JRuby on this platform", e);
++                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.endpwent is not supported by JRuby on this platform");
+             }
+         }
+         return runtime.getNil();
+@@ -217,7 +217,7 @@
+             runtime.getPosix().setpwent();
+         } catch (Exception e) {
+             if (runtime.getDebug().isTrue()) {
+-                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.setpwent is not supported by JRuby on this platform", e);
++                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.setpwent is not supported by JRuby on this platform");
+             }
+         }
+         return runtime.getNil();
+@@ -235,7 +235,7 @@
+             }
+         } catch (Exception e) {
+             if (runtime.getDebug().isTrue()) {
+-                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.getpwent is not supported by JRuby on this platform", e);
++                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.getpwent is not supported by JRuby on this platform");
+             }
+             return runtime.getNil();
+         }
+@@ -256,7 +256,7 @@
+             return setupGroup(runtime, grp);
+         } catch (Exception e) {
+             if (runtime.getDebug().isTrue()) {
+-                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.getgrnam is not supported by JRuby on this platform", e);
++                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.getgrnam is not supported by JRuby on this platform");
+             }
+             return runtime.getNil();
+         }
+@@ -281,7 +281,7 @@
+             throw re;
+         } catch (Exception e) {
+             if (runtime.getDebug().isTrue()) {
+-                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.getgrgid is not supported by JRuby on this platform", e);
++                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.getgrgid is not supported by JRuby on this platform");
+             }
+             return runtime.getNil();
+         }
+@@ -294,7 +294,7 @@
+             runtime.getPosix().endgrent();
+         } catch (Exception e) {
+             if (runtime.getDebug().isTrue()) {
+-                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.engrent is not supported by JRuby on this platform", e);
++                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.engrent is not supported by JRuby on this platform");
+             }
+         }
+         return runtime.getNil();
+@@ -307,7 +307,7 @@
+             runtime.getPosix().setgrent();
+         } catch (Exception e) {
+             if (runtime.getDebug().isTrue()) {
+-                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.setgrent is not supported by JRuby on this platform", e);
++                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.setgrent is not supported by JRuby on this platform");
+             }
+         }
+         return runtime.getNil();
+@@ -338,7 +338,7 @@
+             }
+         } catch (Exception e) {
+             if (runtime.getDebug().isTrue()) {
+-                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.group is not supported by JRuby on this platform", e);
++                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.group is not supported by JRuby on this platform");
+             }
+             return runtime.getNil();
+         }
+@@ -356,7 +356,7 @@
+             }
+         } catch (Exception e) {
+             if (runtime.getDebug().isTrue()) {
+-                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.getgrent is not supported by JRuby on this platform", e);
++                runtime.getWarnings().warn(ID.NOT_IMPLEMENTED, "Etc.getgrent is not supported by JRuby on this platform");
+             }
+             return runtime.getNil();
+         }
+--- a/src/org/jruby/RubyGC.java
++++ b/src/org/jruby/RubyGC.java
+@@ -105,6 +105,6 @@
+ 
+     private static void emptyImplementationWarning(Ruby runtime, String name) {
+         runtime.getWarnings().warn(ID.EMPTY_IMPLEMENTATION,
+-                name + " does nothing on JRuby", name);
++                name + " does nothing on JRuby");
+     }
+ }
+--- a/src/org/jruby/RubyGlobal.java
++++ b/src/org/jruby/RubyGlobal.java
+@@ -353,13 +353,13 @@
+ 
+         @Override
+         public IRubyObject set(IRubyObject value) {
+-            runtime.getWarnings().warn(ID.INEFFECTIVE_GLOBAL, "warning: variable " + name + " is no longer effective; ignored", name);
++            runtime.getWarnings().warn(ID.INEFFECTIVE_GLOBAL, "warning: variable " + name + " is no longer effective; ignored");
+             return value;
+         }
+ 
+         @Override
+         public IRubyObject get() {
+-            runtime.getWarnings().warn(ID.INEFFECTIVE_GLOBAL, "warning: variable " + name + " is no longer effective", name);
++            runtime.getWarnings().warn(ID.INEFFECTIVE_GLOBAL, "warning: variable " + name + " is no longer effective");
+             return runtime.getFalse();
+         }
+     }
+--- a/src/org/jruby/RubyIO.java
++++ b/src/org/jruby/RubyIO.java
+@@ -861,8 +861,7 @@
+             String className = klass.getName();
+             context.getRuntime().getWarnings().warn(
+                     ID.BLOCK_NOT_ACCEPTED,
+-                    className + "::new() does not take block; use " + className + "::open() instead",
+-                    className + "::open()");
++                    className + "::new() does not take block; use " + className + "::open() instead");
+         }
+         
+         return klass.newInstance(context, args, block);
+--- a/src/org/jruby/RubyKernel.java
++++ b/src/org/jruby/RubyKernel.java
+@@ -285,7 +285,7 @@
+ 
+     @JRubyMethod(name = "getc", module = true, visibility = PRIVATE)
+     public static IRubyObject getc(ThreadContext context, IRubyObject recv) {
+-        context.getRuntime().getWarnings().warn(ID.DEPRECATED_METHOD, "getc is obsolete; use STDIN.getc instead", "getc", "STDIN.getc");
++        context.getRuntime().getWarnings().warn(ID.DEPRECATED_METHOD, "getc is obsolete; use STDIN.getc instead");
+         IRubyObject defin = context.getRuntime().getGlobalVariables().get("$stdin");
+         return defin.callMethod(context, "getc");
+     }
+--- a/src/org/jruby/RubyModule.java
++++ b/src/org/jruby/RubyModule.java
+@@ -2693,7 +2693,7 @@
+                 if (p == objectClass && this != objectClass) {
+                     String badCName = getName() + "::" + internedName;
+                     runtime.getWarnings().warn(ID.CONSTANT_BAD_REFERENCE, "toplevel constant " +
+-                            internedName + " referenced by " + badCName, badCName);
++                            internedName + " referenced by " + badCName);
+                 }
+ 
+                 return value;
+@@ -2758,7 +2758,7 @@
+                 runtime.getLoadService().removeAutoLoadFor(getName() + "::" + name);
+             } else {
+                 if (warn) {
+-                    runtime.getWarnings().warn(ID.CONSTANT_ALREADY_INITIALIZED, "already initialized constant " + name, name);
++                    runtime.getWarnings().warn(ID.CONSTANT_ALREADY_INITIALIZED, "already initialized constant " + name);
+                 }
+             }
+         }
+--- a/src/org/jruby/RubyRational.java
++++ b/src/org/jruby/RubyRational.java
+@@ -879,7 +879,7 @@
+         long e = ne - de;
+ 
+         if (e > 1023 || e < -1022) {
+-            runtime.getWarnings().warn(IRubyWarnings.ID.FLOAT_OUT_OF_RANGE, "out of Float range", getMetaClass());
++            runtime.getWarnings().warn(IRubyWarnings.ID.FLOAT_OUT_OF_RANGE, "out of Float range");
+             return runtime.newFloat(e > 0 ? Double.MAX_VALUE : 0);
+         }
+ 
+@@ -890,7 +890,7 @@
+         f = ldexp(f, e);
+ 
+         if (Double.isInfinite(f) || Double.isNaN(f)) {
+-            runtime.getWarnings().warn(IRubyWarnings.ID.FLOAT_OUT_OF_RANGE, "out of Float range", getMetaClass());
++            runtime.getWarnings().warn(IRubyWarnings.ID.FLOAT_OUT_OF_RANGE, "out of Float range");
+         }
+ 
+         return runtime.newFloat(f);
+--- a/src/org/jruby/RubyStringScanner.java
++++ b/src/org/jruby/RubyStringScanner.java
+@@ -131,7 +131,7 @@
+         check();
+         Ruby runtime = context.getRuntime();
+         if (runtime.isVerbose()) {
+-            runtime.getWarnings().warning(ID.DEPRECATED_METHOD, "StringScanner#clear is obsolete; use #terminate instead", "StringScanner#clear", "#terminate");
++            runtime.getWarnings().warning(ID.DEPRECATED_METHOD, "StringScanner#clear is obsolete; use #terminate instead");
+         }
+         return terminate();
+     }
+@@ -338,8 +338,7 @@
+         Ruby runtime = context.getRuntime();
+         if (runtime.isVerbose()) { 
+             runtime.getWarnings().warning(ID.DEPRECATED_METHOD,
+-                    "StringScanner#getbyte is obsolete; use #get_byte instead",
+-                    "StringScanner#getbyte", "#get_byte");
++                    "StringScanner#getbyte is obsolete; use #get_byte instead");
+         }
+         return get_byte(context);
+     }
+@@ -365,8 +364,7 @@
+         Ruby runtime = context.getRuntime();
+         if (runtime.isVerbose()) {
+             runtime.getWarnings().warning(
+-                    ID.DEPRECATED_METHOD, "StringScanner#peep is obsolete; use #peek instead",
+-                    "StringScanner#peep", "#peek");
++                    ID.DEPRECATED_METHOD, "StringScanner#peep is obsolete; use #peek instead");
+         }
+         return peek(context, length);
+     }
+@@ -405,7 +403,7 @@
+     public RubyBoolean empty_p(ThreadContext context) {
+         Ruby runtime = context.getRuntime();
+         if (runtime.isVerbose()) {
+-            runtime.getWarnings().warning(ID.DEPRECATED_METHOD, "StringScanner#empty? is obsolete; use #eos? instead", "StringScanner#empty?", "#eos?");
++            runtime.getWarnings().warning(ID.DEPRECATED_METHOD, "StringScanner#empty? is obsolete; use #eos? instead");
+         }
+         return eos_p(context);
+     }
+@@ -440,8 +438,7 @@
+     public IRubyObject matchedsize(ThreadContext context) {
+         Ruby runtime = context.getRuntime();
+         if (runtime.isVerbose()) {
+-            runtime.getWarnings().warning(ID.DEPRECATED_METHOD, "StringScanner#matchedsize is obsolete; use #matched_size instead", 
+-                    "StringScanner#matchedize", "#matched_size");
++            runtime.getWarnings().warning(ID.DEPRECATED_METHOD, "StringScanner#matchedsize is obsolete; use #matched_size instead");
+         }
+         return matched_size();        
+     }
+@@ -500,7 +497,7 @@
+     public RubyFixnum restsize(ThreadContext context) {
+         Ruby runtime = context.getRuntime();
+         if (runtime.isVerbose()) {
+-            runtime.getWarnings().warning(ID.DEPRECATED_METHOD, "StringScanner#restsize is obsolete; use #rest_size instead", "StringScanner#restsize", "#rest_size");
++            runtime.getWarnings().warning(ID.DEPRECATED_METHOD, "StringScanner#restsize is obsolete; use #rest_size instead");
+         }
+         return rest_size();
+     }
+--- a/src/org/jruby/ast/DefnNode.java
++++ b/src/org/jruby/ast/DefnNode.java
+@@ -90,11 +90,11 @@
+         String name = getName();
+ 
+         if (containingClass == runtime.getObject() && name == "initialize") {
+-            runtime.getWarnings().warn(ID.REDEFINING_DANGEROUS, "redefining Object#initialize may cause infinite loop", "Object#initialize");
++            runtime.getWarnings().warn(ID.REDEFINING_DANGEROUS, "redefining Object#initialize may cause infinite loop");
+         }
+ 
+         if (name == "__id__" || name == "__send__") {
+-            runtime.getWarnings().warn(ID.REDEFINING_DANGEROUS, "redefining `" + name + "' may cause serious problem", name); 
++            runtime.getWarnings().warn(ID.REDEFINING_DANGEROUS, "redefining `" + name + "' may cause serious problem");
+         }
+ 
+         Visibility visibility = context.getCurrentVisibility();
+--- a/src/org/jruby/ast/InstVarNode.java
++++ b/src/org/jruby/ast/InstVarNode.java
+@@ -114,7 +114,7 @@
+     
+     private void warnAboutUninitializedIvar(Ruby runtime) {
+         runtime.getWarnings().warning(ID.IVAR_NOT_INITIALIZED, getPosition(), 
+-                "instance variable " + name + " not initialized", name);
++                "instance variable " + name + " not initialized");
+     }
+     
+     @Override
+--- a/src/org/jruby/common/IRubyWarnings.java
++++ b/src/org/jruby/common/IRubyWarnings.java
+@@ -30,6 +30,7 @@
+  ***** END LICENSE BLOCK *****/
+ package org.jruby.common;
+ 
++import org.jruby.Ruby;
+ import org.jruby.lexer.yacc.ISourcePosition;
+ 
+ // FIXME: Document difference between warn and warning (or rename one better)
+@@ -100,12 +101,26 @@
+         }
+     }
+ 
+-    public abstract org.jruby.Ruby getRuntime();
+-    public abstract void warn(ID id, ISourcePosition position, String message, Object... data);
+-    public abstract void warn(ID id, String fileName, int lineNumber, String message, Object... data);
++    public abstract Ruby getRuntime();
+     public abstract boolean isVerbose();
++
++    public abstract void warn(ID id, ISourcePosition position, String message);
++    public abstract void warn(ID id, String fileName, int lineNumber, String message);
++    public abstract void warn(ID id, String message);
++    public abstract void warning(ID id, String message);
++    public abstract void warning(ID id, ISourcePosition position, String message);
++    public abstract void warning(ID id, String fileName, int lineNumber, String message);
++
++    @Deprecated
+     public abstract void warn(ID id, String message, Object... data);
++    @Deprecated
+     public abstract void warning(ID id, String message, Object... data);
++    @Deprecated
++    public abstract void warn(ID id, ISourcePosition position, String message, Object... data);
++    @Deprecated
++    public abstract void warn(ID id, String fileName, int lineNumber, String message, Object... data);
++    @Deprecated
+     public abstract void warning(ID id, ISourcePosition position, String message, Object... data);
+-    public abstract void warning(ID id, String fileName, int lineNumber, String message, Object... data);
++    @Deprecated
++    public abstract void warning(ID id, String fileName, int lineNumber, String message, Object...data);
+ }
+--- a/src/org/jruby/common/NullWarnings.java
++++ b/src/org/jruby/common/NullWarnings.java
+@@ -28,14 +28,15 @@
+  ***** END LICENSE BLOCK *****/
+ package org.jruby.common;
+ 
++import org.jruby.Ruby;
+ import org.jruby.lexer.yacc.ISourcePosition;
+ 
+ /**
+  * A Warnings implementation which silently ignores everything.
+  */
+ public class NullWarnings implements IRubyWarnings {
+-    private org.jruby.Ruby runtime;
+-    public NullWarnings(org.jruby.Ruby runtime) {
++    private Ruby runtime;
++    public NullWarnings(Ruby runtime) {
+         this.runtime = runtime;
+     }
+ 
+@@ -47,10 +48,23 @@
+         return runtime;
+     }
+ 
++    public void warn(ID id, ISourcePosition position, String message) {}
++    public void warn(ID id, String fileName, int lineNumber, String message) {}
++    public void warn(ID id, String message) {}
++    public void warning(ID id, String message) {}
++    public void warning(ID id, ISourcePosition position, String message) {}
++    public void warning(ID id, String fileName, int lineNumber, String message) {}
++
++    @Deprecated
+     public void warn(ID id, String message, Object... data) {}
++    @Deprecated
+     public void warning(ID id, String message, Object... data) {}
++    @Deprecated
+     public void warn(ID id, ISourcePosition position, String message, Object... data) {}
++    @Deprecated
+     public void warn(ID id, String fileName, int lineNumber, String message, Object... data) {}
++    @Deprecated
+     public void warning(ID id, ISourcePosition position, String message, Object... data) {}
++    @Deprecated
+     public void warning(ID id, String fileName, int lineNumber, String message, Object...data) {}
+ }
+--- a/src/org/jruby/common/RubyWarnings.java
++++ b/src/org/jruby/common/RubyWarnings.java
+@@ -48,21 +48,25 @@
+         warn(ID.MISCELLANEOUS, message);
+     }
+ 
+-    public org.jruby.Ruby getRuntime() {
++    public Ruby getRuntime() {
+         return runtime;
+     }
+ 
++    public boolean isVerbose() {
++        return runtime.isVerbose();
++    }
++
+     /**
+      * Prints a warning, unless $VERBOSE is nil.
+      */
+-    public void warn(ID id, ISourcePosition position, String message, Object... data) {
+-        warn(id, position.getFile(), position.getStartLine(), message, data);
++    public void warn(ID id, ISourcePosition position, String message) {
++        warn(id, position.getFile(), position.getStartLine(), message);
+     }
+ 
+     /**
+      * Prints a warning, unless $VERBOSE is nil.
+      */
+-    public void warn(ID id, String fileName, int lineNumber, String message, Object... data) {
++    public void warn(ID id, String fileName, int lineNumber, String message) {
+         if (!runtime.warningsEnabled()) return; // TODO make an assert here
+ 
+         StringBuilder buffer = new StringBuilder(100);
+@@ -73,38 +77,79 @@
+         errorStream.callMethod(runtime.getCurrentContext(), "write", runtime.newString(buffer.toString()));
+     }
+ 
+-    public boolean isVerbose() {
+-        return runtime.isVerbose();
+-    }
+-
+-    public void warn(ID id, String message, Object... data) {
++    public void warn(ID id, String message) {
+         ThreadContext context = runtime.getCurrentContext();
+-        warn(id, context.getFile(), context.getLine(), message, data);
++        warn(id, context.getFile(), context.getLine(), message);
+     }
+ 
+     /**
+      * Verbose mode warning methods, their contract is that consumer must explicitly check for runtime.isVerbose()
+      * before calling them
+      */
+-    public void warning(String message, Object... data) {
+-        warning(ID.MISCELLANEOUS, message, data);
++    public void warning(String message) {
++        warning(ID.MISCELLANEOUS, message);
+     }
+ 
+-    public void warning(ID id, String message, Object... data) {
++    public void warning(ID id, String message) {
+         ThreadContext context = runtime.getCurrentContext();
+-        warning(id, context.getFile(), context.getLine(), message, data);
++        warning(id, context.getFile(), context.getLine(), message);
+     }
+ 
+     /**
+      * Prints a warning, only in verbose mode.
+      */
+-    public void warning(ID id, ISourcePosition position, String message, Object... data) {
+-        warning(id, position.getFile(), position.getStartLine(), message, data);
++    public void warning(ID id, ISourcePosition position, String message) {
++        warning(id, position.getFile(), position.getStartLine(), message);
+     }
+ 
+     /**
+      * Prints a warning, only in verbose mode.
+      */
++    public void warning(ID id, String fileName, int lineNumber, String message) {
++        assert isVerbose();
++        warn(id, fileName, lineNumber, message);
++    }
++
++    @Deprecated
++    public void warn(ID id, ISourcePosition position, String message, Object... data) {
++        warn(id, position.getFile(), position.getStartLine(), message, data);
++    }
++
++    @Deprecated
++    public void warn(ID id, String fileName, int lineNumber, String message, Object... data) {
++        if (!runtime.warningsEnabled()) return; // TODO make an assert here
++
++        StringBuilder buffer = new StringBuilder(100);
++
++        buffer.append(fileName).append(':').append(lineNumber + 1).append(' ');
++        buffer.append("warning: ").append(message).append('\n');
++        IRubyObject errorStream = runtime.getGlobalVariables().get("$stderr");
++        errorStream.callMethod(runtime.getCurrentContext(), "write", runtime.newString(buffer.toString()));
++    }
++
++    @Deprecated
++    public void warn(ID id, String message, Object... data) {
++        ThreadContext context = runtime.getCurrentContext();
++        warn(id, context.getFile(), context.getLine(), message, data);
++    }
++
++    @Deprecated
++    public void warning(String message, Object... data) {
++        warning(ID.MISCELLANEOUS, message, data);
++    }
++
++    @Deprecated
++    public void warning(ID id, String message, Object... data) {
++        ThreadContext context = runtime.getCurrentContext();
++        warning(id, context.getFile(), context.getLine(), message, data);
++    }
++
++    @Deprecated
++    public void warning(ID id, ISourcePosition position, String message, Object... data) {
++        warning(id, position.getFile(), position.getStartLine(), message, data);
++    }
++
++    @Deprecated
+     public void warning(ID id, String fileName, int lineNumber, String message, Object... data) {
+         assert isVerbose(); 
+         warn(id, fileName, lineNumber, message, data);
+--- a/src/org/jruby/ext/JRubyPOSIXHandler.java
++++ b/src/org/jruby/ext/JRubyPOSIXHandler.java
+@@ -44,7 +44,7 @@
+         } else {
+             ourID = ID.MISCELLANEOUS;
+         }
+-        runtime.getWarnings().warn(ourID, message, data);
++        runtime.getWarnings().warn(ourID, message);
+     }
+     
+     public boolean isVerbose() {
+--- a/src/org/jruby/internal/runtime/GlobalVariables.java
++++ b/src/org/jruby/internal/runtime/GlobalVariables.java
+@@ -111,7 +111,7 @@
+ 	    if (variable != null) return variable.getAccessor().getValue();
+ 
+ 	    if (runtime.isVerbose()) {
+-	        runtime.getWarnings().warning(ID.GLOBAL_NOT_INITIALIZED, "global variable `" + name + "' not initialized", name);
++	        runtime.getWarnings().warning(ID.GLOBAL_NOT_INITIALIZED, "global variable `" + name + "' not initialized");
+ 	    }
+ 		return runtime.getNil();
+ 	}
+--- a/src/org/jruby/internal/runtime/UndefinedAccessor.java
++++ b/src/org/jruby/internal/runtime/UndefinedAccessor.java
+@@ -60,7 +60,7 @@
+      */
+     public IRubyObject getValue() {
+         if (runtime.isVerbose()) {
+-            runtime.getWarnings().warning(ID.ACCESSOR_NOT_INITIALIZED, "global variable `" + name + "' not initialized", name);
++            runtime.getWarnings().warning(ID.ACCESSOR_NOT_INITIALIZED, "global variable `" + name + "' not initialized");
+         }
+         return runtime.getNil();
+     }
+--- a/src/org/jruby/javasupport/util/RuntimeHelpers.java
++++ b/src/org/jruby/javasupport/util/RuntimeHelpers.java
+@@ -1579,11 +1579,11 @@
+         }
+ 
+         if (containingClass == runtime.getObject() && name.equals("initialize")) {
+-            runtime.getWarnings().warn(ID.REDEFINING_DANGEROUS, "redefining Object#initialize may cause infinite loop", "Object#initialize");
++            runtime.getWarnings().warn(ID.REDEFINING_DANGEROUS, "redefining Object#initialize may cause infinite loop");
+         }
+ 
+         if (name.equals("__id__") || name.equals("__send__")) {
+-            runtime.getWarnings().warn(ID.REDEFINING_DANGEROUS, "redefining `" + name + "' may cause serious problem", name);
++            runtime.getWarnings().warn(ID.REDEFINING_DANGEROUS, "redefining `" + name + "' may cause serious problem");
+         }
+     }
+ 
+--- a/src/org/jruby/lexer/yacc/RubyYaccLexer.java
++++ b/src/org/jruby/lexer/yacc/RubyYaccLexer.java
+@@ -116,7 +116,7 @@
+         try {
+             d = Double.parseDouble(number);
+         } catch (NumberFormatException e) {
+-            warnings.warn(ID.FLOAT_OUT_OF_RANGE, getPosition(), "Float " + number + " out of range.", number);
++            warnings.warn(ID.FLOAT_OUT_OF_RANGE, getPosition(), "Float " + number + " out of range.");
+ 
+             d = number.startsWith("-") ? Double.NEGATIVE_INFINITY : Double.POSITIVE_INFINITY;
+         }
+@@ -1090,7 +1090,7 @@
+         //a wrong position if the "inclusive" flag is not set.
+         ISourcePosition tmpPosition = getPosition();
+         if (isARG() && spaceSeen && !Character.isWhitespace(c)) {
+-            if (warnings.isVerbose()) warnings.warning(ID.ARGUMENT_AS_PREFIX, tmpPosition, "`&' interpreted as argument prefix", "&");
++            if (warnings.isVerbose()) warnings.warning(ID.ARGUMENT_AS_PREFIX, tmpPosition, "`&' interpreted as argument prefix");
+             c = Tokens.tAMPER;
+         } else if (isBEG()) {
+             c = Tokens.tAMPER;
+@@ -1939,7 +1939,7 @@
+         default:
+             src.unread(c);
+             if (isARG() && spaceSeen && !Character.isWhitespace(c)) {
+-                if (warnings.isVerbose()) warnings.warning(ID.ARGUMENT_AS_PREFIX, getPosition(), "`*' interpreted as argument prefix", "*");
++                if (warnings.isVerbose()) warnings.warning(ID.ARGUMENT_AS_PREFIX, getPosition(), "`*' interpreted as argument prefix");
+                 c = Tokens.tSTAR;
+             } else if (isBEG()) {
+                 c = Tokens.tSTAR;
+--- a/src/org/jruby/parser/ParserSupport.java
++++ b/src/org/jruby/parser/ParserSupport.java
+@@ -631,7 +631,7 @@
+     }
+ 
+     private void handleUselessWarn(Node node, String useless) {
+-        warnings.warn(ID.USELESS_EXPRESSION, node.getPosition(), "Useless use of " + useless + " in void context.", useless);
++        warnings.warn(ID.USELESS_EXPRESSION, node.getPosition(), "Useless use of " + useless + " in void context.");
+     }
+ 
+     /**
+@@ -1453,12 +1453,12 @@
+     }
+ 
+     public void warn(ID id, ISourcePosition position, String message, Object... data) {
+-        warnings.warn(id, position, message, data);
++        warnings.warn(id, position, message);
+     }
+ 
+     public void warning(ID id, ISourcePosition position, String message, Object... data) {
+         if (warnings.isVerbose()) {
+-            warnings.warning(id, position, message, data);
++            warnings.warning(id, position, message);
+         }
+     }
+ 
+--- a/src/org/jruby/RubyStruct.java
++++ b/src/org/jruby/RubyStruct.java
+@@ -211,7 +211,7 @@
+             if (type != null) {
+                 ThreadContext context = runtime.getCurrentContext();
+                 Frame frame = context.getCurrentFrame();
+-                runtime.getWarnings().warn(ID.STRUCT_CONSTANT_REDEFINED, frame.getFile(), frame.getLine(), "redefining constant Struct::" + name, name);
++                runtime.getWarnings().warn(ID.STRUCT_CONSTANT_REDEFINED, frame.getFile(), frame.getLine(), "redefining constant Struct::" + name);
+                 superClass.remove_const(context, runtime.newString(name));
+             }
+             newStruct = superClass.defineClassUnder(name, superClass, STRUCT_INSTANCE_ALLOCATOR);
+--- a/src/org/jruby/RubyObject.java
++++ b/src/org/jruby/RubyObject.java
+@@ -660,7 +660,7 @@
+      */
+     @JRubyMethod(name = "id")
+     public IRubyObject id_deprecated() {
+-        getRuntime().getWarnings().warn(ID.DEPRECATED_METHOD, "Object#id will be deprecated; use Object#object_id", "Object#id", "Object#object_id");
++        getRuntime().getWarnings().warn(ID.DEPRECATED_METHOD, "Object#id will be deprecated; use Object#object_id");
+         return id();
+     }
+ 
+@@ -717,7 +717,7 @@
+      */
+     @JRubyMethod(name = "type")
+     public RubyClass type_deprecated() {
+-        getRuntime().getWarnings().warn(ID.DEPRECATED_METHOD, "Object#type is deprecated; use Object#class", "Object#type", "Object#class");
++        getRuntime().getWarnings().warn(ID.DEPRECATED_METHOD, "Object#type is deprecated; use Object#class");
+         return type();
+     }
+ 
+@@ -1253,7 +1253,7 @@
+      */
+     @JRubyMethod(name = "to_a", visibility = Visibility.PUBLIC, compat = CompatVersion.RUBY1_8)
+     public RubyArray to_a() {
+-        getRuntime().getWarnings().warn(ID.DEPRECATED_METHOD, "default 'to_a' will be obsolete", "to_a");
++        getRuntime().getWarnings().warn(ID.DEPRECATED_METHOD, "default 'to_a' will be obsolete");
+         return getRuntime().newArray(this);
+     }
+ 
