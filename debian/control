@@ -12,8 +12,8 @@ Build-Depends: debhelper (>= 6.0.7~), default-jdk, ant-optional,
  libjnr-netdb-java, libyecht-java (>= 0.0.2-2~), cdbs
 Standards-Version: 3.9.2
 Homepage: http://jruby.org
-Vcs-Git: git://git.debian.org/git/pkg-java/jruby.git
-Vcs-Browser: http://git.debian.org/?p=pkg-java/jruby.git
+Vcs-Git: git://anonscm.debian.org/pkg-java/jruby.git
+Vcs-Browser: http://anonscm.debian.org/gitweb/?p=pkg-java/jruby.git
 
 Package: jruby
 Architecture: all
