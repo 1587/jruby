@@ -1,3 +1,10 @@
+jruby (1.5.6-7) unstable; urgency=low
+
+  * Team upload.
+  * Provide maven artifacts. (Closes: #737424).
+
+ -- Miguel Landaeta <nomadium@debian.org>  Sun, 02 Feb 2014 21:37:46 -0300
+
 jruby (1.5.6-6) unstable; urgency=low
 
   * Team upload.

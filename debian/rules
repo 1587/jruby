@@ -8,6 +8,7 @@ DEB_ANT_CLEAN_TARGET := clean-all
 DEB_ANT_BUILD_TARGET := -Ddev.gems=false -DdocsNotNeeded=true \
     -Dshared.lib.dir=/usr/share/java test dist-bin
 DEB_JARS             := ant-junit junit4
+UVERSION             := $(shell dpkg-parsechangelog | grep ^Version: | sed 's/^.*: \(.*\)-\(.*\)$$/\1/')
 
 # must be set to avoid test failures
 export BUILDING_JRUBY := true
@@ -16,6 +17,8 @@ clean::
 	$(RM) lib/ruby/site_ruby/shared/yecht.jar debian/stamp-yecht
 	# strange workaround for dpkg-source
 	$(RM) bin/jruby
+	rm -f test/testapp/testapp
+	mh_clean
 
 pre-build:: debian/stamp-yecht
 debian/stamp-yecht:
@@ -39,4 +42,8 @@ install/jruby::
 	$(RM) -r $(JRUBY_LIB_DIR)/lib/native
 	# Remove all empty directories
 	find $(DEB_DESTDIR) -depth -follow -type d -empty -delete
+	mh_installpoms -pjruby
+	mh_installjar -pjruby --java-lib maven/jruby/pom.xml $(JRUBY_LIB_DIR)/lib/jruby.jar
+	rm -f $(DEB_DESTDIR)/usr/share/java/jruby*.jar
+	dh_link usr/share/java/jruby.jar usr/share/java/jruby-$(UVERSION).jar
 
