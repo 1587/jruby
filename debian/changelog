@@ -1,3 +1,10 @@
+jruby (1.5.6-8) UNRELEASED; urgency=medium
+
+  * Team upload.
+  * Rebuild (#729171)
+
+ -- tony mancill <tmancill@debian.org>  Thu, 20 Mar 2014 22:06:06 -0700
+
 jruby (1.5.6-7) unstable; urgency=low
 
   * Team upload.
