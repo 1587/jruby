@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: Debian Java Maintainers <pkg-java-maintainers@lists.alioth.debian.org>
 Uploaders: Sebastien Delafond <seb@debian.org>,
  Torsten Werner <twerner@debian.org>
-Build-Depends: debhelper (>= 6.0.7~), default-jdk, ant-optional,
+Build-Depends: debhelper (>= 9~), default-jdk, ant-optional,
  libasm3-java, libcommons-logging-java, libjarjar-java, libjoda-time-java,
  junit4, libemma-java, libbsf-java, libjline-java, bnd, libconstantine-java,
  netbase, libjgrapht0.8-java, libjcodings-java, libbytelist-java, libjffi-java,
