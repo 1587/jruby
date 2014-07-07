@@ -1,8 +1,12 @@
 jruby (1.5.6-9) UNRELEASED; urgency=medium
 
+  [ tony mancill ]
   * Team upload.
   * Recommend "ri" instead of "ri1.8" (ruby interpreter)
   * Use DH9 instead of version 6.
+
+  [ Emmanuel Bourg ]
+  * Removed the build dependency on libemma-java
 
  -- tony mancill <tmancill@debian.org>  Sun, 11 May 2014 13:07:31 -0700
 
