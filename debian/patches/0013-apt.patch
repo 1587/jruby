@@ -1,0 +1,28 @@
+diff --git a/build.xml b/build.xml
+index 9857cd2..cdd687b 100644
+--- a/build.xml
++++ b/build.xml
+@@ -188,6 +188,7 @@
+ 
+   <target name="compile-jruby" depends="prepare-resources, compile-annotation-binder, check-for-optional-packages">
+     <!-- Generate binding logic ahead of time -->
++    <!--
+     <apt factory="org.jruby.anno.AnnotationBinder" destdir="${jruby.classes.dir}" debug="true" source="${javac.version}" target="${javac.version}" deprecation="true" encoding="UTF-8">
+       <classpath refid="jruby.execute.classpath"/>
+       <src path="${src.dir}"/>
+@@ -195,6 +196,15 @@
+       <compilerarg line="-XDignore.symbol.file=true"/>
+       <compilerarg line="-J-Xmx${jruby.compile.memory}"/>
+     </apt>
++    -->
++    <javac destdir="${jruby.classes.dir}" debug="true" srcdir="${src.dir}" sourcepath="" classpathref="build.classpath" source="${javac.version}" target="${javac.version}" deprecation="true" encoding="UTF-8">
++	
++      <classpath refid="jruby.execute.classpath"/>
++      <src path="${src.dir}"/>
++      <patternset refid="java.src.pattern"/>
++      <compilerarg line="-XDignore.symbol.file=true"/>
++      <compilerarg line="-J-Xmx${jruby.compile.memory}"/>
++    </javac>
+   </target>
+ 
+   <target name="compile" depends="compile-jruby"
