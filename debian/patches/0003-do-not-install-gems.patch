@@ -6,11 +6,9 @@ Subject: do not install gems
  build.xml |   75 +------------------------------------------------------------
  1 files changed, 1 insertions(+), 74 deletions(-)
 
-diff --git a/build.xml b/build.xml
-index 9857cd2..5fd40cf 100644
 --- a/build.xml
 +++ b/build.xml
-@@ -452,7 +452,6 @@
+@@ -462,7 +462,6 @@
          <sysproperty key="jruby.home" value="${build.dir}/jar-complete/META-INF/jruby.home"/>
          <env key="RUBYOPT" value=""/>
          <jvmarg value="${run.jvm.model}"/>
@@ -18,7 +16,7 @@ index 9857cd2..5fd40cf 100644
          <arg line="--no-ri --no-rdoc --ignore-dependencies --env-shebang"/>
        </java>
  
-@@ -542,7 +541,6 @@
+@@ -552,7 +551,6 @@
          <sysproperty key="jruby.home" value="${build.dir}/jar-complete/META-INF/jruby.home"/>
          <env key="RUBYOPT" value=""/>
          <jvmarg value="${run.jvm.model}"/>
@@ -26,7 +24,7 @@ index 9857cd2..5fd40cf 100644
          <arg line="--no-ri --no-rdoc --ignore-dependencies --env-shebang"/>
        </java>
  
-@@ -690,33 +688,8 @@
+@@ -700,33 +698,8 @@
      </emma>
    </target>
  
@@ -60,7 +58,7 @@ index 9857cd2..5fd40cf 100644
      run-junit-interpreted-short,
      test-rake-targets"
      description="Runs unit tests.">
-@@ -724,7 +697,6 @@
+@@ -734,7 +707,6 @@
  
    <target name="test-indy" depends="
      copy-test-files,
@@ -68,7 +66,7 @@ index 9857cd2..5fd40cf 100644
      run-junit-indy-short,
      test-rake-targets"
      description="Runs unit tests.">
-@@ -732,7 +704,6 @@
+@@ -742,7 +714,6 @@
  
    <target name="test-extended" depends="
      copy-test-files,
@@ -76,7 +74,7 @@ index 9857cd2..5fd40cf 100644
      run-junit-compiled,
      run-junit-embed,
      test-rake-targets"
-@@ -1066,48 +1037,6 @@
+@@ -1076,48 +1047,6 @@
      </sequential>
    </macrodef>
  
@@ -125,7 +123,7 @@ index 9857cd2..5fd40cf 100644
    <target name="update-excludes">
      <java classname="org.jruby.Main" fork="true" maxmemory="${jruby.launch.memory}" failonerror="false" dir="${spec.dir}">
        <classpath refid="jruby.execute.classpath"/>
-@@ -1289,7 +1218,6 @@
+@@ -1299,7 +1228,6 @@
      <mkdir dir="${dist.stage.bin.dir}/lib/native"/>
      <unzip-native-libs destination.dir="${dist.stage.bin.dir}/lib/native"/>
      <fixEOLs dist-stage-dir="${dist.stage.bin.dir}"/>
@@ -133,7 +131,7 @@ index 9857cd2..5fd40cf 100644
      <tar destfile="${dist.dir}/jruby-bin-${version.jruby}.tar.gz" compression="gzip">
        <tarfileset dir="${dist.stage.bin.dir}" mode="755" prefix="jruby-${version.jruby}">
          <include name="bin/**"/>
-@@ -1339,7 +1267,6 @@
+@@ -1349,7 +1277,6 @@
          <patternset refid="dist.lib.files"/>
        </fileset>
      </copy>
@@ -141,7 +139,7 @@ index 9857cd2..5fd40cf 100644
      <fixEOLs dist-stage-dir="${dist.stage.src.dir}"/>
      <tar destfile="${dist.dir}/jruby-src-${version.jruby}.tar.gz" compression="gzip">
        <tarfileset dir="${dist.stage.src.dir}" mode="755" prefix="jruby-${version.jruby}">
-@@ -1425,7 +1352,7 @@
+@@ -1435,7 +1362,7 @@
      </antcall>
    </target>
  
@@ -150,4 +148,3 @@ index 9857cd2..5fd40cf 100644
  
    <target name="dist-clean">
      <delete dir="${dist.dir}"/>
--- 

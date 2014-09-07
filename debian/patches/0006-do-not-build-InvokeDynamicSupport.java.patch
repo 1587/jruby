@@ -8,8 +8,6 @@ yet.
  build.xml |    1 +
  1 files changed, 1 insertions(+), 0 deletions(-)
 
-diff --git a/build.xml b/build.xml
-index bf2b9e8..ed8cf76 100644
 --- a/build.xml
 +++ b/build.xml
 @@ -57,6 +57,7 @@
@@ -20,4 +18,3 @@ index bf2b9e8..ed8cf76 100644
    </patternset>
  
    <patternset id="ruby.src.pattern">
--- 

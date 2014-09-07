@@ -8,7 +8,7 @@ Last-Update: 2013-11-01
 
 --- a/build.xml
 +++ b/build.xml
-@@ -328,7 +328,7 @@
+@@ -338,7 +338,7 @@
          <zipfileset src="${build.lib.dir}/jffi.jar"/>
          <zipfileset src="${build.lib.dir}/joda-time.jar"/>
          <zipfileset src="${build.lib.dir}/yydebug.jar"/>
@@ -17,7 +17,7 @@ Last-Update: 2013-11-01
          <metainf dir="${base.dir}/spi">
            <include name="services/**"/>
          </metainf>
-@@ -389,7 +389,7 @@
+@@ -399,7 +399,7 @@
          <zipfileset src="${build.lib.dir}/jffi.jar"/>
          <zipfileset src="${build.lib.dir}/joda-time.jar"/>
          <zipfileset src="${build.lib.dir}/yydebug.jar"/>
@@ -26,7 +26,7 @@ Last-Update: 2013-11-01
          <metainf dir="${base.dir}/spi">
            <include name="services/**"/>
          </metainf>
-@@ -467,7 +467,7 @@
+@@ -477,7 +477,7 @@
          <zipfileset src="${build.lib.dir}/jffi.jar"/>
          <zipfileset src="${build.lib.dir}/joda-time.jar"/>
          <zipfileset src="${build.lib.dir}/yydebug.jar"/>
@@ -35,7 +35,7 @@ Last-Update: 2013-11-01
          <zipfileset src="${local.shared.lib.dir}/yecht.jar"/>
          <metainf dir="${base.dir}/spi">
            <include name="services/**"/>
-@@ -538,7 +538,7 @@
+@@ -548,7 +548,7 @@
          <zipfileset src="${build.lib.dir}/jffi.jar"/>
          <zipfileset src="${build.lib.dir}/joda-time.jar"/>
          <zipfileset src="${build.lib.dir}/yydebug.jar"/>
