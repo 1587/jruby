@@ -4,7 +4,7 @@ jruby (1.5.6-8) unstable; urgency=medium
   * Team upload.
   * Recommend "ri" instead of "ri1.8" (ruby interpreter)
   * Use DH9 instead of version 6.
-  * Rebuild (#729171)
+  * Rebuild against a non-broken joda-time. (Closes: #729171)
 
   [ Emmanuel Bourg ]
   * Removed the build dependency on libemma-java
