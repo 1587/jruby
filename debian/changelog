@@ -1,3 +1,12 @@
+jruby (1.5.6-9) unstable; urgency=medium
+
+  * Team upload.
+  * Build-depend on openjdk-7-jdk >= 7u71-2.5.3 (closes: #759947).
+    This version restores the "apt" tool.
+    - Thank you to Michael Gilbert for the patch.
+
+ -- tony mancill <tmancill@debian.org>  Sat, 01 Nov 2014 19:55:32 -0700
+
 jruby (1.5.6-8) unstable; urgency=medium
 
   [ tony mancill ]
