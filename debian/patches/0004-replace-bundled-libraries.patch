@@ -27,7 +27,7 @@ Subject: replace bundled libraries
 +      <include name="asm3-util.jar"/>
 +      <include name="asm3-analysis.jar"/>
 +      <include name="asm3-tree.jar"/>
-+      <include name="libconstantine-java.jar"/>
++      <include name="jnr-constants.jar"/>
 +      <include name="joda-time.jar"/>
 +      <include name="bsf.jar"/>
 +      <include name="jline.jar"/>
@@ -38,7 +38,7 @@ Subject: replace bundled libraries
 +      <include name="jaffl.jar"/>
 +      <include name="jffi.jar"/>
 +      <include name="joni.jar"/>
-+      <include name="nailgun.jar"/>
++      <include name="nailgun-server.jar"/>
 +      <include name="yydebug.jar"/>
 +      <include name="jnr-posix.jar"/>
 +      <include name="jnr-netdb.jar"/>
@@ -47,7 +47,7 @@ Subject: replace bundled libraries
    </path>
  
    <path id="jruby.execute.classpath">
-@@ -299,38 +321,21 @@
+@@ -289,38 +311,21 @@
  
        <jar destfile="${lib.dir}/jruby.jar" compress="true" index="true">
          <fileset dir="${jruby.classes.dir}"/>
@@ -64,7 +64,7 @@ Subject: replace bundled libraries
          <zipfileset src="${build.lib.dir}/bytelist.jar"/>
 -        <zipfileset src="${build.lib.dir}/constantine.jar"/>
 -        <zipfileset src="${build.lib.dir}/jline-0.9.93.jar"/>
-+        <zipfileset src="${build.lib.dir}/libconstantine-java.jar"/>
++        <zipfileset src="${build.lib.dir}/jnr-constants.jar"/>
 +        <zipfileset src="${build.lib.dir}/jline.jar"/>
          <zipfileset src="${build.lib.dir}/jcodings.jar"/>
          <zipfileset src="${build.lib.dir}/joni.jar"/>
@@ -94,7 +94,7 @@ Subject: replace bundled libraries
          <zipfileset src="${build.lib.dir}/yydebug.jar"/>
          <zipfileset src="${build.lib.dir}/nailgun-0.7.1.jar"/>
          <metainf dir="${base.dir}/spi">
-@@ -355,15 +360,15 @@
+@@ -345,15 +350,15 @@
              <exclude name="org/jruby/ext/ffi/**/*"/>
              <exclude name="org/jruby/embed/**/*"/>
          </fileset>
@@ -104,7 +104,7 @@ Subject: replace bundled libraries
 +        <zipfileset src="${build.lib.dir}/asm3-util.jar"/>
          <zipfileset src="${build.lib.dir}/bytelist.jar"/>
 -        <zipfileset src="${build.lib.dir}/constantine.jar"/>
-+        <zipfileset src="${build.lib.dir}/libconstantine-java.jar"/>
++        <zipfileset src="${build.lib.dir}/jnr-constants.jar"/>
          <zipfileset src="${build.lib.dir}/jcodings.jar"/>
          <zipfileset src="${build.lib.dir}/joni.jar"/>
          <zipfileset src="${build.lib.dir}/jnr-netdb.jar"/>
@@ -114,7 +114,7 @@ Subject: replace bundled libraries
          <manifest>
            <attribute name="Built-By" value="${user.name}"/>
            <attribute name="Main-Class" value="org.jruby.Main"/>
-@@ -377,38 +382,21 @@
+@@ -367,38 +372,21 @@
        <taskdef name="jarjar" classname="com.tonicsystems.jarjar.JarJarTask" classpath="${build.lib.dir}/jarjar-1.0.jar"/>
        <jarjar destfile="${lib.dir}/jruby.jar" compress="true">
          <fileset dir="${jruby.classes.dir}"/>
@@ -129,7 +129,7 @@ Subject: replace bundled libraries
 +        <zipfileset src="${build.lib.dir}/asm3-util.jar"/>
 +        <zipfileset src="${build.lib.dir}/asm3-analysis.jar"/>
 +        <zipfileset src="${build.lib.dir}/asm3-tree.jar"/>
-+        <zipfileset src="${build.lib.dir}/libconstantine-java.jar"/>
++        <zipfileset src="${build.lib.dir}/jnr-constants.jar"/>
          <zipfileset src="${build.lib.dir}/bytelist.jar"/>
 -        <zipfileset src="${build.lib.dir}/jline-0.9.93.jar"/>
 +        <zipfileset src="${build.lib.dir}/jline.jar"/>
@@ -161,7 +161,7 @@ Subject: replace bundled libraries
          <zipfileset src="${build.lib.dir}/yydebug.jar"/>
          <zipfileset src="${build.lib.dir}/nailgun-0.7.1.jar"/>
          <metainf dir="${base.dir}/spi">
-@@ -472,41 +460,24 @@
+@@ -462,41 +450,24 @@
            <exclude name="META-INF/jruby.home/lib/ruby/site_ruby/shared/builtin/**"/>
            <exclude name="META-INF/jruby.home/lib/ruby/1.9/**"/>
          </fileset>
@@ -178,7 +178,7 @@ Subject: replace bundled libraries
          <zipfileset src="${build.lib.dir}/bytelist.jar"/>
 -        <zipfileset src="${build.lib.dir}/constantine.jar"/>
 -        <zipfileset src="${build.lib.dir}/jline-0.9.93.jar"/>
-+        <zipfileset src="${build.lib.dir}/libconstantine-java.jar"/>
++        <zipfileset src="${build.lib.dir}/jnr-constants.jar"/>
 +        <zipfileset src="${build.lib.dir}/jline.jar"/>
          <zipfileset src="${build.lib.dir}/jcodings.jar"/>
          <zipfileset src="${build.lib.dir}/joni.jar"/>
@@ -212,7 +212,7 @@ Subject: replace bundled libraries
          <metainf dir="${base.dir}/spi">
            <include name="services/**"/>
          </metainf>
-@@ -560,41 +531,24 @@
+@@ -550,41 +521,24 @@
          <fileset dir="${build.dir}/jar-complete">
            <exclude name="META-INF/jruby.home/lib/ruby/1.8/**"/>
          </fileset>
@@ -229,7 +229,7 @@ Subject: replace bundled libraries
          <zipfileset src="${build.lib.dir}/bytelist.jar"/>
 -        <zipfileset src="${build.lib.dir}/constantine.jar"/>
 -        <zipfileset src="${build.lib.dir}/jline-0.9.93.jar"/>
-+        <zipfileset src="${build.lib.dir}/libconstantine-java.jar"/>
++        <zipfileset src="${build.lib.dir}/jnr-constants.jar"/>
 +        <zipfileset src="${build.lib.dir}/jline.jar"/>
          <zipfileset src="${build.lib.dir}/jcodings.jar"/>
          <zipfileset src="${build.lib.dir}/joni.jar"/>
@@ -263,7 +263,7 @@ Subject: replace bundled libraries
          <metainf dir="${base.dir}/spi">
            <include name="services/**"/>
          </metainf>
-@@ -767,7 +721,7 @@
+@@ -757,7 +711,7 @@
  
    <path id="test.class.path">
      <pathelement path="${build.lib.dir}/junit.jar"/>

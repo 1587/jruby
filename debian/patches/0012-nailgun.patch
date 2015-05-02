@@ -13,7 +13,7 @@ Last-Update: 2013-11-01
          <zipfileset src="${build.lib.dir}/joda-time.jar"/>
          <zipfileset src="${build.lib.dir}/yydebug.jar"/>
 -        <zipfileset src="${build.lib.dir}/nailgun-0.7.1.jar"/>
-+        <zipfileset src="${build.lib.dir}/nailgun.jar"/>
++        <zipfileset src="${build.lib.dir}/nailgun-server.jar"/>
          <metainf dir="${base.dir}/spi">
            <include name="services/**"/>
          </metainf>
@@ -22,7 +22,7 @@ Last-Update: 2013-11-01
          <zipfileset src="${build.lib.dir}/joda-time.jar"/>
          <zipfileset src="${build.lib.dir}/yydebug.jar"/>
 -        <zipfileset src="${build.lib.dir}/nailgun-0.7.1.jar"/>
-+        <zipfileset src="${build.lib.dir}/nailgun.jar"/>
++        <zipfileset src="${build.lib.dir}/nailgun-server.jar"/>
          <metainf dir="${base.dir}/spi">
            <include name="services/**"/>
          </metainf>
@@ -31,7 +31,7 @@ Last-Update: 2013-11-01
          <zipfileset src="${build.lib.dir}/joda-time.jar"/>
          <zipfileset src="${build.lib.dir}/yydebug.jar"/>
 -        <zipfileset src="${build.lib.dir}/nailgun-0.7.1.jar"/>
-+        <zipfileset src="${build.lib.dir}/nailgun.jar"/>
++        <zipfileset src="${build.lib.dir}/nailgun-server.jar"/>
          <zipfileset src="${local.shared.lib.dir}/yecht.jar"/>
          <metainf dir="${base.dir}/spi">
            <include name="services/**"/>
@@ -40,7 +40,7 @@ Last-Update: 2013-11-01
          <zipfileset src="${build.lib.dir}/joda-time.jar"/>
          <zipfileset src="${build.lib.dir}/yydebug.jar"/>
 -        <zipfileset src="${build.lib.dir}/nailgun-0.7.1.jar"/>
-+        <zipfileset src="${build.lib.dir}/nailgun.jar"/>
++        <zipfileset src="${build.lib.dir}/nailgun-server.jar"/>
          <zipfileset src="${local.shared.lib.dir}/yecht.jar"/>
          <metainf dir="${base.dir}/spi">
            <include name="services/**"/>

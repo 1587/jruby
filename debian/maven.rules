@@ -1,1 +1,2 @@
 asm * jar s/.*/3.x/ * *
+s/org\.jruby\.extras/com.github.jnr/ s/constantine/jnr-constants/ jar s/.*/debian/ * *
