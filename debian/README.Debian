@@ -1,7 +1,0 @@
-This is the Debian package for jruby1.09, a 100% pure-Java
-implementation of ruby.
-
-Original packaging efforts courtesy of a hacker who'd rather remain
-anonymous; "keep the filth alive".
-
--- Sebastien Delafond <seb@debian.org>  Wed, 16 May 2007 18:38:29 -0700

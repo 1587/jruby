@@ -2,27 +2,69 @@ Source: jruby
 Section: ruby
 Priority: optional
 Maintainer: Debian Java Maintainers <pkg-java-maintainers@lists.alioth.debian.org>
-Uploaders: Sebastien Delafond <seb@debian.org>,
- Torsten Werner <twerner@debian.org>,
- Miguel Landaeta <nomadium@debian.org>
-Build-Depends: debhelper (>= 9~), openjdk-7-jdk (>= 7u71-2.5.3), ant-optional,
- libasm3-java, libcommons-logging-java, libjarjar-java, libjoda-time-java,
- junit4, libbsf-java, libjline-java, bnd, libjnr-constants-java,
- netbase, libjgrapht0.8-java, libjcodings-java, libbytelist-java, libjffi-java,
- libjaffl-java, libjruby-joni-java, yydebug, nailgun, libjnr-posix-java,
- libjnr-netdb-java, libyecht-java (>= 0.0.2-2~), cdbs, maven-repo-helper
+Uploaders: Miguel Landaeta <nomadium@debian.org>
+Build-Depends: ant-optional,
+               bnd,
+               cdbs,
+               debhelper (>= 9~),
+               junit4,
+               libasm4-java,
+               libbsf-java,
+               libbuild-helper-maven-plugin-java,
+               libbytelist-java (>= 1.0.12~),
+               libcommons-logging-java,
+               libheadius-options-java,
+               libinvokebinder-java,
+               libjarjar-java,
+               libjcodings-java,
+               libjffi-java (>= 1.2.7~),
+               libjgrapht0.8-java,
+               libjline2-java,
+               libjnr-constants-java,
+               libjnr-enxio-java,
+               libjnr-ffi-java,
+               libjnr-netdb-java (>= 1.1.4~),
+               libjnr-posix-java (>= 3.0.9~),
+               libjnr-unixsocket-java,
+               libjnr-x86asm-java (>= 1.0.2~),
+               libjoda-time-java,
+               libjruby-joni-java,
+               libmaven-antrun-plugin-java,
+               libmaven-assembly-plugin-java,
+               libmaven-bundle-plugin-java,
+               libmaven-compiler-plugin-java (>= 3.2~),
+               libmaven-dependency-plugin-java,
+               libmaven-exec-plugin-java,
+               libmaven-invoker-plugin-java,
+               libmaven-shade-plugin-java,
+               libproperties-maven-plugin-java,
+               libunsafe-mock-java,
+               libyaml-snake-java,
+               libyecht-java (>= 1.0~),
+               maven,
+               maven-debian-helper,
+               maven-repo-helper,
+               nailgun (>= 0.9.1~),
+               netbase,
+               openjdk-8-jdk,
+               yydebug
 Standards-Version: 3.9.6
-Homepage: http://jruby.org
+Homepage: http://jruby.org/
 Vcs-Git: git://anonscm.debian.org/pkg-java/jruby.git
 Vcs-Browser: http://anonscm.debian.org/gitweb/?p=pkg-java/jruby.git
 
 Package: jruby
 Architecture: all
-Replaces: jruby1.0, jruby1.1, jruby1.2
-Depends: default-jre | java6-runtime, ${misc:Depends}, libjffi-jni
+Depends: default-jre | java6-runtime, libjffi-jni, libjansi-java, ${misc:Depends}
 Recommends: ri
 Description: 100% pure-Java implementation of Ruby
- JRuby is a 100% pure-Java implementation of the Ruby programming language.
+ JRuby is a high performance, stable, fully threaded Java implementation
+ of the Ruby programming language.
+ .
+ JRuby is tightly integrated with Java to allow the embedding of the
+ interpreter into any Java application with full two-way access
+ between the Java and the Ruby code (similar to Jython for the Python
+ language).
  .
  JRuby provides a complete set of core "builtin" classes and syntax
  for the Ruby language, as well as most of the Ruby Standard

@@ -7,19 +7,15 @@ Remove extraneous shebang lines, and correct necessary jruby ones.
  lib/ruby/1.8/abbrev.rb                         |    1 -
  lib/ruby/1.8/irb/cmd/subirb.rb                 |    1 -
  lib/ruby/1.8/irb/ext/save-history.rb           |    1 -
- lib/ruby/1.8/matrix.rb                         |    1 -
  lib/ruby/1.8/rdoc/markup/sample/rdoc2latex.rb  |    1 -
  lib/ruby/1.8/rdoc/parsers/parse_rb.rb          |    1 -
  lib/ruby/1.8/set.rb                            |    1 -
  lib/ruby/1.8/tsort.rb                          |    1 -
  lib/ruby/1.8/wsdl/soap/wsdl2ruby.rb            |    1 -
  lib/ruby/1.9/abbrev.rb                         |    1 -
- lib/ruby/1.9/rake/rake_test_loader.rb          |    1 -
  lib/ruby/1.9/set.rb                            |    1 -
- lib/ruby/site_ruby/1.8/rubygems/digest/md5.rb  |    1 -
- lib/ruby/site_ruby/1.8/rubygems/digest/sha1.rb |    1 -
- lib/ruby/site_ruby/1.8/rubygems/digest/sha2.rb |    1 -
- 15 files changed, 0 insertions(+), 15 deletions(-)
+ lib/ruby/2.0/abbrev.rb                         |    1 -
+ 11 files changed, 0 insertions(+), 11 deletions(-)
 
 diff --git a/lib/ruby/1.8/abbrev.rb b/lib/ruby/1.8/abbrev.rb
 index 338b89f..6e2f71a 100644
@@ -48,15 +44,6 @@ index 486dc76..66aced6 100644
  #
  #   save-history.rb - 
  #   	$Release Version: 0.9.5$
-diff --git a/lib/ruby/1.8/matrix.rb b/lib/ruby/1.8/matrix.rb
-index 93ae3a9..f405d58 100644
---- a/lib/ruby/1.8/matrix.rb
-+++ b/lib/ruby/1.8/matrix.rb
-@@ -1,4 +1,3 @@
--#!/usr/local/bin/ruby
- #--
- #   matrix.rb - 
- #       $Release Version: 1.0$
 diff --git a/lib/ruby/1.8/rdoc/markup/sample/rdoc2latex.rb b/lib/ruby/1.8/rdoc/markup/sample/rdoc2latex.rb
 index 26563b7..798357e 100644
 --- a/lib/ruby/1.8/rdoc/markup/sample/rdoc2latex.rb
@@ -111,18 +98,9 @@ index 338b89f..6e2f71a 100644
 +++ b/lib/ruby/1.9/abbrev.rb
 @@ -1,4 +1,3 @@
 -#!/usr/bin/env ruby
- =begin
- #
+ #--
  # Copyright (c) 2001,2003 Akinori MUSHA <knu@iDaemons.org>
-diff --git a/lib/ruby/1.9/rake/rake_test_loader.rb b/lib/ruby/1.9/rake/rake_test_loader.rb
-index 8d7dad3..acb02d9 100644
---- a/lib/ruby/1.9/rake/rake_test_loader.rb
-+++ b/lib/ruby/1.9/rake/rake_test_loader.rb
-@@ -1,4 +1,3 @@
--#!/usr/bin/env ruby
- 
- # Load the test files from the command line.
- 
+ #
 diff --git a/lib/ruby/1.9/set.rb b/lib/ruby/1.9/set.rb
 index c57b668..3b5a3ab 100644
 --- a/lib/ruby/1.9/set.rb
@@ -132,31 +110,12 @@ index c57b668..3b5a3ab 100644
  #--
  # set.rb - defines the Set class
  #++
-diff --git a/lib/ruby/site_ruby/1.8/rubygems/digest/md5.rb b/lib/ruby/site_ruby/1.8/rubygems/digest/md5.rb
-index f924579..d0e0bb5 100644
---- a/lib/ruby/site_ruby/1.8/rubygems/digest/md5.rb
-+++ b/lib/ruby/site_ruby/1.8/rubygems/digest/md5.rb
+diff --git a/lib/ruby/2.0/abbrev.rb b/lib/ruby/2.0/abbrev.rb
+index 841f6d9..a6d0266 100755
+--- a/lib/ruby/2.0/abbrev.rb
++++ b/lib/ruby/2.0/abbrev.rb
 @@ -1,4 +1,3 @@
 -#!/usr/bin/env ruby
  #--
- # Copyright 2006 by Chad Fowler, Rich Kilmer, Jim Weirich and others.
- # All rights reserved.
-diff --git a/lib/ruby/site_ruby/1.8/rubygems/digest/sha1.rb b/lib/ruby/site_ruby/1.8/rubygems/digest/sha1.rb
-index 5a50b53..53cbed5 100644
---- a/lib/ruby/site_ruby/1.8/rubygems/digest/sha1.rb
-+++ b/lib/ruby/site_ruby/1.8/rubygems/digest/sha1.rb
-@@ -1,4 +1,3 @@
--#!/usr/bin/env ruby
- #--
- # Copyright 2006 by Chad Fowler, Rich Kilmer, Jim Weirich and others.
- # All rights reserved.
-diff --git a/lib/ruby/site_ruby/1.8/rubygems/digest/sha2.rb b/lib/ruby/site_ruby/1.8/rubygems/digest/sha2.rb
-index 5876c7a..2aae91f 100644
---- a/lib/ruby/site_ruby/1.8/rubygems/digest/sha2.rb
-+++ b/lib/ruby/site_ruby/1.8/rubygems/digest/sha2.rb
-@@ -1,4 +1,3 @@
--#!/usr/bin/env ruby
- #--
- # Copyright 2006 by Chad Fowler, Rich Kilmer, Jim Weirich and others.
- # All rights reserved.
--- 
+ # Copyright (c) 2001,2003 Akinori MUSHA <knu@iDaemons.org>
+ #

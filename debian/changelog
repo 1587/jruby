@@ -1,3 +1,52 @@
+jruby (1.7.19-1) UNRELEASED; urgency=medium
+
+  * New upstream release. (Closes: #636554, #773131, #750749).
+  * Switch build system to Maven, upstream doesn't maintain Ant one anymore:
+    - Add B-D on: cdbs, maven, maven-{debian,repo}-helper and several
+      maven plugins.
+  * Remove outdated packaging files:
+    - d/dirs, d/links, d/README.Debian, d/NEWS.Debian and a couple of
+      lintian overrides.
+  * Refresh patches:
+    - Update d/patches/0001-Fix-shebang-lines.patch.
+    - Drop unnecessary patches, some of them were merged at upstream:
+      + d/patches/0004-replace-bundled-libraries.patch
+      + d/patches/0005-ignore-test-failures.patch
+      + d/patches/0006-do-not-build-InvokeDynamicSupport.java.patch
+      + d/patches/0007-use-unversioned-jarjar.jar.patch
+      + d/patches/0008-CVE-2011-4838.patch
+      + d/patches/0009-CVE-2012-5370.patch
+      + d/patches/0010-jruby-Set-FD_CLOEXEC-correctly-using-F_SETFD-not-F_S.patch
+      + d/patches/0011-java7-compat.patch
+      + d/patches/0012-nailgun.patch
+  * Update Uploaders list:
+    - Remove Sebastien Delafond. Thanks for your work on this package!
+    - Remove Torsten Werner. Thanks for your work on this package!
+  * Update d/watch file.
+  * Update Build-Depends:
+    - Replace dependency on openjdk-7-jdk with openjdk-8-jdk.
+      Otherwise jruby will not even compile.
+    - Replace libjaffl-java with libjnr-ffi-java.
+    - Replace libjline-java with libjline2-java.
+    - Update to libyecht-java to (>= 1.0~).
+    - Update to nailgun (>= 0.9.1~).
+    - Update to bytelist (>= 1.0.12~).
+    - Update to jffi (>= 1.2.7~).
+    - Update to jnr-posix (>= 3.0.9~).
+    - Add libyaml-snake-java.
+    - Add libinvokebinder-java.
+    - Replace libasm3-java with libasm4-java.
+    - Add libjnr-x86asm-java.
+    - Update libjnr-netdb-java to (>= 1.1.4~).
+  * Update copyright file.
+  * Remove unnecessary preinst and postinst scripts.
+  * Update package description.
+  * Ship a copy of jquery library since the source package contains a
+    minified copy. This is to avoid lintian warnings, during build time
+    a link symbolic to libjs-jquery is deployed.
+
+ -- Miguel Landaeta <nomadium@debian.org>  Mon, 25 May 2015 16:53:27 -0300
+
 jruby (1.5.6-10) unstable; urgency=medium
 
   * Add myself to Uploaders list.

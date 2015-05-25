@@ -1,12 +1,2 @@
 0001-Fix-shebang-lines.patch
-0002-jruby_home-is-at-a-specific-location-on-Debian.patch
-0003-do-not-install-gems.patch
-0004-replace-bundled-libraries.patch
-0005-ignore-test-failures.patch
-0006-do-not-build-InvokeDynamicSupport.java.patch
-0007-use-unversioned-jarjar.jar.patch
-0008-CVE-2011-4838.patch
-0009-CVE-2012-5370.patch
-0010-jruby-Set-FD_CLOEXEC-correctly-using-F_SETFD-not-F_S.patch
-0011-java7-compat.patch
-0012-nailgun.patch
+0002-Fix-warning-jruby-script.patch

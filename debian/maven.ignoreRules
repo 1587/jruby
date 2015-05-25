@@ -1,0 +1,9 @@
+org.apache.maven.plugins maven-scm-publish-plugin * * * *
+org.codehaus.mojo buildnumber-maven-plugin * * * *
+de.saumya.mojo gem-maven-plugin * * * *
+io.tesla.polyglot tesla-polyglot-maven-plugin
+
+org.jruby joda-timezones * * * *
+com.headius coro-mock * * * *
+com.headius jsr292-mock * * * *
+com.github.jnr jffi jar * native *

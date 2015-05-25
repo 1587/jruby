@@ -1,6 +1,0 @@
-usr/lib/jruby/bin/jirb      usr/bin/jirb
-usr/lib/jruby/bin/jruby     usr/bin/jruby
-usr/lib/jruby/bin/jruby.rb  usr/bin/jruby.rb
-usr/lib/jruby/bin/jrubyc    usr/bin/jrubyc
-usr/lib/jruby/lib/jruby.jar usr/share/java/jruby.jar
-usr/share/ri/1.8/system     usr/lib/jruby/share/ri/1.8/system

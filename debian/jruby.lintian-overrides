@@ -1,3 +1,0 @@
-# # we really do not need to depend (or even suggest or recommend) ruby
-# # just for this script
-# jruby binary: ruby-script-but-no-ruby-dep ./usr/lib/jruby/bin/jruby.rb

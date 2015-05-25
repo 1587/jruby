@@ -1,49 +1,55 @@
 #!/usr/bin/make -f
 
 include /usr/share/cdbs/1/rules/debhelper.mk
-include /usr/share/cdbs/1/class/ant.mk
+include /usr/share/cdbs/1/class/maven.mk
 
-JAVA_HOME            := /usr/lib/jvm/java-7-openjdk-$(DEB_BUILD_ARCH)
-DEB_ANT_CLEAN_TARGET := clean-all
-DEB_ANT_BUILD_TARGET := -Ddev.gems=false -DdocsNotNeeded=true \
-    -Dshared.lib.dir=/usr/share/java test dist-bin
-DEB_JARS             := ant-junit junit4
-UVERSION             := $(shell dpkg-parsechangelog | grep ^Version: | sed 's/^.*: \(.*\)-\(.*\)$$/\1/')
+#JAVA_HOME := /usr/lib/jvm/default-java
+# upstream code directly from git repo builds with
+# openjdk-7-jdk, I have to find out how/why
+JAVA_HOME := /usr/lib/jvm/java-8-openjdk-$(DEB_BUILD_ARCH)
+MAVEN_HOME = /usr/share/maven
+DEB_MAVEN_ARGS := -Pdist
+DEB_CLASSPATH = $(MAVEN_HOME)/boot/plexus-classworlds-2.x.jar
+DEB_MAVEN_INVOKE = cd $(DEB_BUILDDIR) && $(JAVACMD) -classpath $(DEB_CLASSPATH) \
+		 $(JAVA_OPTS) -Dclassworlds.conf=$(CURDIR)/debian/m2.conf \
+		 org.codehaus.plexus.classworlds.launcher.Launcher \
+		 -s/etc/maven2/settings-debian.xml \
+		 -Dmaven.repo.local=$(DEB_MAVEN_REPO) \
+		 $(if $(DEB_MAVEN_ARGS_$(cdbs_curpkg)),$(DEB_MAVEN_ARGS_$(cdbs_curpkg)),$(DEB_MAVEN_ARGS))
 
-# must be set to avoid test failures
-export BUILDING_JRUBY := true
+maven-sanity-check:
+	@if ! test -x "$(JAVACMD)"; then \
+		echo "You must specify a valid JAVA_HOME or JAVACMD!"; \
+		exit 1; \
+	fi
+	@if ! test -r "$(MAVEN_HOME)/boot/plexus-classworlds-2.x.jar"; then \
+		echo "You must specify a valid MAVEN_HOME directory!"; \
+		exit 1; \
+	fi
 
-clean::
-	$(RM) lib/ruby/site_ruby/shared/yecht.jar debian/stamp-yecht
-	# strange workaround for dpkg-source
-	$(RM) bin/jruby
-	rm -f test/testapp/testapp
-	mh_clean
+pre-build::
+	mkdir -p lib/jni
 
-pre-build:: debian/stamp-yecht
-debian/stamp-yecht:
-	# symlink system yecht-ruby jar into shared directory
-	ln -s /usr/share/java/yecht-ruby.jar lib/ruby/site_ruby/shared/yecht.jar
-	touch $@
-
-JRUBY_LIB_DIR := $(DEB_DESTDIR)/usr/lib/jruby
+common-install-prehook-indep::
+	mkdir -p target/package
+	tar zxf ./maven/jruby-dist/target/jruby-dist-1.7.19-bin.tar.gz -C target/package --strip-components=1
+	cd target/package/bin && mv jruby.sh jruby
+	cd target/package/bin && chmod 0755 *
+	rm target/package/lib/ruby/2.0/rdoc/generator/template/darkfish/js/jquery.js
 
 install/jruby::
-	tar -z -x -f dist/jruby-bin-*.tar.gz --strip 1 -C $(JRUBY_LIB_DIR)
-	# Remove all of the VCS directories
-	find $(JRUBY_LIB_DIR) -name '.svn'  -delete
-	find $(JRUBY_LIB_DIR) -name '.git*' -delete
-	find $(JRUBY_LIB_DIR) -name '*.bat' -delete
-	# remove extra docs
-	$(RM) -r $(JRUBY_LIB_DIR)/docs $(JRUBY_LIB_DIR)/COPYING* $(JRUBY_LIB_DIR)/LICENSE.RUBY
-	# remove libjnidispatch.so, to keep the package 
-	# architecture-independent; will put it in itw own
-	# separate package later on, if need be.
-	$(RM) -r $(JRUBY_LIB_DIR)/lib/native
-	# Remove all empty directories
-	find $(DEB_DESTDIR) -depth -follow -type d -empty -delete
-	mh_installpoms -pjruby
-	mh_installjar -pjruby --java-lib maven/jruby/pom.xml $(JRUBY_LIB_DIR)/lib/jruby.jar
-	rm -f $(DEB_DESTDIR)/usr/share/java/jruby*.jar
-	dh_link usr/share/java/jruby.jar usr/share/java/jruby-$(UVERSION).jar
+	rm -rf debian/jruby/usr/share/maven-repo/*
+	rm debian/jruby/usr/share/java/*
+	mh_installpom -pjruby --no-parent core/pom.xml
+	mh_installjar -pjruby --java-lib  core/pom.xml target/package/lib/jruby.jar
 
+clean::
+	-rm -rf                     \
+	bin/jruby                  \
+	core/target/               \
+	lib/jruby.jar              \
+	target/                    \
+	maven/jruby-dist/target/   \
+	maven/jruby-stdlib/target/ \
+	maven/target/              \
+	core/src/main/java/org/jruby/runtime/Constants.java

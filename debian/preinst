@@ -1,9 +1,0 @@
-#! /bin/sh
-
-set -e
-
-if [ -d /usr/lib/jruby/share/ri/1.8/system ]; then
-  rm -rf /usr/lib/jruby/share/ri/1.8/system
-fi
-
-#DEBHELPER#
