@@ -1,4 +1,4 @@
-require 'test_optparse'
+require_relative 'test_optparse'
 
 module TestOptionParser::ReqArg
   class Def1 < TestOptionParser
@@ -7,6 +7,8 @@ module TestOptionParser::ReqArg
       super
       @opt.def_option("-xVAL") {|x| @flag = x}
       @opt.def_option("--option=VAL") {|x| @flag = x}
+      @opt.def_option("--regexp=REGEXP", Regexp) {|x| @reopt = x}
+      @reopt = nil
     end
   end
   class Def2 < TestOptionParser

@@ -5,7 +5,7 @@ require 'rbconfig'
 class TestBackquote < Test::Unit::TestCase
   include TestHelper
 
-  WINDOWS = Config::CONFIG['host_os'] =~ /Windows|mswin/
+  WINDOWS = RbConfig::CONFIG['host_os'] =~ /Windows|mswin/
   def test_backquote_special_commands
     if File.exists?("/bin/echo")
       output = `/bin/echo hello`
@@ -23,10 +23,6 @@ class TestBackquote < Test::Unit::TestCase
       assert(! system("/bin/false"))
       assert($?.exitstatus > 0)
     end
-  end
-
-  def test_backquote_ruby
-    assert_equal "true\n", `ruby -e "puts true"`
   end
 
   #JRUBY-2251
@@ -53,7 +49,7 @@ class TestBackquote < Test::Unit::TestCase
 
       assert_equal "arguments: one two\n", `./arguments one two 2> /dev/null`
       assert_equal "", `./arguments three four > /dev/null`
-      ruby = File.join(Config::CONFIG['bindir'], Config::CONFIG['ruby_install_name'])
+      ruby = File.join(RbConfig::CONFIG['bindir'], RbConfig::CONFIG['ruby_install_name'])
       assert_equal "arguments: five six\n", jruby(%{-e 'puts "arguments: five six"' 2> /dev/null})
     end
   ensure

@@ -63,10 +63,11 @@ class TestJavaExtension < Test::Unit::TestCase
     a << 1
     a << 2
 
-    assert([1, 2, 3], a.sort)
-		assert([1, 2], a[2...3])
-		assert([3, 1], a[0, 2])
-    assert([1], a.select {|e| e >= 1 })
+    # Java 8 defines one-arg sort on all List impls that masks ours. See #1249.
+    assert_equal([1, 2, 3], a.sort.to_a) if a.method(:sort).arity == 0
+    assert_equal([1, 2], a[1...3].to_a)
+    assert_equal([3, 1], a[0, 2].to_a)
+    assert_equal([3, 2], a.select {|e| e > 1 })
   end
 
   import org.jruby.test.TestHelper
@@ -191,9 +192,15 @@ class TestJavaExtension < Test::Unit::TestCase
         result = obj.synchronized { "foo" }
     }
     assert_equal("foo", result)
-    assert_raises(NativeException) {
-        obj.wait 1
-    }
+    
+    begin
+      obj.wait 1
+    rescue java.lang.IllegalMonitorStateException
+      assert true
+    else
+      assert false, "java.lang.IllegalMonitorStateException was not thrown"
+    end
+    
     assert_nothing_raised {
         obj.synchronized { obj.wait 1 }
     }

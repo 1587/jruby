@@ -1,6 +1,8 @@
 require File.expand_path('../../ant_spec_helper', __FILE__)
 
-describe Ant, "tasks:", :type => :ant do
+describe Ant, "tasks:" do
+  include Ant::RSpec::AntExampleGroup
+
   before :all do
     # The single example ant project these specs will validate
     @output = output = "ant-file#{rand}.txt"
@@ -9,7 +11,7 @@ describe Ant, "tasks:", :type => :ant do
       property :name => "jar", :value => "spec-test.jar"
       property :name => "dir", :value => "build"
       taskdef :name => "jarjar", :classname => "com.tonicsystems.jarjar.JarJarTask",
-        :classpath => "${basedir}/build_lib/jarjar-1.0.jar"
+        :classpath => "${basedir}/test/target/jarjar.jar"
 
       target :jar do
         jar :destfile => "${jar}", :compress => "true", :index => "true" do

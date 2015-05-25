@@ -1,7 +1,7 @@
 require File.dirname(__FILE__) + "/../spec_helper"
 
 # for DefaultPackageClass
-$CLASSPATH << File.dirname(__FILE__) + "/../../../build/classes/test"
+$CLASSPATH << File.dirname(__FILE__) + "/../../../target/test-classes"
 
 describe "A Java package" do
   it 'is accessible directly when starting with java, javax, com, or org' do
@@ -40,6 +40,16 @@ describe "A Java package" do
     m = Module.new { import 'java.lang' }
     m::System.should respond_to 'getProperty'
   end
+
+  it "supports const_get" do
+    java.util.const_get("Arrays").should respond_to "asList"
+  end
+
+  if RUBY_VERSION =~ /1\.9/
+    it "supports const_get with inherit argument" do
+      java.util.const_get("Arrays", false).should respond_to "asList"
+    end
+  end
 end
 
 describe "A class in the default package" do
@@ -50,5 +60,11 @@ describe "A class in the default package" do
     end
     Java::DefaultPackageClass.new.bar.should == "bar"
     Java::DefaultPackageClass.new.foo.should == "foo"
+  end
+
+  it "does not failover to a package if there are classloading errors" do
+    lambda do
+      Java::BadStaticInit.new
+    end.should raise_error(NameError)
   end
 end

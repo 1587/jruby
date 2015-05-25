@@ -43,7 +43,7 @@ class TestEnumerator < Test::Unit::TestCase
     }
   end
 
-  def test_nested_itaration
+  def test_nested_iteration
     def (o = Object.new).each
       yield :ok1
       yield [:ok2, :x].each.next
@@ -332,6 +332,55 @@ class TestEnumerator < Test::Unit::TestCase
     assert_equal(10, exc.result)
   end
 
+  def test_inspect
+    e = (0..10).each_cons(2)
+    assert_equal("#<Enumerator: 0..10:each_cons(2)>", e.inspect)
 
+    e = Enumerator.new {|y| x = y.yield; 10 }
+    assert_match(/\A#<Enumerator: .*:each>/, e.inspect)
+
+    a = []
+    e = a.each_with_object(a)
+    a << e
+    assert_equal("#<Enumerator: [#<Enumerator: ...>]:each_with_object([#<Enumerator: ...>])>",
+		e.inspect)
+  end
+
+  def test_generator
+    # note: Enumerator::Generator is a class just for internal
+    g = Enumerator::Generator.new {|y| y << 1 << 2 << 3; :foo }
+    g2 = g.dup
+    a = []
+    assert_equal(:foo, g.each {|x| a << x })
+    assert_equal([1, 2, 3], a)
+    a = []
+    assert_equal(:foo, g2.each {|x| a << x })
+    assert_equal([1, 2, 3], a)
+  end
+
+  def test_yielder
+    # note: Enumerator::Yielder is a class just for internal
+    a = []
+    y = Enumerator::Yielder.new {|x| a << x }
+    assert_equal(y, y << 1 << 2 << 3)
+    assert_equal([1, 2, 3], a)
+
+    a = []
+    y = Enumerator::Yielder.new {|x| a << x }
+    assert_equal([1], y.yield(1))
+    assert_equal([1, 2], y.yield(2))
+    assert_equal([1, 2, 3], y.yield(3))
+
+    assert_raise(LocalJumpError) { Enumerator::Yielder.new }
+  end
+
+  def test_peek_for_enumerator_objects
+    e = 2.times
+    assert_equal(0, e.peek)
+    e.next
+    assert_equal(1, e.peek)
+    e.next
+    assert_raise(StopIteration) { e.peek }
+  end
 end
 

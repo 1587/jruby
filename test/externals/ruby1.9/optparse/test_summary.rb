@@ -1,8 +1,6 @@
-require 'test/unit'
-require 'optparse'
+require_relative 'test_optparse'
 
-class TestOptionParser < Test::Unit::TestCase; end
-class TestOptionParser::SummaryTest < Test::Unit::TestCase
+class TestOptionParser::SummaryTest < TestOptionParser
   def test_short_clash
     r = nil
     o = OptionParser.new do |opts|
@@ -19,5 +17,22 @@ class TestOptionParser::SummaryTest < Test::Unit::TestCase
     assert_match(/description 1/, s[0])
     assert_match(/description 2/, s[1])
     assert_match(/last-option/, s[-1])
+  end
+
+  def test_banner
+    o = OptionParser.new("foo bar")
+    assert_equal("foo bar", o.banner)
+  end
+
+  def test_banner_from_progname
+    o = OptionParser.new
+    o.program_name = "foobar"
+    assert_equal("Usage: foobar [options]\n", o.help)
+  end
+
+  def test_summary
+    o = OptionParser.new("foo\nbar")
+    assert_equal("foo\nbar\n", o.to_s)
+    assert_equal(["foo\n", "bar"], o.to_a)
   end
 end

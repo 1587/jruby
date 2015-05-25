@@ -36,7 +36,7 @@ class TestLDAP < Test::Unit::TestCase
     assert_equal(nil, u.extensions)
 
     # from RFC2255, section 6.
-    urls = {
+    {
       'ldap:///o=University%20of%20Michigan,c=US' =>
       ['ldap', nil, URI::LDAP::DEFAULT_PORT,
 	'o=University%20of%20Michigan,c=US',
@@ -81,8 +81,8 @@ class TestLDAP < Test::Unit::TestCase
       ['ldap', nil, URI::LDAP::DEFAULT_PORT,
 	'',
 	nil, 'sub', nil, '!bindname=cn=Manager%2co=Foo'],
-    }.each do |url, ary|
-      u = URI.parse(url)
+    }.each do |url2, ary|
+      u = URI.parse(url2)
       assert_equal(ary, uri_to_ary(u))
     end
   end

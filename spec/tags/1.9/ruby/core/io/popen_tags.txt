@@ -1,4 +1,4 @@
-critical(hangs):IO::popen allows the io to be closed inside the block
-unstable:IO::popen writes to a write-only pipe
+unstable(JRUBY-4171,linux,intermittent failure):IO.popen writes to a write-only pipe
 fails:IO.popen starts returns a forked process if the command is -
-windows(JRUBY-4701):IO.popen returns the IO if no block given
+fails(JRUBY-5663):IO.popen with a leading Array parameter uses a trailing Hash in the Array for spawn-like settings
+fails:IO.popen does not throw an exception if child exited and has been waited for

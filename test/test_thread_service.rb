@@ -4,39 +4,58 @@ require 'jruby'
 class TestThreadService < Test::Unit::TestCase
   GC_COUNT = 10
   
+  def setup
+    @service = JRuby.runtime.thread_service
+  end
+  
+  def wait_for_list_size(start_rt)
+    start_time = Time.now
+    until @service.ruby_thread_map.size == start_rt || (Time.now - start_time > 30)
+      JRuby.gc
+    end
+  end
+  
   def test_ruby_thread_leaks
-    svc = JRuby.runtime.thread_service
-    start_rt = svc.ruby_thread_map.size
+    start_rt = @service.ruby_thread_map.size
     
     # spin up 100 threads and join them
     (1..10).to_a.map {Thread.new {}}.map(&:join)
     
-    # access maps and GC a couple times to flush things out
-    svc.ruby_thread_map.size
-    GC_COUNT.times {JRuby.gc}
+    # access map and GC repeatedly for a while to flush things out
+    wait_for_list_size(start_rt)
     
     # confirm the size goes back to the same
-    assert_equal start_rt, svc.ruby_thread_map.size
+    assert_equal start_rt, @service.ruby_thread_map.size
+  end
+
+  def join_java_threads
+    # spin up Java threads and join them
+    #
+    # In the IR interpreter, placing this loop in a separate method ensures
+    # that there is no live ref to the thread-array in the interpreter
+    # tmp var array.  This can actually happen in some scenarios.  This is
+    # not quite a correctness issue, but more a problem with the expectation
+    # about when GC will run and what it can collect.
+    (1..10).to_a.map {t = java.lang.Thread.new {}; t.start; t}.map(&:join)
   end
   
   def test_java_thread_leaks
-    svc = JRuby.runtime.thread_service
-    start_rt = svc.ruby_thread_map.size
+    start_rt = @service.ruby_thread_map.size
 
     # spin up 100 Java threads and join them
-    (1..10).to_a.map {t = java.lang.Thread.new {}; t.start; t}.map(&:join)
+    join_java_threads
     
-    # access maps and GC a couple times to flush things out
-    svc.ruby_thread_map.size
-    GC_COUNT.times {JRuby.gc}
+    # access map and GC repeatedly for a while to flush things out
+    wait_for_list_size(start_rt)
 
     # confirm the size goes back to the same
-    assert_equal start_rt, svc.ruby_thread_map.size
+    assert_equal start_rt, @service.ruby_thread_map.size
   end
   
   def test_java_threads_in_thread_list
     svc = JRuby.runtime.thread_service
     start_list = Thread.list
+    start_rt = @service.ruby_thread_map.size
     
     # spin up 100 Java threads and wait for them all to be ready
     state_ary = [false] * 10
@@ -60,9 +79,8 @@ class TestThreadService < Test::Unit::TestCase
     threads.map(&:join)
     threads = nil
     
-    # access maps and GC a couple times to flush things out
-    svc.ruby_thread_map.size
-    GC_COUNT.times {JRuby.gc}
+    # access map and GC repeatedly for a while to flush things out
+    wait_for_list_size(start_rt)
     
     # confirm the thread list is back to what it was
     assert_equal start_list, Thread.list

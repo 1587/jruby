@@ -60,6 +60,15 @@ class TestSocket < Test::Unit::TestCase
     assert_raise(SocketError) { Socket.getaddrinfo("www.kame.net", 80, "AF_UNIX") }
   end
 
+  def test_getaddrinfo_raises_no_errors_on_port_argument_of_0 # [ruby-core:29427]
+    assert_nothing_raised('[ruby-core:29427]'){ Socket.getaddrinfo('localhost', 0, Socket::AF_INET, Socket::SOCK_STREAM, nil, Socket::AI_CANONNAME) }
+    assert_nothing_raised('[ruby-core:29427]'){ Socket.getaddrinfo('localhost', '0', Socket::AF_INET, Socket::SOCK_STREAM, nil, Socket::AI_CANONNAME) }
+    assert_nothing_raised('[ruby-core:29427]'){ Socket.getaddrinfo('localhost', '00', Socket::AF_INET, Socket::SOCK_STREAM, nil, Socket::AI_CANONNAME) }
+    assert_raise(SocketError, '[ruby-core:29427]'){ Socket.getaddrinfo(nil, nil, Socket::AF_INET, Socket::SOCK_STREAM, nil, Socket::AI_CANONNAME) }
+    assert_nothing_raised('[ruby-core:29427]'){ TCPServer.open('localhost', 0) {} }
+  end
+
+
   def test_getnameinfo
     assert_raise(SocketError) { Socket.getnameinfo(["AF_UNIX", 80, "0.0.0.0"]) }
   end
@@ -96,11 +105,15 @@ class TestSocket < Test::Unit::TestCase
     49152 + rand(65535-49152+1)
   end
 
+  def errors_addrinuse
+    [Errno::EADDRINUSE]
+  end
+
   def test_tcp_server_sockets
     port = random_port
     begin
       sockets = Socket.tcp_server_sockets(port)
-    rescue Errno::EADDRINUSE
+    rescue *errors_addrinuse
       return # not test failure
     end
     begin
@@ -191,7 +204,7 @@ class TestSocket < Test::Unit::TestCase
           assert_equal(clients.length, accepted.length)
         ensure
           tcp_servers.each {|s| s.close if !s.closed?  }
-          unix_server.close if !unix_server.closed?
+          unix_server.close if unix_server && !unix_server.closed?
           clients.each {|s| s.close if !s.closed?  }
           accepted.each {|s| s.close if !s.closed?  }
         end
@@ -262,8 +275,32 @@ class TestSocket < Test::Unit::TestCase
 
     Socket.udp_server_sockets(0) {|sockets|
       famlies = {}
-      sockets.each {|s| famlies[s.local_address.afamily] = true }
-      ip_addrs.reject! {|ai| !famlies[ai.afamily] }
+      sockets.each {|s| famlies[s.local_address.afamily] = s }
+      ip_addrs.reject! {|ai|
+        s = famlies[ai.afamily]
+        next true unless s
+        case RUBY_PLATFORM
+        when /linux/
+          if ai.ip_address.include?('%') and
+            (`uname -r`[/[0-9.]+/].split('.').map(&:to_i) <=> [2,6,18]) <= 0
+            # Cent OS 5.6 (2.6.18-238.19.1.el5xen) doesn't correctly work
+            # sendmsg with pktinfo for link-local ipv6 addresses
+            next true
+          end
+        when /freebsd/
+          if ifr_name = ai.ip_address[/%(.*)/, 1]
+            # FreeBSD 9.0 with default setting (ipv6_activate_all_interfaces
+            # is not YES) sets IFDISABLED to interfaces which don't have
+            # global IPv6 address.
+            # Link-local IPv6 addresses on those interfaces don't work.
+            ulSIOCGIFINFO_IN6 = -1068996244
+            bIFDISABLED = 4
+            in6_ifreq = ifr_name
+            s.ioctl(ulSIOCGIFINFO_IN6, in6_ifreq)
+            next true if in6_ifreq.unpack('A16L6').last[bIFDISABLED-1] == 1
+          end
+        end
+      }
       skipped = false
       begin
         port = sockets.first.local_address.ip_port
@@ -281,7 +318,7 @@ class TestSocket < Test::Unit::TestCase
             msg1 = "<<<#{ai.inspect}>>>"
             s.sendmsg msg1
             unless IO.select([s], nil, nil, 10)
-              raise "no response"
+              raise "no response from #{ai.inspect}"
             end
             msg2, addr = s.recvmsg
             msg2, remote_address, local_address = Marshal.load(msg2)
@@ -289,7 +326,7 @@ class TestSocket < Test::Unit::TestCase
             assert_equal(ai.ip_address, addr.ip_address)
           }
         }
-      rescue NotImplementedError
+      rescue NotImplementedError, Errno::ENOSYS
         skipped = true
         skip "need sendmsg and recvmsg"
       ensure
@@ -397,4 +434,24 @@ class TestSocket < Test::Unit::TestCase
     assert_equal(stamp.data[-8,8].unpack("Q")[0], t.subsec * 2**64)
   end
 
+  def test_closed_read
+    require 'timeout'
+    require 'socket'
+    bug4390 = '[ruby-core:35203]'
+    server = TCPServer.new("localhost", 0)
+    serv_thread = Thread.new {server.accept}
+    begin sleep(0.1) end until serv_thread.stop?
+    sock = TCPSocket.new("localhost", server.addr[1])
+    client_thread = Thread.new do
+      sock.readline
+    end
+    begin sleep(0.1) end until client_thread.stop?
+    Timeout.timeout(1) do
+      sock.close
+      sock = nil
+      assert_raise(IOError, bug4390) {client_thread.join}
+    end
+  ensure
+    server.close
+  end
 end if defined?(Socket)

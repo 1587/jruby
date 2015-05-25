@@ -41,7 +41,7 @@ class TestOpenURI < Test::Unit::TestCase
   end
 
   def setup
-    @proxies = %w[http_proxy ftp_proxy no_proxy]
+    @proxies = %w[http_proxy HTTP_PROXY ftp_proxy FTP_PROXY no_proxy]
     @old_proxies = @proxies.map {|k| ENV[k] }
     @proxies.each {|k| ENV[k] = nil }
   end
@@ -379,7 +379,7 @@ class TestOpenURI < Test::Unit::TestCase
 
   def test_progress
     with_http {|srv, dr, url|
-      content = "a" * 10000
+      content = "a" * 100000
       srv.mount_proc("/data/") {|req, res| res.body = content }
       length = []
       progress = []
@@ -389,7 +389,9 @@ class TestOpenURI < Test::Unit::TestCase
           ) {|f|
         assert_equal(1, length.length)
         assert_equal(content.length, length[0])
-        assert_equal(content.length, progress.inject(&:+))
+        assert(progress.length>1,"maybe test is wrong")
+        assert(progress.sort == progress,"monotone increasing expected but was\n#{progress.inspect}")
+        assert_equal(content.length, progress[-1])
         assert_equal(content, f.read)
       }
     }
@@ -397,7 +399,7 @@ class TestOpenURI < Test::Unit::TestCase
 
   def test_progress_chunked
     with_http {|srv, dr, url|
-      content = "a" * 10000
+      content = "a" * 100000
       srv.mount_proc("/data/") {|req, res| res.body = content; res.chunked = true }
       length = []
       progress = []
@@ -407,7 +409,9 @@ class TestOpenURI < Test::Unit::TestCase
           ) {|f|
         assert_equal(1, length.length)
         assert_equal(nil, length[0])
-        assert_equal(content.length, progress.inject(&:+))
+        assert(progress.length>1,"maybe test is worng")
+        assert(progress.sort == progress,"monotone increasing expected but was\n#{progress.inspect}")
+        assert_equal(content.length, progress[-1])
         assert_equal(content, f.read)
       }
     }
@@ -527,7 +531,7 @@ class TestOpenURI < Test::Unit::TestCase
     with_env('http_proxy'=>'http://127.0.0.1:8080', 'HTTP_PROXY'=>'http://127.0.0.1:8081', 'REQUEST_METHOD'=>'GET') {
       assert_equal(URI('http://127.0.0.1:8080'), URI("http://192.0.2.1/").find_proxy)
     }
-  end
+  end unless RUBY_PLATFORM =~ /mswin|mingw/
 
   def test_ftp_invalid_request
     assert_raise(ArgumentError) { URI("ftp://127.0.0.1/").read }

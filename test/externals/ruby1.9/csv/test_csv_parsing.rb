@@ -7,10 +7,9 @@
 #  Copyright 2005 James Edward Gray II. You can redistribute or modify this code
 #  under the terms of Ruby's license.
 
-require "test/unit"
 require "timeout"
 
-require "csv"
+require_relative "base"
 
 #
 # Following tests are my interpretation of the
@@ -18,7 +17,9 @@ require "csv"
 # document in one place (intentionally) and that is to make the default row
 # separator <tt>$/</tt>.
 #
-class TestCSVParsing < Test::Unit::TestCase
+class TestCSV::Parsing < TestCSV
+  extend DifferentOFS
+
   BIG_DATA = "123456789\n" * 1024
 
   def test_mastering_regex_example
@@ -115,6 +116,34 @@ class TestCSVParsing < Test::Unit::TestCase
     assert_equal(Array.new, CSV.parse_line("\n1,2,3\n"))
   end
 
+  def test_rob_edge_cases
+    [ [%Q{"a\nb"},                         ["a\nb"]],
+      [%Q{"\n\n\n"},                       ["\n\n\n"]],
+      [%Q{a,"b\n\nc"},                     ['a', "b\n\nc"]],
+      [%Q{,"\r\n"},                        [nil,"\r\n"]],
+      [%Q{,"\r\n."},                       [nil,"\r\n."]],
+      [%Q{"a\na","one newline"},           ["a\na", 'one newline']],
+      [%Q{"a\n\na","two newlines"},        ["a\n\na", 'two newlines']],
+      [%Q{"a\r\na","one CRLF"},            ["a\r\na", 'one CRLF']],
+      [%Q{"a\r\n\r\na","two CRLFs"},       ["a\r\n\r\na", 'two CRLFs']],
+      [%Q{with blank,"start\n\nfinish"\n}, ['with blank', "start\n\nfinish"]],
+    ].each do |edge_case|
+      assert_equal(edge_case.last, CSV.parse_line(edge_case.first))
+    end
+  end
+
+  def test_non_regex_edge_cases
+    # An early version of the non-regex parser fails this test
+    [ [ "foo,\"foo,bar,baz,foo\",\"foo\"",
+        ["foo", "foo,bar,baz,foo", "foo"] ] ].each do |edge_case|
+      assert_equal(edge_case.last, CSV.parse_line(edge_case.first))
+    end
+
+    assert_raise(CSV::MalformedCSVError) do
+      CSV.parse_line("1,\"23\"4\"5\", 6")
+    end
+  end
+
   def test_malformed_csv
     assert_raise(CSV::MalformedCSVError) do
       CSV.parse_line("1,2\r,3", row_sep: "\n")
@@ -162,7 +191,7 @@ class TestCSVParsing < Test::Unit::TestCase
         assert_send([csv.lineno, :<, 4])
       end
     rescue CSV::MalformedCSVError
-      assert_equal("Illegal quoting on line 4.", $!.message)
+      assert_equal("Illegal quoting in line 4.", $!.message)
     end
   end
 

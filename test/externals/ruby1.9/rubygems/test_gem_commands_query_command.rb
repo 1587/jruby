@@ -1,7 +1,7 @@
-require_relative 'gemutilities'
+require 'rubygems/test_case'
 require 'rubygems/commands/query_command'
 
-class TestGemCommandsQueryCommand < RubyGemTestCase
+class TestGemCommandsQueryCommand < Gem::TestCase
 
   def setup
     super
@@ -9,8 +9,8 @@ class TestGemCommandsQueryCommand < RubyGemTestCase
     @cmd = Gem::Commands::QueryCommand.new
 
     util_setup_fake_fetcher
-
-    @si = util_setup_spec_fetcher @a1, @a2, @pl1, @a3a
+    util_clear_gems
+    util_setup_spec_fetcher @a1, @a2, @pl1, @a3a
 
     @fetcher.data["#{@gem_repo}Marshal.#{Gem.marshal_version}"] = proc do
       raise Gem::RemoteFetcher::FetchError
@@ -29,7 +29,35 @@ class TestGemCommandsQueryCommand < RubyGemTestCase
 *** REMOTE GEMS ***
 
 a (2)
-pl (1)
+pl (1 i386-linux)
+    EOF
+
+    assert_equal expected, @ui.output
+    assert_equal '', @ui.error
+  end
+
+  def test_execute_platform
+    @a1r = @a1.dup
+
+    @a1.platform = 'x86-linux'
+    @a2.platform = 'universal-darwin'
+
+    util_clear_gems
+    util_setup_spec_fetcher @a1, @a1r, @a2, @b2, @pl1
+
+    @cmd.handle_options %w[-r -a]
+
+    use_ui @ui do
+      @cmd.execute
+    end
+
+    expected = <<-EOF
+
+*** REMOTE GEMS ***
+
+a (2 universal-darwin, 1 ruby x86-linux)
+b (2)
+pl (1 i386-linux)
     EOF
 
     assert_equal expected, @ui.output
@@ -37,9 +65,6 @@ pl (1)
   end
 
   def test_execute_all
-    a1_name = @a1.full_name
-    a2_name = @a2.full_name
-
     @cmd.handle_options %w[-r --all]
 
     use_ui @ui do
@@ -51,7 +76,26 @@ pl (1)
 *** REMOTE GEMS ***
 
 a (2, 1)
-pl (1)
+pl (1 i386-linux)
+    EOF
+
+    assert_equal expected, @ui.output
+    assert_equal '', @ui.error
+  end
+
+  def test_execute_all_prerelease
+    @cmd.handle_options %w[-r --all --prerelease]
+
+    use_ui @ui do
+      @cmd.execute
+    end
+
+    expected = <<-EOF
+
+*** REMOTE GEMS ***
+
+a (3.a, 2, 1)
+pl (1 i386-linux)
     EOF
 
     assert_equal expected, @ui.output
@@ -64,7 +108,8 @@ pl (1)
     @a2.homepage = 'http://a.example.com/'
     @a2.rubyforge_project = 'rubygems'
 
-    @si = util_setup_spec_fetcher @a1, @a2, @pl1
+    util_clear_gems
+    util_setup_spec_fetcher @a1, @a2, @pl1
 
     @cmd.handle_options %w[-r -d]
 
@@ -105,7 +150,8 @@ pl (1)
     @a2.rubyforge_project = 'rubygems'
     @a2.platform = 'universal-darwin'
 
-    @si = util_setup_spec_fetcher @a1, @a2, @pl1
+    util_clear_gems
+    util_setup_spec_fetcher @a1, @a2, @pl1
 
     @cmd.handle_options %w[-r -d]
 
@@ -141,25 +187,22 @@ pl (1)
   end
 
   def test_execute_installed
-    @cmd.handle_options %w[-n c --installed]
+    @cmd.handle_options %w[-n a --installed]
 
-    e = assert_raises Gem::SystemExitException do
+    assert_raises Gem::MockGemUi::SystemExitException do
       use_ui @ui do
         @cmd.execute
       end
     end
 
-    assert_equal 0, e.exit_code
-
     assert_equal "true\n", @ui.output
-
     assert_equal '', @ui.error
   end
 
   def test_execute_installed_no_name
     @cmd.handle_options %w[--installed]
 
-    e = assert_raises Gem::SystemExitException do
+    e = assert_raises Gem::MockGemUi::TermError do
       use_ui @ui do
         @cmd.execute
       end
@@ -174,7 +217,7 @@ pl (1)
   def test_execute_installed_not_installed
     @cmd.handle_options %w[-n not_installed --installed]
 
-    e = assert_raises Gem::SystemExitException do
+    e = assert_raises Gem::MockGemUi::TermError do
       use_ui @ui do
         @cmd.execute
       end
@@ -187,9 +230,9 @@ pl (1)
   end
 
   def test_execute_installed_version
-    @cmd.handle_options %w[-n c --installed --version 1.2]
+    @cmd.handle_options %w[-n a --installed --version 2]
 
-    e = assert_raises Gem::SystemExitException do
+    assert_raises Gem::MockGemUi::SystemExitException do
       use_ui @ui do
         @cmd.execute
       end
@@ -197,14 +240,12 @@ pl (1)
 
     assert_equal "true\n", @ui.output
     assert_equal '', @ui.error
-
-    assert_equal 0, e.exit_code
   end
 
   def test_execute_installed_version_not_installed
     @cmd.handle_options %w[-n c --installed --version 2]
 
-    e = assert_raises Gem::SystemExitException do
+    e = assert_raises Gem::MockGemUi::TermError do
       use_ui @ui do
         @cmd.execute
       end
@@ -214,120 +255,6 @@ pl (1)
     assert_equal '', @ui.error
 
     assert_equal 1, e.exit_code
-  end
-
-  def test_execute_legacy
-    Gem::SpecFetcher.fetcher = nil
-    si = util_setup_source_info_cache @a1, @a2, @pl1
-
-    @fetcher.data["#{@gem_repo}yaml"] = YAML.dump si
-    @fetcher.data["#{@gem_repo}Marshal.#{Gem.marshal_version}"] =
-      si.dump
-
-    @fetcher.data.delete "#{@gem_repo}latest_specs.#{Gem.marshal_version}.gz"
-
-    @cmd.handle_options %w[-r]
-
-    use_ui @ui do
-      @cmd.execute
-    end
-
-    expected = <<-EOF
-
-*** REMOTE GEMS ***
-
-a (2)
-pl (1)
-    EOF
-
-    assert_equal expected, @ui.output
-
-    expected = <<-EOF
-WARNING:  RubyGems 1.2+ index not found for:
-\t#{@gem_repo}
-
-RubyGems will revert to legacy indexes degrading performance.
-    EOF
-
-    assert_equal expected, @ui.error
-  end
-
-  def test_execute_legacy_prerelease
-    Gem::SpecFetcher.fetcher = nil
-    si = util_setup_source_info_cache @a1, @a2, @pl1
-
-    @fetcher.data["#{@gem_repo}yaml"] = YAML.dump si
-    @fetcher.data["#{@gem_repo}Marshal.#{Gem.marshal_version}"] =
-      si.dump
-
-    @fetcher.data.delete "#{@gem_repo}latest_specs.#{Gem.marshal_version}.gz"
-
-    @cmd.handle_options %w[-r --prerelease]
-
-    e = assert_raises Gem::OperationNotSupportedError do
-      @cmd.execute
-    end
-
-    assert_equal 'Prereleases not supported on legacy repositories', e.message
-  end
-
-  def test_execute_local_details
-    @a3a.summary = 'This is a lot of text. ' * 4
-    @a3a.authors = ['Abraham Lincoln', 'Hirohito']
-    @a3a.homepage = 'http://a.example.com/'
-    @a3a.rubyforge_project = 'rubygems'
-
-    @cmd.handle_options %w[--local --details]
-
-    use_ui @ui do
-      @cmd.execute
-    end
-
-    expected = <<-EOF
-
-*** LOCAL GEMS ***
-
-a (3.a, 2, 1)
-    Author: A User
-    Homepage: http://example.com
-    Installed at (3.a): #{@gemhome}
-                 (2): #{@gemhome}
-                 (1): #{@gemhome}
-
-    this is a summary
-
-a_evil (9)
-    Author: A User
-    Homepage: http://example.com
-    Installed at: #{@gemhome}
-
-    this is a summary
-
-b (2)
-    Author: A User
-    Homepage: http://example.com
-    Installed at: #{@gemhome}
-
-    this is a summary
-
-c (1.2)
-    Author: A User
-    Homepage: http://example.com
-    Installed at: #{@gemhome}
-
-    this is a summary
-
-pl (1)
-    Platform: i386-linux
-    Author: A User
-    Homepage: http://example.com
-    Installed at: #{@gemhome}
-
-    this is a summary
-    EOF
-
-    assert_equal expected, @ui.output
-    assert_equal '', @ui.error
   end
 
   def test_execute_local_notty
@@ -341,10 +268,7 @@ pl (1)
 
     expected = <<-EOF
 a (3.a, 2, 1)
-a_evil (9)
-b (2)
-c (1.2)
-pl (1)
+pl (1 i386-linux)
     EOF
 
     assert_equal expected, @ui.output
@@ -381,7 +305,7 @@ pl
 
     expected = <<-EOF
 a (2)
-pl (1)
+pl (1 i386-linux)
     EOF
 
     assert_equal expected, @ui.output
@@ -418,10 +342,7 @@ a (3.a)
 *** LOCAL GEMS ***
 
 a (3.a, 2, 1)
-a_evil (9)
-b (2)
-c (1.2)
-pl (1)
+pl (1 i386-linux)
     EOF
 
     assert_equal expected, @ui.output

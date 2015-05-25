@@ -1,3 +1,5 @@
+class CGI
+  @@accept_charset="UTF-8" unless defined?(@@accept_charset)
   # Class representing an HTTP cookie.
   #
   # In addition to its specific fields and methods, a Cookie instance
@@ -31,35 +33,43 @@
   #   cookie1.domain  = 'domain'
   #   cookie1.expires = Time.now + 30
   #   cookie1.secure  = true
-class CGI
   class Cookie < Array
 
     # Create a new CGI::Cookie object.
     #
-    # The contents of the cookie can be specified as a +name+ and one
-    # or more +value+ arguments.  Alternatively, the contents can
-    # be specified as a single hash argument.  The possible keywords of
-    # this hash are as follows:
+    # :call-seq:
+    #   Cookie.new(name_string,*value)
+    #   Cookie.new(options_hash)
     #
-    # name:: the name of the cookie.  Required.
-    # value:: the cookie's value or list of values.
-    # path:: the path for which this cookie applies.  Defaults to the
-    #        base directory of the CGI script.
-    # domain:: the domain for which this cookie applies.
-    # expires:: the time at which this cookie expires, as a +Time+ object.
-    # secure:: whether this cookie is a secure cookie or not (default to
-    #          false).  Secure cookies are only transmitted to HTTPS
-    #          servers.
+    # +name_string+::
+    #   The name of the cookie; in this form, there is no #domain or
+    #   #expiration.  The #path is gleaned from the +SCRIPT_NAME+ environment
+    #   variable, and #secure is false.
+    # <tt>*value</tt>::
+    #   value or list of values of the cookie
+    # +options_hash+::
+    #   A Hash of options to initialize this Cookie.  Possible options are:
     #
-    # These keywords correspond to attributes of the cookie object.
+    #   name:: the name of the cookie.  Required.
+    #   value:: the cookie's value or list of values.
+    #   path:: the path for which this cookie applies.  Defaults to the
+    #          the value of the +SCRIPT_NAME+ environment variable.
+    #   domain:: the domain for which this cookie applies.
+    #   expires:: the time at which this cookie expires, as a +Time+ object.
+    #   secure:: whether this cookie is a secure cookie or not (default to
+    #            false).  Secure cookies are only transmitted to HTTPS
+    #            servers.
+    #
+    #   These keywords correspond to attributes of the cookie object.
     def initialize(name = "", *value)
+      @domain = nil
+      @expires = nil
       if name.kind_of?(String)
         @name = name
-        @value = value
         %r|^(.*/)|.match(ENV["SCRIPT_NAME"])
         @path = ($1 or "")
         @secure = false
-        return super(@value)
+        return super(value)
       end
 
       options = name
@@ -68,7 +78,7 @@ class CGI
       end
 
       @name = options["name"]
-      @value = Array(options["value"])
+      value = Array(options["value"])
       # simple support for IE
       if options["path"]
         @path = options["path"]
@@ -80,11 +90,29 @@ class CGI
       @expires = options["expires"]
       @secure = options["secure"] == true ? true : false
 
-      super(@value)
+      super(value)
     end
 
-    attr_accessor("name", "value", "path", "domain", "expires")
+    # Name of this cookie, as a +String+
+    attr_accessor :name
+    # Path for which this cookie applies, as a +String+
+    attr_accessor :path
+    # Domain for which this cookie applies, as a +String+
+    attr_accessor :domain
+    # Time at which this cookie expires, as a +Time+
+    attr_accessor :expires
+    # True if this cookie is secure; false otherwise
     attr_reader("secure")
+
+    # Returns the value or list of values for this cookie.
+    def value
+      self
+    end
+
+    # Replaces the value of this cookie with a new value or list of values.
+    def value=(val)
+      replace(Array(val))
+    end
 
     # Set whether the Cookie is a secure cookie or not.
     #
@@ -96,7 +124,7 @@ class CGI
 
     # Convert the Cookie to its string representation.
     def to_s
-      val = @value.kind_of?(String) ? CGI::escape(@value) : @value.collect{|v| CGI::escape(v) }.join("&")
+      val = collect{|v| CGI::escape(v) }.join("&")
       buf = "#{@name}=#{val}"
       buf << "; domain=#{@domain}" if @domain
       buf << "; path=#{@path}"     if @path
@@ -106,7 +134,6 @@ class CGI
     end
 
   end # class Cookie
-
 
   # Parse a raw cookie string into a hash of cookie-name=>Cookie
   # pairs.

@@ -133,7 +133,7 @@ the same class.
          begin
            ret = obj.call(*args)  # call the original service-method
            # could convert the return value
-         resuce
+         rescue
            # rescue exceptions
          end
        }
@@ -456,7 +456,7 @@ class CGIServer < BasicServer
       $stdin.binmode if $stdin.respond_to? :binmode
       data = $stdin.read(length)
 
-      http_error(400, "Bad Request")        if data.nil? or data.size != length
+      http_error(400, "Bad Request")        if data.nil? or data.bytesize != length
 
       http_write(process(data), "Content-type" => "text/xml; charset=utf-8")
     }
@@ -487,7 +487,7 @@ class CGIServer < BasicServer
     h = {}
     header.each {|key, value| h[key.to_s.capitalize] = value}
     h['Status']         ||= "200 OK"
-    h['Content-length'] ||= body.size.to_s
+    h['Content-length'] ||= body.bytesize.to_s
 
     str = ""
     h.each {|key, value| str << "#{key}: #{value}\r\n"}
@@ -531,7 +531,7 @@ class ModRubyServer < BasicServer
       @ap.binmode
       data = @ap.read(length)
 
-      http_error(400, "Bad Request")        if data.nil? or data.size != length
+      http_error(400, "Bad Request")        if data.nil? or data.bytesize != length
 
       http_write(process(data), 200, "Content-type" => "text/xml; charset=utf-8")
     }
@@ -562,7 +562,7 @@ class ModRubyServer < BasicServer
     h = {}
     header.each {|key, value| h[key.to_s.capitalize] = value}
     h['Status']         ||= "200 OK"
-    h['Content-length'] ||= body.size.to_s
+    h['Content-length'] ||= body.bytesize.to_s
 
     h.each {|key, value| @ap.headers_out[key] = value }
     @ap.content_type = h["Content-type"]
@@ -751,17 +751,17 @@ class WEBrickServlet < BasicServer
 
     data = request.body
 
-    if data.nil? or data.size != length
+    if data.nil? or data.bytesize != length
       raise WEBrick::HTTPStatus::BadRequest
     end
 
     resp = process(data)
-    if resp.nil? or resp.size <= 0
+    if resp.nil? or resp.bytesize <= 0
       raise WEBrick::HTTPStatus::InternalServerError
     end
 
     response.status = 200
-    response['Content-Length'] = resp.size
+    response['Content-Length'] = resp.bytesize
     response['Content-Type']   = "text/xml; charset=utf-8"
     response.body = resp
   end
@@ -773,6 +773,6 @@ end # module XMLRPC
 
 =begin
 = History
-    $Id: server.rb 22784 2009-03-06 03:56:38Z nobu $
+    $Id$
 =end
 

@@ -270,6 +270,16 @@ module Net
       return @@debug = val
     end
 
+    # Returns the max number of flags interned to symbols.
+    def self.max_flag_count
+      return @@max_flag_count
+    end
+
+    # Sets the max number of flags interned to symbols.
+    def self.max_flag_count=(count)
+      @@max_flag_count = count
+    end
+
     # Adds an authenticator for Net::IMAP#authenticate.  +auth_type+
     # is the type of authentication this authenticator supports
     # (for instance, "LOGIN").  The +authenticator+ is an object
@@ -297,9 +307,16 @@ module Net
         end
       rescue Errno::ENOTCONN
         # ignore `Errno::ENOTCONN: Socket is not connected' on some platforms.
+      rescue Exception => e
+        @receiver_thread.raise(e)
       end
       @receiver_thread.join
-      @sock.close
+      synchronize do
+        unless @sock.closed?
+          @sock.close
+        end
+      end
+      raise e if e
     end
 
     # Returns true if disconnected from the server.
@@ -508,6 +525,38 @@ module Net
       synchronize do
         send_command("LIST", refname, mailbox)
         return @responses.delete("LIST")
+      end
+    end
+
+    # Sends a XLIST command, and returns a subset of names from
+    # the complete set of all names available to the client.
+    # +refname+ provides a context (for instance, a base directory
+    # in a directory-based mailbox hierarchy).  +mailbox+ specifies
+    # a mailbox or (via wildcards) mailboxes under that context.
+    # Two wildcards may be used in +mailbox+: '*', which matches
+    # all characters *including* the hierarchy delimiter (for instance,
+    # '/' on a UNIX-hosted directory-based mailbox hierarchy); and '%',
+    # which matches all characters *except* the hierarchy delimiter.
+    #
+    # If +refname+ is empty, +mailbox+ is used directly to determine
+    # which mailboxes to match.  If +mailbox+ is empty, the root
+    # name of +refname+ and the hierarchy delimiter are returned.
+    #
+    # The XLIST command is like the LIST command except that the flags
+    # returned refer to the function of the folder/mailbox, e.g. :Sent
+    #
+    # The return value is an array of +Net::IMAP::MailboxList+. For example:
+    #
+    #   imap.create("foo/bar")
+    #   imap.create("foo/baz")
+    #   p imap.xlist("", "foo/%")
+    #   #=> [#<Net::IMAP::MailboxList attr=[:Noselect], delim="/", name="foo/">, \\
+    #        #<Net::IMAP::MailboxList attr=[:Noinferiors, :Marked], delim="/", name="foo/bar">, \\
+    #        #<Net::IMAP::MailboxList attr=[:Noinferiors], delim="/", name="foo/baz">]
+    def xlist(refname, mailbox)
+      synchronize do
+        send_command("XLIST", refname, mailbox)
+        return @responses.delete("XLIST")
       end
     end
 
@@ -856,10 +905,15 @@ module Net
           @idle_done_cond = new_cond
           @idle_done_cond.wait
           @idle_done_cond = nil
+          if @receiver_thread_terminating
+            raise Net::IMAP::Error, "connection closed"
+          end
         ensure
-          remove_response_handler(response_handler)
-          put_string("DONE#{CRLF}")
-          response = get_tagged_response(tag, "IDLE")
+          unless @receiver_thread_terminating
+            remove_response_handler(response_handler)
+            put_string("DONE#{CRLF}")
+            response = get_tagged_response(tag, "IDLE")
+          end
         end
       end
 
@@ -901,7 +955,7 @@ module Net
 
     # Encode a string from UTF-8 format to modified UTF-7.
     def self.encode_utf7(s)
-      return s.gsub(/(&)|([^\x20-\x25\x27-\x7e]+)/u) {
+      return s.gsub(/(&)|([^\x20-\x7e]+)/u) {
         if $1
           "&-"
         else
@@ -929,6 +983,7 @@ module Net
 
     @@debug = false
     @@authenticators = {}
+    @@max_flag_count = 10000
 
     # call-seq:
     #    Net::IMAP.new(host, options = {})
@@ -1001,12 +1056,17 @@ module Net
 
       @client_thread = Thread.current
       @receiver_thread = Thread.start {
-        receive_responses
+        begin
+          receive_responses
+        rescue Exception
+        end
       }
+      @receiver_thread_terminating = false
     end
 
     def receive_responses
-      while true
+      connection_closed = false
+      until connection_closed
         synchronize do
           @exception = nil
         end
@@ -1043,7 +1103,7 @@ module Net
               if resp.name == "BYE" && @logout_command_tag.nil?
                 @sock.close
                 @exception = ByeResponseError.new(resp)
-                break
+                connection_closed = true
               end
             when ContinuationRequest
               @continuation_request_arrival.signal
@@ -1061,8 +1121,12 @@ module Net
         end
       end
       synchronize do
+        @receiver_thread_terminating = true
         @tagged_response_arrival.broadcast
         @continuation_request_arrival.broadcast
+        if @idle_done_cond
+          @idle_done_cond.signal 
+        end
       end
     end
 
@@ -1215,7 +1279,7 @@ module Net
     end
 
     def send_literal(str)
-      put_string("{" + str.length.to_s + "}" + CRLF)
+      put_string("{" + str.bytesize.to_s + "}" + CRLF)
       @continuation_request_arrival.wait
       raise @exception if @exception
       put_string(str)
@@ -1270,9 +1334,15 @@ module Net
     end
 
     def fetch_internal(cmd, set, attr)
-      if attr.instance_of?(String)
+      case attr
+      when String then
         attr = RawData.new(attr)
+      when Array then
+        attr = attr.map { |arg|
+          arg.is_a?(String) ? RawData.new(arg) : arg
+        }
       end
+
       synchronize do
         @responses.delete("FETCH")
         send_command(cmd, MessageSet.new(set), attr)
@@ -1655,7 +1725,7 @@ module Net
     # rights:: The access rights the indicated user has to the
     #          mailbox.
     #
-    MailboxACLItem = Struct.new(:user, :rights)
+    MailboxACLItem = Struct.new(:user, :rights, :mailbox)
 
     # Net::IMAP::StatusData represents contents of the STATUS response.
     #
@@ -1929,6 +1999,14 @@ module Net
     end
 
     class ResponseParser # :nodoc:
+      def initialize
+        @str = nil
+        @pos = nil
+        @lex_state = nil
+        @token = nil
+        @flag_symbols = {}
+      end
+
       def parse(str)
         @str = str
         @pos = 0
@@ -1965,9 +2043,9 @@ module Net
 
       BEG_REGEXP = /\G(?:\
 (?# 1:  SPACE   )( +)|\
-(?# 2:  NIL     )(NIL)(?=[\x80-\xff(){ \x00-\x1f\x7f%*"\\\[\]+])|\
-(?# 3:  NUMBER  )(\d+)(?=[\x80-\xff(){ \x00-\x1f\x7f%*"\\\[\]+])|\
-(?# 4:  ATOM    )([^\x80-\xff(){ \x00-\x1f\x7f%*"\\\[\]+]+)|\
+(?# 2:  NIL     )(NIL)(?=[\x80-\xff(){ \x00-\x1f\x7f%*#{'"'}\\\[\]+])|\
+(?# 3:  NUMBER  )(\d+)(?=[\x80-\xff(){ \x00-\x1f\x7f%*#{'"'}\\\[\]+])|\
+(?# 4:  ATOM    )([^\x80-\xff(){ \x00-\x1f\x7f%*#{'"'}\\\[\]+]+)|\
 (?# 5:  QUOTED  )"((?:[^\x00\r\n"\\]|\\["\\])*)"|\
 (?# 6:  LPAR    )(\()|\
 (?# 7:  RPAR    )(\))|\
@@ -2035,7 +2113,7 @@ module Net
             return response_cond
           when /\A(?:FLAGS)\z/ni
             return flags_response
-          when /\A(?:LIST|LSUB)\z/ni
+          when /\A(?:LIST|LSUB|XLIST)\z/ni
             return list_response
           when /\A(?:QUOTA)\z/ni
             return getquota_response
@@ -2102,7 +2180,7 @@ module Net
             break
           when T_SPACE
             shift_token
-            token = lookahead
+            next
           end
           case token.value
           when /\A(?:ENVELOPE)\z/ni
@@ -2535,7 +2613,7 @@ module Net
           return '""'
         when /[\x80-\xff\r\n]/n
           # literal
-          return "{" + str.length.to_s + "}" + CRLF + str
+          return "{" + str.bytesize.to_s + "}" + CRLF + str
         when /[(){ \x00-\x1f\x7f%*"\\]/n
           # quoted string
           return '"' + str.gsub(/["\\]/n, "\\\\\\&") + '"'
@@ -2660,8 +2738,7 @@ module Net
             user = astring
             match(T_SPACE)
             rights = astring
-            ##XXX data.push([user, rights])
-            data.push(MailboxACLItem.new(user, rights))
+            data.push(MailboxACLItem.new(user, rights, mailbox))
           end
         end
         return UntaggedResponse.new(name, data, @str)
@@ -2681,8 +2758,9 @@ module Net
               break
             when T_SPACE
               shift_token
+            else
+              data.push(number)
             end
-            data.push(number)
           end
         else
           data = []
@@ -2791,6 +2869,7 @@ module Net
             break
           when T_SPACE
             shift_token
+            next
           end
           data.push(atom.upcase)
         end
@@ -2939,7 +3018,16 @@ module Net
         if @str.index(/\(([^)]*)\)/ni, @pos)
           @pos = $~.end(0)
           return $1.scan(FLAG_REGEXP).collect { |flag, atom|
-            atom || flag.capitalize.intern
+            if atom
+              atom
+            else
+              symbol = flag.capitalize.untaint.intern
+              @flag_symbols[symbol] = true
+              if @flag_symbols.length > IMAP.max_flag_count
+                raise FlagCountError, "number of flag symbols exceeded"
+              end
+              symbol
+            end
           }
         else
           parse_error("invalid flag list")
@@ -3271,73 +3359,73 @@ module Net
     # #authenticate().
     class DigestMD5Authenticator
       def process(challenge)
-	case @stage
-	when STAGE_ONE
-	  @stage = STAGE_TWO
-	  sparams = {}
-	  c = StringScanner.new(challenge)
-	  while c.scan(/(?:\s*,)?\s*(\w+)=("(?:[^\\"]+|\\.)*"|[^,]+)\s*/)
-	    k, v = c[1], c[2]
-	    if v =~ /^"(.*)"$/
-	      v = $1
-	      if v =~ /,/
-		v = v.split(',')
-	      end
-	    end
-	    sparams[k] = v
-	  end
+        case @stage
+        when STAGE_ONE
+          @stage = STAGE_TWO
+          sparams = {}
+          c = StringScanner.new(challenge)
+          while c.scan(/(?:\s*,)?\s*(\w+)=("(?:[^\\"]+|\\.)*"|[^,]+)\s*/)
+            k, v = c[1], c[2]
+            if v =~ /^"(.*)"$/
+              v = $1
+              if v =~ /,/
+                v = v.split(',')
+              end
+            end
+            sparams[k] = v
+          end
 
-	  raise DataFormatError, "Bad Challenge: '#{challenge}'" unless c.rest.size == 0
-	  raise Error, "Server does not support auth (qop = #{sparams['qop'].join(',')})" unless sparams['qop'].include?("auth")
+          raise DataFormatError, "Bad Challenge: '#{challenge}'" unless c.rest.size == 0
+          raise Error, "Server does not support auth (qop = #{sparams['qop'].join(',')})" unless sparams['qop'].include?("auth")
 
-	  response = {
-	    :nonce => sparams['nonce'],
-	    :username => @user,
-	    :realm => sparams['realm'],
-	    :cnonce => Digest::MD5.hexdigest("%.15f:%.15f:%d" % [Time.now.to_f, rand, Process.pid.to_s]),
-	    :'digest-uri' => 'imap/' + sparams['realm'],
-	    :qop => 'auth',
-	    :maxbuf => 65535,
-	    :nc => "%08d" % nc(sparams['nonce']),
-	    :charset => sparams['charset'],
-	  }
+          response = {
+            :nonce => sparams['nonce'],
+            :username => @user,
+            :realm => sparams['realm'],
+            :cnonce => Digest::MD5.hexdigest("%.15f:%.15f:%d" % [Time.now.to_f, rand, Process.pid.to_s]),
+            :'digest-uri' => 'imap/' + sparams['realm'],
+            :qop => 'auth',
+            :maxbuf => 65535,
+            :nc => "%08d" % nc(sparams['nonce']),
+            :charset => sparams['charset'],
+          }
 
-	  response[:authzid] = @authname unless @authname.nil?
+          response[:authzid] = @authname unless @authname.nil?
 
-	  # now, the real thing
-	  a0 = Digest::MD5.digest( [ response.values_at(:username, :realm), @password ].join(':') )
+          # now, the real thing
+          a0 = Digest::MD5.digest( [ response.values_at(:username, :realm), @password ].join(':') )
 
-	  a1 = [ a0, response.values_at(:nonce,:cnonce) ].join(':')
-	  a1 << ':' + response[:authzid] unless response[:authzid].nil?
+          a1 = [ a0, response.values_at(:nonce,:cnonce) ].join(':')
+          a1 << ':' + response[:authzid] unless response[:authzid].nil?
 
-	  a2 = "AUTHENTICATE:" + response[:'digest-uri']
-	  a2 << ":00000000000000000000000000000000" if response[:qop] and response[:qop] =~ /^auth-(?:conf|int)$/
+          a2 = "AUTHENTICATE:" + response[:'digest-uri']
+          a2 << ":00000000000000000000000000000000" if response[:qop] and response[:qop] =~ /^auth-(?:conf|int)$/
 
-	  response[:response] = Digest::MD5.hexdigest(
-	    [
-	     Digest::MD5.hexdigest(a1),
-	     response.values_at(:nonce, :nc, :cnonce, :qop),
-	     Digest::MD5.hexdigest(a2)
-	    ].join(':')
-	  )
+          response[:response] = Digest::MD5.hexdigest(
+            [
+             Digest::MD5.hexdigest(a1),
+             response.values_at(:nonce, :nc, :cnonce, :qop),
+             Digest::MD5.hexdigest(a2)
+            ].join(':')
+          )
 
-	  return response.keys.map {|key| qdval(key.to_s, response[key]) }.join(',')
-	when STAGE_TWO
-	  @stage = nil
-	  # if at the second stage, return an empty string
-	  if challenge =~ /rspauth=/
-	    return ''
-	  else
-	    raise ResponseParseError, challenge
-	  end
-	else
-	  raise ResponseParseError, challenge
-	end
+          return response.keys.map {|key| qdval(key.to_s, response[key]) }.join(',')
+        when STAGE_TWO
+          @stage = nil
+          # if at the second stage, return an empty string
+          if challenge =~ /rspauth=/
+            return ''
+          else
+            raise ResponseParseError, challenge
+          end
+        else
+          raise ResponseParseError, challenge
+        end
       end
 
       def initialize(user, password, authname = nil)
-	@user, @password, @authname = user, password, authname
-	@nc, @stage = {}, STAGE_ONE
+        @user, @password, @authname = user, password, authname
+        @nc, @stage = {}, STAGE_ONE
       end
 
       private
@@ -3346,23 +3434,23 @@ module Net
       STAGE_TWO = :stage_two
 
       def nc(nonce)
-	if @nc.has_key? nonce
-	  @nc[nonce] = @nc[nonce] + 1
-	else
-	  @nc[nonce] = 1
-	end
-	return @nc[nonce]
+        if @nc.has_key? nonce
+          @nc[nonce] = @nc[nonce] + 1
+        else
+          @nc[nonce] = 1
+        end
+        return @nc[nonce]
       end
 
       # some responses need quoting
       def qdval(k, v)
-	return if k.nil? or v.nil?
-	if %w"username authzid realm nonce cnonce digest-uri qop".include? k
-	  v.gsub!(/([\\"])/, "\\\1")
-	  return '%s="%s"' % [k, v]
-	else
-	  return '%s=%s' % [k, v]
-	end
+        return if k.nil? or v.nil?
+        if %w"username authzid realm nonce cnonce digest-uri qop".include? k
+          v.gsub!(/([\\"])/, "\\\1")
+          return '%s="%s"' % [k, v]
+        else
+          return '%s=%s' % [k, v]
+        end
       end
     end
     add_authenticator "DIGEST-MD5", DigestMD5Authenticator
@@ -3410,6 +3498,10 @@ module Net
     # out due to inactivity.
     class ByeResponseError < ResponseError
     end
+
+    # Error raised when too many flags are interned to symbols.
+    class FlagCountError < Error
+    end
   end
 end
 
@@ -3422,27 +3514,44 @@ if __FILE__ == $0
   $user = ENV["USER"] || ENV["LOGNAME"]
   $auth = "login"
   $ssl = false
+  $starttls = false
 
   def usage
-    $stderr.print <<EOF
+    <<EOF
 usage: #{$0} [options] <host>
 
   --help                        print this message
   --port=PORT                   specifies port
   --user=USER                   specifies user
   --auth=AUTH                   specifies auth type
+  --starttls                    use starttls
   --ssl                         use ssl
 EOF
   end
 
+  begin
+    require 'io/console'
+  rescue LoadError
+    def _noecho(&block)
+      system("stty", "-echo")
+      begin
+        yield STDIN
+      ensure
+        system("stty", "echo")
+      end
+    end
+  else
+    def _noecho(&block)
+      STDIN.noecho(&block)
+    end
+  end
+
   def get_password
     print "password: "
-    system("stty", "-echo")
     begin
-      return gets.chop
+      return _noecho(&:gets).chomp
     ensure
-      system("stty", "echo")
-      print "\n"
+      puts
     end
   end
 
@@ -3461,6 +3570,7 @@ EOF
                      ['--port', GetoptLong::REQUIRED_ARGUMENT],
                      ['--user', GetoptLong::REQUIRED_ARGUMENT],
                      ['--auth', GetoptLong::REQUIRED_ARGUMENT],
+                     ['--starttls', GetoptLong::NO_ARGUMENT],
                      ['--ssl', GetoptLong::NO_ARGUMENT])
   begin
     parser.each_option do |name, arg|
@@ -3473,27 +3583,30 @@ EOF
         $auth = arg
       when "--ssl"
         $ssl = true
+      when "--starttls"
+        $starttls = true
       when "--debug"
         Net::IMAP.debug = true
       when "--help"
         usage
-        exit(1)
+        exit
       end
     end
   rescue
-    usage
-    exit(1)
+    abort usage
   end
 
   $host = ARGV.shift
   unless $host
-    usage
-    exit(1)
+    abort usage
   end
 
   imap = Net::IMAP.new($host, :port => $port, :ssl => $ssl)
   begin
-    password = get_password
+    imap.starttls if $starttls
+    class << password = method(:get_password)
+      alias to_str call
+    end
     imap.authenticate($auth, $user, password)
     while true
       cmd, *args = get_command

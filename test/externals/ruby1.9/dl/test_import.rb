@@ -18,7 +18,7 @@ module DL
     extern "int gettimeofday(timeval*, timezone*)" rescue nil
 
     QsortCallback = bind("void *qsort_callback(void*, void*)", :temp)
-    BoundQsortCallback = bind("void *qsort_callback(void*, void*)"){|ptr1,ptr2| ptr1[0] <=> ptr2[0]}
+    BoundQsortCallback = bind("void *bound_qsort_callback(void*, void*)"){|ptr1,ptr2| ptr1[0] <=> ptr2[0]}
     Timeval = struct [
       "long tv_sec",
       "long tv_usec",
@@ -41,6 +41,16 @@ module DL
   end
 
   class TestImport < TestBase
+    def test_ensure_call_dlload
+      err = assert_raises(RuntimeError) do
+        Class.new do
+          extend DL::Importer
+          extern "void *strcpy(char*, char*)"
+        end
+      end
+      assert_match(/call dlload before/, err.message)
+    end
+
     def test_malloc()
       s1 = LIBC::Timeval.malloc()
       s2 = LIBC::Timeval.malloc()

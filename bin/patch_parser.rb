@@ -1,13 +1,21 @@
 def get_numbers_until_end_block(table)
-  while gets
-    break if /\};/ =~ $_
-    next if /^\/\// =~ $_
-    split(/,/).each do |number|
+  while line = gets
+    break if /\};/ =~ line
+    next if /^\/\// =~ line
+    line.split(/,/).each do |number|
       n = number.strip
       table.push(n.to_i) unless n == ""
     end
   end
   table
+end
+
+# We use this script to generate our normal parser and the parser for 
+# the ripper extension.
+if ARGV[0] =~ /Ripper/
+  package = 'org.jruby.ext.ripper'
+else
+  package = 'org.jruby.parser'
 end
 
 while gets
@@ -65,7 +73,7 @@ end
 
 open("#{yytable_prefix}YyTables.java", "w") { |f|
   f.print <<END
-package org.jruby.parser;
+package #{package};
 
 public class #{yytable_prefix}YyTables {
    private static short[] combine(short[] t1, short[] t2, 

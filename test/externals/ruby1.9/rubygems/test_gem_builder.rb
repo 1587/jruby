@@ -1,16 +1,11 @@
-#--
-# Copyright 2006 by Chad Fowler, Rich Kilmer, Jim Weirich and others.
-# All rights reserved.
-# See LICENSE.txt for permissions.
-#++
-
-require_relative 'gemutilities'
+require 'rubygems/test_case'
 require 'rubygems/builder'
+require 'rubygems/package'
 
-class TestGemBuilder < RubyGemTestCase
+class TestGemBuilder < Gem::TestCase
 
   def test_build
-    builder = Gem::Builder.new quick_gem('a')
+    builder = Gem::Builder.new quick_spec('a')
 
     use_ui @ui do
       Dir.chdir @tempdir do
@@ -29,5 +24,21 @@ class TestGemBuilder < RubyGemTestCase
     end
   end
 
-end
+  def test_build_specification_result
+    util_make_gems
 
+    spec = build_gem_and_yield_spec @a1
+
+    assert_operator @a1, :eql?, spec
+  end
+
+  def build_gem_and_yield_spec(spec)
+    builder = Gem::Builder.new spec
+
+    spec = Dir.chdir @tempdir do
+      FileUtils.mkdir 'lib'
+      File.open('lib/code.rb', 'w') { |f| f << "something" }
+      Gem::Package.open(File.open(builder.build, 'rb')) { |x| x.metadata }
+    end
+  end
+end

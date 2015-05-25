@@ -1,5 +1,6 @@
 require 'time'
 require 'test/unit'
+require_relative 'ruby/envutil.rb'
 
 class TestTimeExtension < Test::Unit::TestCase # :nodoc:
   def test_rfc822
@@ -147,6 +148,8 @@ class TestTimeExtension < Test::Unit::TestCase # :nodoc:
                  Time.xmlschema("2000-01-12T12:13:14Z"))
     assert_equal(Time.utc(2001, 4, 17, 19, 23, 17, 300000),
                  Time.xmlschema("2001-04-17T19:23:17.3Z"))
+    assert_equal(Time.utc(2000, 1, 2, 0, 0, 0),
+                 Time.xmlschema("2000-01-01T24:00:00Z"))
     assert_raise(ArgumentError) { Time.xmlschema("2000-01-01T00:00:00.+00:00") }
   end
 
@@ -188,6 +191,15 @@ class TestTimeExtension < Test::Unit::TestCase # :nodoc:
     end
 
     assert_equal(249, Time.xmlschema("2008-06-05T23:49:23.000249+09:00").usec)
+
+    assert_equal("10000-01-01T00:00:00Z", Time.utc(10000).xmlschema)
+    assert_equal("9999-01-01T00:00:00Z", Time.utc(9999).xmlschema)
+    assert_equal("0001-01-01T00:00:00Z", Time.utc(1).xmlschema) # 1 AD
+    assert_equal("0000-01-01T00:00:00Z", Time.utc(0).xmlschema) # 1 BC
+    assert_equal("-0001-01-01T00:00:00Z", Time.utc(-1).xmlschema) # 2 BC
+    assert_equal("-0004-01-01T00:00:00Z", Time.utc(-4).xmlschema) # 5 BC
+    assert_equal("-9999-01-01T00:00:00Z", Time.utc(-9999).xmlschema)
+    assert_equal("-10000-01-01T00:00:00Z", Time.utc(-10000).xmlschema)
   end
 
   def test_completion
@@ -380,10 +392,16 @@ class TestTimeExtension < Test::Unit::TestCase # :nodoc:
 
   def test_strptime
     assert_equal(Time.utc(2005, 8, 28, 06, 54, 20), Time.strptime("28/Aug/2005:06:54:20 +0000", "%d/%b/%Y:%T %z"))
+    assert_equal(Time.at(1).localtime, Time.strptime("1", "%s"))
   end
 
   def test_nsec
     assert_equal(123456789, Time.xmlschema("2000-01-01T00:00:00.123456789+00:00").tv_nsec)
     assert_equal(123456789, Time.parse("2000-01-01T00:00:00.123456789+00:00").tv_nsec)
+  end
+
+  def test_huge_precision
+    bug4456 = '[ruby-dev:43284]'
+    assert_normal_exit %q{ Time.now.strftime("%1000000000F") }, bug4456
   end
 end

@@ -30,7 +30,7 @@ class TestThread < Test::Unit::TestCase
   def test_mutex_synchronize
     m = Mutex.new
     r = 0
-    max = 100
+    max = 10
     (1..max).map{
       Thread.new{
         i=0
@@ -102,13 +102,126 @@ class TestThread < Test::Unit::TestCase
     assert(locked)
   end
 
+  def test_condvar_wait_and_broadcast
+    nr_threads = 3
+    threads = Array.new
+    mutex = Mutex.new
+    condvar = ConditionVariable.new
+    result = []
+
+    nr_threads.times do |i|
+      threads[i] = Thread.new do
+        mutex.synchronize do
+          result << "C1"
+          condvar.wait mutex
+          result << "C2"
+        end
+      end
+    end
+    sleep 0.1
+    mutex.synchronize do
+      result << "P1"
+      condvar.broadcast
+      result << "P2"
+    end
+    nr_threads.times do |i|
+      threads[i].join
+    end
+
+    assert_equal ["C1", "C1", "C1", "P1", "P2", "C2", "C2", "C2"], result
+  end
+
+#  Hmm.. don't we have a way of catch fatal exception?
+#
+#  def test_cv_wait_deadlock
+#    mutex = Mutex.new
+#    cv = ConditionVariable.new
+#
+#    assert_raises(fatal) {
+#      mutex.lock
+#      cv.wait mutex
+#      mutex.unlock
+#    }
+#  end
+
+  def test_condvar_wait_deadlock_2
+    nr_threads = 3
+    threads = Array.new
+    mutex = Mutex.new
+    condvar = ConditionVariable.new
+
+    nr_threads.times do |i|
+      if (i != 0)
+        mutex.unlock
+      end
+      threads[i] = Thread.new do
+        mutex.synchronize do
+          condvar.wait mutex
+        end
+      end
+      mutex.lock
+    end
+
+    assert_raise(Timeout::Error) do
+      Timeout.timeout(0.1) { condvar.wait mutex }
+    end
+    mutex.unlock rescue
+    threads[i].each.join
+  end
+
+  def test_condvar_timed_wait
+    mutex = Mutex.new
+    condvar = ConditionVariable.new
+    timeout = 0.3
+    locked = false
+
+    t0 = Time.now
+    mutex.synchronize do
+      begin
+        condvar.wait(mutex, timeout)
+      ensure
+        locked = mutex.locked?
+      end
+    end
+    t1 = Time.now
+    t = t1-t0
+
+    assert_block { timeout*0.9 < t && t < timeout*1.1 }
+    assert(locked)
+  end
+
+  def test_condvar_nolock
+    mutex = Mutex.new
+    condvar = ConditionVariable.new
+
+    assert_raise(ThreadError) { condvar.wait(mutex) }
+  end
+
+  def test_condvar_nolock_2
+    mutex = Mutex.new
+    condvar = ConditionVariable.new
+
+    Thread.new do
+      assert_raise(ThreadError) {condvar.wait(mutex)}
+    end.join
+  end
+
+  def test_condvar_nolock_3
+    mutex = Mutex.new
+    condvar = ConditionVariable.new
+
+    Thread.new do
+      assert_raise(ThreadError) {condvar.wait(mutex, 0.1)}
+    end.join
+  end
+
   def test_local_barrier
     dir = File.dirname(__FILE__)
     lbtest = File.join(dir, "lbtest.rb")
     $:.unshift File.join(File.dirname(dir), 'ruby')
     require 'envutil'
     $:.shift
-    10.times {
+    3.times {
       result = `#{EnvUtil.rubybin} #{lbtest}`
       assert(!$?.coredump?, '[ruby-dev:30653]')
       assert_equal("exit.", result[/.*\Z/], '[ruby-dev:30653]')
@@ -124,9 +237,13 @@ class TestThread < Test::Unit::TestCase
     assert_equal(-1, t1.priority)
     assert_equal(-3, t2.priority)
     sleep 0.5
+    5.times do
+      break if c1 > c2
+      sleep 0.1
+    end
     t1.kill
     t2.kill
-    assert(c1 > c2, "[ruby-dev:33124]")
+    assert_operator(c1, :>, c2, "[ruby-dev:33124]") # not guaranteed
   end
 
   def test_new
@@ -183,6 +300,24 @@ class TestThread < Test::Unit::TestCase
     INPUT
   end
 
+  def test_kill_wrong_argument
+    bug4367 = '[ruby-core:35086]'
+    assert_raise(TypeError, bug4367) {
+      Thread.kill(nil)
+    }
+    o = Object.new
+    assert_raise(TypeError, bug4367) {
+      Thread.kill(o)
+    }
+  end
+
+  def test_kill_thread_subclass
+    c = Class.new(Thread)
+    t = c.new { sleep 10 }
+    assert_nothing_raised { Thread.kill(t) }
+    assert_equal(nil, t.value)
+  end
+
   def test_exit
     s = 0
     Thread.new do
@@ -200,10 +335,10 @@ class TestThread < Test::Unit::TestCase
       Thread.stop
       s += 1
     end
-    sleep 0.5
+    Thread.pass until t.status == "sleep"
     assert_equal(1, s)
     t.wakeup
-    sleep 0.5
+    Thread.pass until t.status == false
     assert_equal(2, s)
     assert_raise(ThreadError) { t.wakeup }
 
@@ -227,9 +362,9 @@ class TestThread < Test::Unit::TestCase
       t1 = Thread.new { sleep }
       Thread.pass
       t2 = Thread.new { loop { } }
-      t3 = Thread.new { }.join
-      p [Thread.current, t1, t2].sort_by {|t| t.object_id }
-      p Thread.list.sort_by {|t| t.object_id }
+      Thread.new { }.join
+      p [Thread.current, t1, t2].map{|t| t.object_id }.sort
+      p Thread.list.map{|t| t.object_id }.sort
     INPUT
       assert_equal(r.first, r.last)
       assert_equal([], e)
@@ -267,7 +402,7 @@ class TestThread < Test::Unit::TestCase
       end
     INPUT
 
-    assert_in_out_err(%w(-d), <<-INPUT, %w(false 2), /.+/)
+    assert_in_out_err(%w(--disable-gems -d), <<-INPUT, %w(false 2), %r".+")
       p Thread.abort_on_exception
       begin
         Thread.new { raise }
@@ -460,6 +595,28 @@ class TestThread < Test::Unit::TestCase
     assert_nothing_raised {arr.hash}
     assert(obj[:visited])
   end
+
+  def test_thread_instance_variable
+    bug4389 = '[ruby-core:35192]'
+    assert_in_out_err([], <<-INPUT, %w(), [], bug4389)
+      class << Thread.current
+        @data = :data
+      end
+    INPUT
+  end
+
+  def test_no_valid_cfp
+    skip 'with win32ole, cannot run this testcase because win32ole redefines Thread#intialize' if defined?(WIN32OLE)
+    bug5083 = '[ruby-dev:44208]'
+    error = assert_raise(RuntimeError) do
+      Thread.new(&Module.method(:nesting)).join
+    end
+    assert_equal("Can't call on top of Fiber or Thread", error.message, bug5083)
+    error = assert_raise(RuntimeError) do
+      Thread.new(:to_s, &Module.method(:undef_method)).join
+    end
+    assert_equal("Can't call on top of Fiber or Thread", error.message, bug5083)
+  end
 end
 
 class TestThreadGroup < Test::Unit::TestCase
@@ -527,5 +684,30 @@ class TestThreadGroup < Test::Unit::TestCase
     t = Thread.new{}
     t.join
     assert_equal(nil, t.backtrace)
+  end
+
+  def test_thread_timer_and_interrupt
+    bug5757 = '[ruby-dev:44985]'
+    t0 = Time.now.to_f
+    pid = nil
+    cmd = 'r,=IO.pipe; Thread.start {Thread.pass until Thread.main.stop?; puts; STDOUT.flush}; r.read'
+    opt = {}
+    opt[:new_pgroup] = true if /mswin|mingw/ =~ RUBY_PLATFORM
+    s, err = EnvUtil.invoke_ruby(['-e', cmd], "", true, true, opt) do |in_p, out_p, err_p, cpid|
+      out_p.gets
+      pid = cpid
+      Process.kill(:SIGINT, pid)
+      Process.wait(pid)
+      [$?, err_p.read]
+    end
+    t1 = Time.now.to_f
+    assert_equal(pid, s.pid)
+    unless /mswin|mingw/ =~ RUBY_PLATFORM
+      # status of signal is not supported on Windows
+      assert_equal([false, true, false, Signal.list["INT"]],
+                   [s.exited?, s.signaled?, s.stopped?, s.termsig],
+                   "[s.exited?, s.signaled?, s.stopped?, s.termsig]")
+    end
+    assert_in_delta(t1 - t0, 1, 1)
   end
 end

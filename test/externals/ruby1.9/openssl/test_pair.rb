@@ -1,8 +1,4 @@
-begin
-  require "openssl"
-rescue LoadError
-end
-require 'test/unit'
+require_relative 'utils'
 
 if defined?(OpenSSL)
 
@@ -10,11 +6,13 @@ require 'socket'
 require_relative '../ruby/ut_eof'
 
 module SSLPair
+  DHParam = OpenSSL::PKey::DH.new(128)
   def server
     host = "127.0.0.1"
     port = 0
     ctx = OpenSSL::SSL::SSLContext.new()
     ctx.ciphers = "ADH"
+    ctx.tmp_dh_callback = proc { DHParam }
     tcps = TCPServer.new(host, port)
     ssls = OpenSSL::SSL::SSLServer.new(tcps, ctx)
     return ssls
@@ -95,9 +93,13 @@ class OpenSSL::TestPair < Test::Unit::TestCase
     ssl_pair {|s1, s2|
       s2.write "a\nbcd"
       assert_equal("a\n", s1.gets)
-      assert_equal("bcd", s1.readpartial(10))
+      result = ""
+      result << s1.readpartial(10) until result.length == 3
+      assert_equal("bcd", result)
       s2.write "efg"
-      assert_equal("efg", s1.readpartial(10))
+      result = ""
+      result << s1.readpartial(10) until result.length == 3
+      assert_equal("efg", result)
       s2.close
       assert_raise(EOFError) { s1.readpartial(10) }
       assert_raise(EOFError) { s1.readpartial(10) }
@@ -144,7 +146,7 @@ class OpenSSL::TestPair < Test::Unit::TestCase
   def test_read_nonblock
     ssl_pair {|s1, s2|
       err = nil
-      assert_raise(OpenSSL::SSL::SSLError) {
+      assert_raise(OpenSSL::SSL::SSLErrorWaitReadable) {
         begin
           s2.read_nonblock(10)
         ensure
@@ -194,8 +196,8 @@ class OpenSSL::TestPair < Test::Unit::TestCase
     port = 0
     ctx = OpenSSL::SSL::SSLContext.new()
     ctx.ciphers = "ADH"
+    ctx.tmp_dh_callback = proc { DHParam }
     serv = TCPServer.new(host, port)
-    ssls = OpenSSL::SSL::SSLServer.new(serv, ctx)
 
     port = serv.connect_address.ip_port
 
@@ -240,6 +242,8 @@ class OpenSSL::TestPair < Test::Unit::TestCase
     s1.print "a\ndef"
     assert_equal("a\n", s2.gets)
   ensure
+    s1.close if s1 && !s1.closed?
+    s2.close if s2 && !s2.closed?
     serv.close if serv && !serv.closed?
     sock1.close if sock1 && !sock1.closed?
     sock2.close if sock2 && !sock2.closed?

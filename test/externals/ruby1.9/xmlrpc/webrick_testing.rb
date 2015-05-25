@@ -7,7 +7,7 @@ module WEBrick_Testing
   end
 
   def start_server(config={})
-    raise "already started" if @__server
+    raise "already started" if defined?(@__server) && @__server
     @__started = false
 
     @__server_thread = Thread.new {
@@ -18,8 +18,13 @@ module WEBrick_Testing
           :StartCallback => proc { @__started = true }
         }.update(config))
       yield @__server
-      @__server.start
-      @__started = false
+      begin
+        @__server.start
+      rescue IOError => e
+        assert_match(/closed/, e.message)
+      ensure
+        @__started = false
+      end
     }
 
     Timeout.timeout(5) {

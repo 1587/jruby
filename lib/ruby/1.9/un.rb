@@ -21,6 +21,7 @@
 #   ruby -run -e touch -- [OPTION] FILE
 #   ruby -run -e wait_writable -- [OPTION] FILE
 #   ruby -run -e mkmf -- [OPTION] EXTNAME [OPTION]
+#   ruby -run -e httpd -- [OPTION] DocumentRoot
 #   ruby -run -e help [COMMAND]
 
 require "fileutils"
@@ -42,8 +43,12 @@ def setup(options = "", *long_options)
       end
     end
     long_options.each do |s|
-      opt_name = s[/\A(?:--)?([^\s=]+)/, 1].intern
-      o.on(s.sub(/\A(?!--)/, '--')) do |val|
+      opt_name, arg_name = s.split(/(?=[\s=])/, 2)
+      opt_name.sub!(/\A--/, '')
+      s = "--#{opt_name.gsub(/([A-Z]+|[a-z])([A-Z])/, '\1-\2').downcase}#{arg_name}"
+      puts "#{opt_name}=>#{s}" if $DEBUG
+      opt_name = opt_name.intern
+      o.on(s) do |val|
         opt_hash[opt_name] = val
       end
     end
@@ -64,9 +69,9 @@ end
 #
 #   ruby -run -e cp -- [OPTION] SOURCE DEST
 #
-#   -p		preserve file attributes if possible
-#   -r		copy recursively
-#   -v		verbose
+#   -p          preserve file attributes if possible
+#   -r          copy recursively
+#   -v          verbose
 #
 
 def cp
@@ -85,9 +90,9 @@ end
 #
 #   ruby -run -e ln -- [OPTION] TARGET LINK_NAME
 #
-#   -s		make symbolic links instead of hard links
-#   -f		remove existing destination files
-#   -v		verbose
+#   -s          make symbolic links instead of hard links
+#   -f          remove existing destination files
+#   -v          verbose
 #
 
 def ln
@@ -106,7 +111,7 @@ end
 #
 #   ruby -run -e mv -- [OPTION] SOURCE DEST
 #
-#   -v		verbose
+#   -v          verbose
 #
 
 def mv
@@ -122,9 +127,9 @@ end
 #
 #   ruby -run -e rm -- [OPTION] FILE
 #
-#   -f		ignore nonexistent files
-#   -r		remove the contents of directories recursively
-#   -v		verbose
+#   -f          ignore nonexistent files
+#   -r          remove the contents of directories recursively
+#   -v          verbose
 #
 
 def rm
@@ -141,8 +146,8 @@ end
 #
 #   ruby -run -e mkdir -- [OPTION] DIR
 #
-#   -p		no error if existing, make parent directories as needed
-#   -v		verbose
+#   -p          no error if existing, make parent directories as needed
+#   -v          verbose
 #
 
 def mkdir
@@ -158,8 +163,8 @@ end
 #
 #   ruby -run -e rmdir -- [OPTION] DIR
 #
-#   -p		remove DIRECTORY and its ancestors.
-#   -v		verbose
+#   -p          remove DIRECTORY and its ancestors.
+#   -v          verbose
 #
 
 def rmdir
@@ -174,10 +179,10 @@ end
 #
 #   ruby -run -e install -- [OPTION] SOURCE DEST
 #
-#   -p		apply access/modification times of SOURCE files to
-#  		corresponding destination files
-#   -m		set permission mode (as in chmod), instead of 0755
-#   -v		verbose
+#   -p          apply access/modification times of SOURCE files to
+#               corresponding destination files
+#   -m          set permission mode (as in chmod), instead of 0755
+#   -v          verbose
 #
 
 def install
@@ -195,7 +200,7 @@ end
 #
 #   ruby -run -e chmod -- [OPTION] OCTAL-MODE FILE
 #
-#   -v		verbose
+#   -v          verbose
 #
 
 def chmod
@@ -210,7 +215,7 @@ end
 #
 #   ruby -run -e touch -- [OPTION] FILE
 #
-#   -v		verbose
+#   -v          verbose
 #
 
 def touch
@@ -224,9 +229,9 @@ end
 #
 #   ruby -run -e wait_writable -- [OPTION] FILE
 #
-#   -n RETRY	count to retry
-#   -w SEC	each wait time in seconds
-#   -v		verbose
+#   -n RETRY    count to retry
+#   -w SEC      each wait time in seconds
+#   -v          verbose
 #
 
 def wait_writable
@@ -255,15 +260,15 @@ end
 #
 #   ruby -run -e mkmf -- [OPTION] EXTNAME [OPTION]
 #
-#   -d ARGS	run dir_config
-#   -h ARGS	run have_header
-#   -l ARGS	run have_library
-#   -f ARGS	run have_func
-#   -v ARGS	run have_var
-#   -t ARGS	run have_type
-#   -m ARGS	run have_macro
-#   -c ARGS	run have_const
-#   --vendor	install to vendor_ruby
+#   -d ARGS     run dir_config
+#   -h ARGS     run have_header
+#   -l ARGS     run have_library
+#   -f ARGS     run have_func
+#   -v ARGS     run have_var
+#   -t ARGS     run have_type
+#   -m ARGS     run have_macro
+#   -c ARGS     run have_const
+#   --vendor    install to vendor_ruby
 #
 
 def mkmf
@@ -283,6 +288,45 @@ def mkmf
 end
 
 ##
+# Run WEBrick HTTP server.
+#
+#   ruby -run -e httpd -- [OPTION] DocumentRoot
+#
+#   --bind-address=ADDR         address to bind
+#   --port=NUM                  listening port number
+#   --max-clients=MAX           max number of simultaneous clients
+#   --temp-dir=DIR              temporary directory
+#   --do-not-reverse-lookup     disable reverse lookup
+#   --request-timeout=SECOND    request timeout in seconds
+#   --http-version=VERSION      HTTP version
+#   -v                          verbose
+#
+
+def httpd
+  setup("", "BindAddress=ADDR", "Port=PORT", "MaxClients=NUM", "TempDir=DIR",
+        "DoNotReverseLookup", "RequestTimeout=SECOND", "HTTPVersion=VERSION") do
+    |argv, options|
+    require 'webrick'
+    opt = options[:RequestTimeout] and options[:RequestTimeout] = opt.to_i
+    [:Port, :MaxClients].each do |name|
+      opt = options[name] and (options[name] = Integer(opt)) rescue nil
+    end
+    unless argv.empty?
+      options[:DocumentRoot] = argv.shift
+    end
+    s = WEBrick::HTTPServer.new(options)
+    shut = proc {s.shutdown}
+    Signal.trap("TERM", shut)
+    Signal.trap("QUIT", shut) if Signal.list.has_key?("QUIT")
+    if STDIN.tty?
+      Signal.trap("HUP", shut) if Signal.list.has_key?("HUP")
+      Signal.trap("INT", shut)
+    end
+    s.start
+  end
+end
+
+##
 # Display help message.
 #
 #   ruby -run -e help [COMMAND]
@@ -293,11 +337,11 @@ def help
     all = argv.empty?
     open(__FILE__) do |me|
       while me.gets("##\n")
-	if help = me.gets("\n\n")
-	  if all or argv.delete help[/-e \w+/].sub(/-e /, "")
-	    print help.gsub(/^# ?/, "")
-	  end
-	end
+        if help = me.gets("\n\n")
+          if all or argv.delete help[/-e \w+/].sub(/-e /, "")
+            print help.gsub(/^# ?/, "")
+          end
+        end
       end
     end
   end

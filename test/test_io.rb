@@ -1,8 +1,16 @@
+# -*- coding: utf-8 -*-
 require 'test/unit'
+require 'test/test_helper'
 require 'rbconfig'
+require 'stringio'
+require 'java'
+require 'jruby'
 
 class TestIO < Test::Unit::TestCase
-  WINDOWS = Config::CONFIG['host_os'] =~ /Windows|mswin/
+  include TestHelper
+  WINDOWS = RbConfig::CONFIG['host_os'] =~ /Windows|mswin/
+  SOLARIS = RbConfig::CONFIG['host_os'] =~ /solaris/
+
   def setup
     @to_close = []
     @file = "TestIO_tmp"
@@ -13,6 +21,7 @@ class TestIO < Test::Unit::TestCase
     else
       @devnull = '/dev/null'
     end
+    @stringio = StringIO.new 'abcde'
   end
 
   def teardown
@@ -259,8 +268,14 @@ class TestIO < Test::Unit::TestCase
      File.open(@file, "wb") do |file|
        file.putc(255)
      end
-     File.open(@file, "rb") do |file|
-       assert_equal(255, file.getc)
+     if RUBY_VERSION =~ /1\.9/
+       File.open(@file, "rb") do |file|
+         assert_equal("\xFF".force_encoding("binary"), file.getc)
+       end
+     else
+       File.open(@file, "rb") do |file|
+         assert_equal(255, file.getc)
+       end
      end
   end
 
@@ -276,7 +291,11 @@ class TestIO < Test::Unit::TestCase
       # it checks that JRuby doesn't break.
       assert_equal(0, file.pos)
 
-      assert_equal(100, file.getc)
+      if RUBY_VERSION =~ /1\.9/
+        assert_equal("d", file.getc)
+      else
+        assert_equal(100, file.getc)
+      end
      end
   end
 
@@ -284,11 +303,19 @@ class TestIO < Test::Unit::TestCase
   def test_ungetc_nonempty_file
     File.open(@file, "w+") { |file| file.puts("HELLO") }
     File.open(@file) do |file|
-      assert_equal(72, file.getc)
+      if RUBY_VERSION =~ /1\.9/
+        assert_equal("H", file.getc)
+      else
+        assert_equal(72, file.getc)
+      end
       assert_equal(1, file.pos)
       file.ungetc(100)
       assert_equal(0, file.pos)
-      assert_equal(100, file.getc)
+      if RUBY_VERSION =~ /1\.9/
+        assert_equal("d", file.getc)
+      else
+        assert_equal(100, file.getc)
+      end
       assert_equal(1, file.pos)
      end
   end
@@ -405,7 +432,7 @@ class TestIO < Test::Unit::TestCase
   end
 
   #JRUBY-2145
-  if (!WINDOWS)
+  if (!WINDOWS && !(RUBY_VERSION =~ /1\.9/))
     def test_copy_dev_null
       require 'fileutils'
       begin
@@ -436,23 +463,25 @@ class TestIO < Test::Unit::TestCase
 
   def test_file_constants_included
     assert IO.include?(File::Constants)
-    ["APPEND", "BINARY", "CREAT", "EXCL", "FNM_CASEFOLD",
+    constants = ["APPEND", "BINARY", "CREAT", "EXCL", "FNM_CASEFOLD",
                    "FNM_DOTMATCH", "FNM_NOESCAPE", "FNM_PATHNAME", "FNM_SYSCASE",
                    "LOCK_EX", "LOCK_NB", "LOCK_SH", "LOCK_UN", "NOCTTY", "NONBLOCK",
                    "RDONLY", "RDWR", "SEEK_CUR", "SEEK_END", "SEEK_SET", "SYNC", "TRUNC",
-                   "WRONLY"].each { |c| assert(IO.constants.include?(c), "#{c} is not included") }
+                   "WRONLY"]
+    constants = constants.map(&:to_sym) if RUBY_VERSION =~ /1\.9/
+    constants.each { |c| assert(IO.constants.include?(c), "#{c} is not included") }
   end
 
   #JRUBY-3012
   def test_io_reopen
     quiet_script = File.dirname(__FILE__) + '/quiet.rb'
-    result = `jruby #{quiet_script}`.chomp
+    result = `#{RUBY} #{quiet_script}`.chomp
     assert_equal("foo", result)
   end
 
   # JRUBY-4152
-  if $stdin.tty? # in Ant that might be false
-    def test_tty_leak
+  def test_tty_leak
+    if $stdin.tty? # in Ant that might be false
       assert $stdin.tty?
       10_000.times {
         $stdin.tty?
@@ -469,8 +498,91 @@ class TestIO < Test::Unit::TestCase
     assert_nil $!
   end
 
-  private
+  # JRUBY-4932
+  #  def test_popen4_read_error
+  #  p, o, i, e = IO.popen4(__FILE__)
+  #  assert_raise(IOError) { i.read }
+  #end
+
   def ensure_files(*files)
     files.each {|f| File.open(f, "w") {|g| g << " " } }
+  end
+  private :ensure_files
+  
+  # JRUBY-4908  ... Solaris is commented out for now until I can figure out why
+  # ci will not run it properly.
+  if !WINDOWS && !SOLARIS && false # temporarily disable
+    def test_sh_used_appropriately
+      # should not use sh
+      p, o, i, e = IO.popen4("/bin/ps -a -f")
+      assert_match p.to_s, i.read.lines.grep(/\/bin\/ps -a -f/).first
+      
+      # should use sh
+      p, o, i, e = IO.popen4("/bin/ps -a -f | grep [/]bin/ps'")
+      assert_no_match Regexp.new(p.to_s), i.read.lines.grep(/\/bin\/ps/).first
+    end
+  end
+  
+  # JRUBY-5114
+  def test_autoclose_false_leaves_channels_open
+    channel = java.io.FileInputStream.new(__FILE__).channel
+    
+    # sanity check
+    io1 = channel.to_io(:autoclose => false)
+    assert_equal "#", io1.sysread(1)
+    io2 = channel.to_io(:autoclose => false)
+    assert_equal " ", io2.sysread(1)
+    
+    # dereference and force GC a few times to finalize
+    io1 = nil
+    5.times { java.lang.System.gc }
+    
+    # io2 and original channel should still be open and usable
+    assert_equal "-", io2.sysread(1)
+    assert !io2.closed?
+    
+    assert channel.open?
+  end
+
+  def test_gets_no_args
+    File.open(@file, 'w') { |f| f.write 'abcde' }
+
+    File.open(@file) do |f|
+      assert_equal 'abcde', f.gets
+    end
+  end
+
+  def test_gets_separator
+    File.open(@file, 'w') { |f| f.write 'abcde' }
+
+    File.open(@file) do |f|
+      assert_equal 'abc', f.gets('c')
+    end
+  end
+
+  def test_stringio_gets_no_args
+    assert_equal 'abcde', @stringio.gets
+  end
+
+  def test_stringio_gets_separator
+    assert_equal 'abc', @stringio.gets('c')
+  end
+
+  # JRUBY-6137
+  def test_rubyio_fileno_mapping_leak
+    starting_count = JRuby.runtime.fileno_int_map_size
+    io = org.jruby.RubyIO.new(JRuby.runtime, org.jruby.util.io.STDIO::ERR)
+    open_io_count = JRuby.runtime.fileno_int_map_size
+    assert_equal(starting_count + 1, open_io_count)
+    io.close
+    closed_io_count = JRuby.runtime.fileno_int_map_size
+    assert_equal(starting_count, closed_io_count)
+  end
+
+  # JRUBY-1222
+  def test_stringio_gets_utf8
+    @stringio = StringIO.new("®\r\n®\r\n")
+    assert_equal "®\r\n", @stringio.gets("\r\n")
+    assert_equal "®\r\n", @stringio.gets("\r\n")
   end
 end

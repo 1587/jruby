@@ -1,18 +1,15 @@
-#--
-# Copyright 2006 by Chad Fowler, Rich Kilmer, Jim Weirich and others.
-# All rights reserved.
-# See LICENSE.txt for permissions.
-#++
-
-require_relative 'gemutilities'
-require 'rbconfig'
+require 'rubygems/test_case'
 require 'rubygems'
 
-class TestConfig < RubyGemTestCase
+class TestConfig < Gem::TestCase
 
   def test_datadir
-    datadir = RbConfig::CONFIG['datadir']
-    assert_equal "#{datadir}/xyz", RbConfig.datadir('xyz')
+    _, err = capture_io do
+      datadir = RbConfig::CONFIG['datadir']
+      assert_equal "#{datadir}/xyz", RbConfig.datadir('xyz')
+    end
+
+    assert_match(/deprecate/, err)
   end
 
 end

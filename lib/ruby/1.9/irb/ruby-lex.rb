@@ -1,7 +1,7 @@
 #
 #   irb/ruby-lex.rb - ruby lexcal analyzer
 #   	$Release Version: 0.9.6$
-#   	$Revision: 24555 $
+#   	$Revision$
 #   	by Keiju ISHITSUKA(keiju@ruby-lang.org)
 #
 # --
@@ -14,7 +14,7 @@ require "irb/slex"
 require "irb/ruby-token"
 
 class RubyLex
-  @RCS_ID='-$Id: ruby-lex.rb 24555 2009-08-16 12:32:35Z naruse $-'
+  @RCS_ID='-$Id$-'
 
   extend Exception2MessageMapper
   def_exception(:AlreadyDefinedToken, "Already defined token(%s)")
@@ -103,7 +103,6 @@ class RubyLex
       @rests.push nil unless buf_input
     end
     c = @rests.shift
-    return if c == nil
     if @here_header
       @here_readed.push c
     else
@@ -149,7 +148,7 @@ class RubyLex
     end
     c = c2 unless c
     @rests.unshift c #c =
-      @seek -= 1
+    @seek -= 1
     if c == "\n"
       @line_no -= 1
       if idx = @readed.reverse.index("\n")
@@ -240,7 +239,7 @@ class RubyLex
 	    end
 	  end
 	  if @line != "\n"
-      @line.force_encoding(@io.encoding)
+            @line.force_encoding(@io.encoding)
 	    yield @line, @exp_line_no
 	  end
 	  break unless l
@@ -624,7 +623,7 @@ class RubyLex
 	tk_c = TkLPAREN
       end
       @indent_stack.push tk_c
-      tk = Token(tk_c)
+      Token(tk_c)
     end
 
     @OP.def_rule("[]", proc{|op, io| @lex_state == EXPR_FNAME}) do
@@ -678,7 +677,7 @@ class RubyLex
 	@continue = true
 	Token(TkSPACE)
       else
-	ungetc
+	read_escape
 	Token("\\")
       end
     end
@@ -705,7 +704,7 @@ class RubyLex
 
     @OP.def_rule('@') do
       |op, io|
-      if peek(0) =~ /[\w_@]/
+      if peek(0) =~ /[\w@]/
 	ungetc
 	identify_identifier
       else
@@ -728,7 +727,7 @@ class RubyLex
       printf "MATCH: start %s: %s\n", op, io.inspect if RubyLex.debug?
       if peek(0) =~ /[0-9]/
 	t = identify_number
-      elsif peek(0) =~ /\w/
+      elsif peek(0) =~ /[^\x00-\/:-@\[-^`{-\x7F]/
 	t = identify_identifier
       end
       printf "MATCH: end %s: %s\n", op, io.inspect if RubyLex.debug?
@@ -771,7 +770,7 @@ class RubyLex
       end
     end
 
-    while (ch = getc) =~ /\w|_/
+    while (ch = getc) =~ /[^\x00-\/:-@\[-^`{-\x7F]/
       print ":", ch, ":" if RubyLex.debug?
       token.concat ch
     end
@@ -1047,7 +1046,7 @@ class RubyLex
       while ch = getc
 	if @quoted == ch and nest == 0
 	  break
-	elsif ch == "#" and peek(0) == "{"
+	elsif @ltype != "'" && ch == "#" && peek(0) == "{"
 	  identify_string_dvar
 	elsif @ltype != "'" && @ltype != "]" && @ltype != ":" and ch == "#"
 	  subtype = true
@@ -1069,7 +1068,7 @@ class RubyLex
 	end
       end
       if @ltype == "/"
-	if peek(0) =~ /i|m|x|o|e|s|u|n/
+        while /[imxoesun]/ =~ peek(0)
 	  getc
 	end
       end
@@ -1101,7 +1100,7 @@ class RubyLex
       @indent = 0
       @indent_stack = []
       @lex_state = EXPR_BEG
-      
+
       loop do
 	@continue = false
 	prompt
@@ -1120,7 +1119,7 @@ class RubyLex
       @quoted = reserve_quoted
     end
   end
-  
+
   def identify_comment
     @ltype = "#"
 

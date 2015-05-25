@@ -1,44 +1,30 @@
+
+require 'fileutils'
+
+# Assumes this file is in rakelib and that a top-level pom.xml file exists.
+def maven_retrieve_pom_version
+  require 'rexml/document'
+  file = File.new(File.join(File.dirname(__FILE__), '..', 'pom.xml'))
+  REXML::Document.new(file).elements.each("project/version"){|e| return e.text}
+  raise Errno::ENOENT.new "Cannot find project pom.xml"
+end
+
 namespace :maven do
-  class Pom
-    def initialize(filename)
-      @filename = filename
-      @lines = IO.readlines(filename)
-    end
-
-    def update_version(version)
-      group = nil
-      artifact = nil
-      @lines.each do |line|
-        match = line.match(%r{<groupId>([^<]+)</groupId>})
-        if match
-          group = match[1]
-          next
-        end
-        match = line.match(%r{<artifactId>([^<]+)</artifactId>})
-        if match
-          artifact = match[1]
-          next
-        end
-        if line =~ %r{<version>[0-9][^<]+</version>} && group =~ /^org.jruby/ && artifact =~ /^(jruby|shared)/
-          line.sub!(/<version>([^<]+)<\/version>/, "<version>#{version}</version>")
-        end
-      end
-    end
-
-    def save
-      File.open(@filename, 'w') {|f| @lines.each {|l| f << l } }
-    end
+  desc "Prepare for the release"
+  task :prepare_release do
+    system "mvn versions:set"
+    system "mvn clean install -Pall"
+    tree = File.expand_path(File.join(File.dirname(__FILE__), '..', 'target', 'tree.txt') )
+    FileUtils.mkdir_p( File.dirname( tree ) )
+    FileUtils.rm_f( tree )
+    system "mvn dependency:tree -Doutput=#{tree} -DappendOutput"
+    deps = File.read( tree )
+    raise "found SNAPSHOTS #{deps}" if deps.match 'SNAPSHOT'
   end
 
-  desc "Update versions in maven poms with string passed in ENV['VERSION']"
-  task :updatepoms do
-    version = ENV['VERSION'] or abort("Pass the new version with VERSION={version}")
-    dir =  Dir.pwd
-    Dir["#{dir}/**/pom.xml"].each do |f|
-      puts "updating #{f}"
-      pom = Pom.new(f)
-      pom.update_version(version)
-      pom.save
-    end
+  desc "Deploy release and bump version"
+  task :deploy_release do
+    system "mvn clean deploy -Psonatype-oss-release,release"
+    system "mvn versions:set"
   end
 end

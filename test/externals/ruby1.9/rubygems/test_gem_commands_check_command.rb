@@ -1,13 +1,7 @@
-#--
-# Copyright 2006 by Chad Fowler, Rich Kilmer, Jim Weirich and others.
-# All rights reserved.
-# See LICENSE.txt for permissions.
-#++
-
-require_relative 'gemutilities'
+require 'rubygems/test_case'
 require 'rubygems/commands/check_command'
 
-class TestGemCommandsCheckCommand < RubyGemTestCase
+class TestGemCommandsCheckCommand < Gem::TestCase
 
   def setup
     super

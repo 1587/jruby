@@ -35,7 +35,7 @@ class TestOpenURISSL < Test::Unit::TestCase
   end
 
   def setup
-    @proxies = %w[http_proxy https_proxy ftp_proxy no_proxy]
+    @proxies = %w[http_proxy HTTP_PROXY https_proxy HTTPS_PROXY ftp_proxy FTP_PROXY no_proxy]
     @old_proxies = @proxies.map {|k| ENV[k] }
     @proxies.each {|k| ENV[k] = nil }
   end
@@ -143,13 +143,13 @@ Certificate:
                     36:c1:44:4e:ab:9a:b2:73:6d
                 Exponent: 65537 (0x10001)
         X509v3 extensions:
-            X509v3 Basic Constraints: 
+            X509v3 Basic Constraints:
                 CA:FALSE
-            Netscape Comment: 
+            Netscape Comment:
                 OpenSSL Generated Certificate
-            X509v3 Subject Key Identifier: 
+            X509v3 Subject Key Identifier:
                 24:6F:03:A3:EE:06:51:75:B2:BA:FC:3A:38:59:BF:ED:87:CD:E8:7F
-            X509v3 Authority Key Identifier: 
+            X509v3 Authority Key Identifier:
                 keyid:24:6F:03:A3:EE:06:51:75:B2:BA:FC:3A:38:59:BF:ED:87:CD:E8:7F
 
     Signature Algorithm: sha1WithRSAEncryption
@@ -205,15 +205,15 @@ Certificate:
                     f0:86:61:ce:f1:ff:42:c7:23
                 Exponent: 65537 (0x10001)
         X509v3 extensions:
-            X509v3 Basic Constraints: 
+            X509v3 Basic Constraints:
                 CA:FALSE
-            Netscape Cert Type: 
+            Netscape Cert Type:
                 SSL Server
-            Netscape Comment: 
+            Netscape Comment:
                 OpenSSL Generated Certificate
-            X509v3 Subject Key Identifier: 
+            X509v3 Subject Key Identifier:
                 7F:17:5A:58:88:96:E1:1F:44:EA:FF:AD:C6:2E:90:E2:95:32:DD:F0
-            X509v3 Authority Key Identifier: 
+            X509v3 Authority Key Identifier:
                 keyid:24:6F:03:A3:EE:06:51:75:B2:BA:FC:3A:38:59:BF:ED:87:CD:E8:7F
 
     Signature Algorithm: sha1WithRSAEncryption

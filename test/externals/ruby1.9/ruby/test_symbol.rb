@@ -3,21 +3,25 @@ require 'test/unit'
 class TestSymbol < Test::Unit::TestCase
   # [ruby-core:3573]
 
-  def assert_eval_inspected(sym)
+  def assert_eval_inspected(sym, valid = true)
     n = sym.inspect
+    if valid
+      bug5136 = '[ruby-dev:44314]'
+      assert_not_match(/\A:"/, n, bug5136)
+    end
     assert_nothing_raised(SyntaxError) {assert_equal(sym, eval(n))}
   end
 
   def test_inspect_invalid
     # 2) Symbol#inspect sometimes returns invalid symbol representations:
     assert_eval_inspected(:"!")
-    assert_eval_inspected(:"=")
-    assert_eval_inspected(:"0")
+    assert_eval_inspected(:"=", false)
+    assert_eval_inspected(:"0", false)
     assert_eval_inspected(:"$1")
-    assert_eval_inspected(:"@1")
-    assert_eval_inspected(:"@@1")
-    assert_eval_inspected(:"@")
-    assert_eval_inspected(:"@@")
+    assert_eval_inspected(:"@1", false)
+    assert_eval_inspected(:"@@1", false)
+    assert_eval_inspected(:"@", false)
+    assert_eval_inspected(:"@@", false)
   end
 
   def assert_inspect_evaled(n)
@@ -131,5 +135,17 @@ class TestSymbol < Test::Unit::TestCase
     assert_equal(:foo, :FoO.downcase)
     assert_equal(:Foo, :foo.capitalize)
     assert_equal(:fOo, :FoO.swapcase)
+  end
+
+  def test_symbol_poped
+    assert_nothing_raised { eval('a = 1; :"#{ a }"; 1') }
+  end
+
+  def test_ascii_incomat_inspect
+    [Encoding::UTF_16LE, Encoding::UTF_16BE,
+     Encoding::UTF_32LE, Encoding::UTF_32BE].each do |e|
+      assert_equal(':"abc"', "abc".encode(e).to_sym.inspect)
+      assert_equal(':"\\u3042\\u3044\\u3046"', "\u3042\u3044\u3046".encode(e).to_sym.inspect)
+    end
   end
 end

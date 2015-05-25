@@ -35,13 +35,15 @@ class TestPath < Test::Unit::TestCase
       assert_equal("/sub", File.expand_path("sub", "/"))
     end
     if dosish
-      assert_equal("//machine/share", File.expand_path("/", "//machine/share/sub"))
-      assert_equal("//machine/share/dir", File.expand_path("/dir", "//machine/share/sub"))
+      assert_equal("//127.0.0.1/share", File.expand_path("/", "//127.0.0.1/share/sub"))
+      assert_equal("//127.0.0.1/share/dir", File.expand_path("/dir", "//127.0.0.1/share/sub"))
       assert_equal("z:/", File.expand_path("/", "z:/sub"))
       assert_equal("z:/dir", File.expand_path("/dir", "z:/sub"))
     end
     assert_equal("//", File.expand_path(".", "//"))
     assert_equal("//sub", File.expand_path("sub", "//"))
+
+    assert_equal("//127.0.0.1/\u3042", File.expand_path("\u3042", "//127.0.0.1"))
   end
 
   def test_dirname
@@ -226,10 +228,32 @@ class TestPath < Test::Unit::TestCase
 
   def test_extname
     assert_equal('', File.extname('a'))
-    assert_equal('.rb', File.extname('a.rb'))
-    assert_equal('', File.extname('a.rb.'))
+    ext = '.rb'
+    assert_equal(ext, File.extname('a.rb'))
+    unless /mswin|bccwin|mingw/ =~ RUBY_PLATFORM
+      # trailing spaces and dots are ignored on NTFS.
+      ext = ''
+    end
+    assert_equal(ext, File.extname('a.rb.'))
     assert_equal('', File.extname('a.'))
     assert_equal('', File.extname('.x'))
     assert_equal('', File.extname('..x'))
+  end
+
+  def test_ascii_incompatible_path
+    s = "\u{221e}\u{2603}"
+    assert_raise(Encoding::CompatibilityError) {open(s.encode("utf-16be"))}
+    assert_raise(Encoding::CompatibilityError) {open(s.encode("utf-16le"))}
+    assert_raise(Encoding::CompatibilityError) {open(s.encode("utf-32be"))}
+    assert_raise(Encoding::CompatibilityError) {open(s.encode("utf-32le"))}
+  end
+
+  def test_join
+    bug5483 = '[ruby-core:40338]'
+    path = %w[a b]
+    Encoding.list.each do |e|
+      next unless e.ascii_compatible?
+      assert_equal(e, File.join(*path.map {|s| s.force_encoding(e)}).encoding, bug5483)
+    end
   end
 end

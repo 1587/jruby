@@ -1,8 +1,11 @@
+# coding: utf-8
 require 'test/unit'
+require 'test/test_helper'
 require 'rbconfig'
 
 class TestDir < Test::Unit::TestCase
-  WINDOWS = Config::CONFIG['host_os'] =~ /Windows|mswin/
+  include TestHelper
+  WINDOWS = RbConfig::CONFIG['host_os'] =~ /Windows|mswin/
 
   def setup
     @save_dir = Dir.pwd
@@ -19,6 +22,24 @@ class TestDir < Test::Unit::TestCase
     setup
   end
 
+  # JRUBY-2519
+  def test_dir_instance_should_not_cache_dir_contents
+    
+    require 'fileutils'
+    require 'tmpdir'
+    
+    testdir = File.join(Dir.tmpdir, Process.pid.to_s)
+    FileUtils.mkdir_p testdir
+    
+    FileUtils.touch File.join(testdir, 'fileA.txt')
+    dir = Dir.new(testdir)
+    FileUtils.touch File.join(testdir, 'fileB.txt')
+    dir.rewind # does nothing
+
+    assert_equal 'fileA.txt', dir.find {|item| item == 'fileA.txt' }
+    assert_equal 'fileB.txt', dir.find {|item| item == 'fileB.txt' }
+  end  
+  
   def test_pwd_and_getwd_equivalent
     assert_equal(Dir.pwd, Dir.getwd)
   end
@@ -66,14 +87,14 @@ class TestDir < Test::Unit::TestCase
     # elements. This used to throw NPE.
     Dir.mkdir("testDir_2")
     open("testDir_2/testDir_tmp1", "w").close
-    Dir.glob('./**/testDir_tmp1').each {|f| assert File.exist?(f) }
+    Dir.glob('./testDir_2/**/testDir_tmp1').each {|f| assert File.exist?(f) }
   end
 
   def test_glob_with_blocks
     Dir.mkdir("testDir_3")
     open("testDir_3/testDir_tmp1", "w").close
     vals = []
-    glob_val = Dir.glob('**/*tmp1'){|f| vals << f}
+    glob_val = Dir.glob('./testDir_3/**/*tmp1'){|f| vals << f}
     assert_equal(true, glob_val.nil?)
     assert_equal(1, vals.size)
     assert_equal(true, File.exists?(vals[0])) unless vals.empty?
@@ -95,18 +116,21 @@ class TestDir < Test::Unit::TestCase
 
   # http://jira.codehaus.org/browse/JRUBY-300
   def test_chdir_and_pwd
-    java_test_classes = File.expand_path(File.dirname(__FILE__) + '/../build/classes/test')
-    java_test_classes = File.expand_path(File.dirname(__FILE__) + '/..') unless File.exist?(java_test_classes)
+    java_test_classes = File.expand_path(File.dirname(__FILE__) + '/../test/target/test-classes')
+    java_test_classes = java_test_classes + File::PATH_SEPARATOR + File.expand_path(File.dirname(__FILE__) + '/../core/target/test-classes')
     Dir.mkdir("testDir_4")
     Dir.chdir("testDir_4") do
-      pwd = `ruby -e "puts Dir.pwd"`
+      pwd = `#{RUBY} -e "puts Dir.pwd"`
       pwd.gsub! '\\', '/'
       assert_equal("testDir_4", pwd.split("/")[-1].strip)
 
-      pwd = `jruby -e "puts Dir.pwd"`
-      pwd.gsub! '\\', '/'
-      assert_equal("testDir_4", pwd.split("/")[-1].strip)
-
+      if (ENV_JAVA['jruby.home'] and not 
+          ENV_JAVA['jruby.home'].match( /!\// ) and not
+          ENV_JAVA['jruby.home'].match( /:\// ))
+        pwd = `#{ENV_JAVA['jruby.home']}/bin/jruby -e "puts Dir.pwd"`
+        pwd.gsub! '\\', '/'
+        assert_equal("testDir_4", pwd.split("/")[-1].strip)
+      end
       pwd = `java -cp "#{java_test_classes}" org.jruby.util.Pwd`
       pwd.gsub! '\\', '/'
       assert_equal("testDir_4", pwd.split("/")[-1].strip)
@@ -118,22 +142,67 @@ class TestDir < Test::Unit::TestCase
   end
 
   def test_glob_inside_jar_file
-    require 'test/dir with spaces/test_jar.jar'
-    require 'inside_jar'
-
-    prefix = WINDOWS ? "file:/" : "file:"
-    
-    first = File.expand_path(File.join(File.dirname(__FILE__), '..'))
-    
-    jar_file = prefix + File.join(first, "test", "dir with spaces", "test_jar.jar") + "!"
+    jar_file = jar_file_with_spaces
 
     ["#{jar_file}/abc", "#{jar_file}/inside_jar.rb", "#{jar_file}/second_jar.rb"].each do |f|
-      assert $__glob_value.include?(f)
+      assert $__glob_value.include?(f), "#{f} not found in #{$__glob_value.inspect}"
     end
     ["#{jar_file}/abc", "#{jar_file}/abc/foo.rb", "#{jar_file}/inside_jar.rb", "#{jar_file}/second_jar.rb"].each do |f|
       assert $__glob_value2.include?(f)
     end
     assert_equal ["#{jar_file}/abc"], Dir["#{jar_file}/abc"]
+  end
+
+  # JRUBY-5155
+  def test_glob_with_magic_inside_jar_file
+    jar_file = jar_file_with_spaces
+
+    aref = Dir["#{jar_file}/[a-z]*_jar.rb"]
+    glob = Dir.glob("#{jar_file}/[a-z]*_jar.rb")
+
+    [aref, glob].each do |collect|
+      ["#{jar_file}/inside_jar.rb", "#{jar_file}/second_jar.rb"].each do |f|
+        assert collect.include?(f)
+      end
+      assert !collect.include?("#{jar_file}/abc/foo.rb")
+    end
+  end
+
+  def test_foreach_works_in_jar_file
+    jar_file = File.expand_path('../jar_with_relative_require1.jar', __FILE__)
+    jar_path = "file:#{jar_file}!/test"
+    dir = Dir.new(jar_path)
+    assert dir.entries.include?('require_relative1.rb'), "#{jar_path} does not contain require_relative1.rb: #{dir.entries.inspect}"
+    entries = []
+    dir.each {|d| entries << d}
+    assert entries.include?('require_relative1.rb'), "#{jar_path} does not contain require_relative1.rb: #{entries.inspect}"
+    entries = []
+    Dir.foreach(jar_path) {|d| entries << d}
+    assert entries.include?('require_relative1.rb'), "#{jar_path} does not contain require_relative1.rb: #{entries.inspect}"
+
+    entries_by_enum = Dir.foreach(jar_path).to_a
+    assert entries_by_enum.include?('require_relative1.rb'), "#{jar_path} does not contain require_relative1.rb: #{entries_by_enum.inspect}"
+
+    root_jar_path = "file:#{jar_file}!"
+    root_entries_by_enum = Dir.foreach(root_jar_path).to_a
+    assert root_entries_by_enum.include?('test'), "#{root_jar_path} does not contain 'test' directory: #{root_entries_by_enum.inspect}"
+
+    root_jar_path_with_slash = "file:#{jar_file}!/"
+    root_entries_with_slash_by_enum = Dir.foreach(root_jar_path_with_slash).to_a
+    assert root_entries_with_slash_by_enum.include?('test'), "#{root_jar_path_with_slash} does not contain 'test' directory: #{root_entries_with_slash_by_enum.inspect}"
+
+    root_jar_path_with_jar_prefix = "jar:file:#{jar_file}!"
+    root_entries_with_jar_prefix_by_enum = Dir.foreach(root_jar_path_with_jar_prefix).to_a
+    assert root_entries_with_jar_prefix_by_enum.include?('test'), "#{root_jar_path_with_jar_prefix} does not contain 'test' directory: #{root_entries_with_jar_prefix_by_enum.inspect}"
+  end
+
+  def jar_file_with_spaces
+    require 'test/dir with spaces/test_jar.jar'
+    require 'inside_jar'
+
+    first = File.expand_path(File.join(File.dirname(__FILE__), '..'))
+
+    "file:" + File.join(first, "test", "dir with spaces", "test_jar.jar") + "!"
   end
 
   # JRUBY-4177
@@ -143,6 +212,30 @@ class TestDir < Test::Unit::TestCase
     assert_nothing_raised do
       Dir.mktmpdir('xx') {}
     end
+  end
+
+  # JRUBY-4983
+  def test_entries_unicode
+    utf8_dir = "testDir_1/glk\u00a9"
+    
+    Dir.mkdir("./testDir_1")
+    Dir.mkdir(utf8_dir)
+
+    assert_nothing_raised { Dir.entries(utf8_dir) }
+
+    require 'fileutils'
+    assert_nothing_raised do
+      FileUtils.cp_r(utf8_dir, "./testDir_1/target")
+      FileUtils.rm_r(utf8_dir)
+    end
+  ensure
+    Dir.unlink "./testDir_1/target" rescue nil
+    Dir.unlink utf8_dir rescue nil
+  end
+
+  # JRUBY-5286
+  def test_pwd_tainted
+    assert Dir.pwd.tainted?
   end
 
   if WINDOWS

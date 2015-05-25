@@ -45,9 +45,11 @@ class TestPack < Test::Unit::TestCase
     assert_equal(endian("\000\000\000\000\000\000\000\200", 8), [@bignum1].pack("q"))
   end
 
-  def test_pack_q_expected_errors
-    assert_raises(TypeError){ @char_array.pack("q") }
-    assert_raises(RangeError){ [(2**128)].pack("q") }
+  unless RUBY_VERSION =~ /1\.9/
+    def test_pack_q_expected_errors
+      assert_raises(TypeError){ @char_array.pack("q") }
+      assert_raises(RangeError){ [(2**128)].pack("q") }
+    end
   end
 
   def test_pack_Q
@@ -59,9 +61,11 @@ class TestPack < Test::Unit::TestCase
     assert_equal(endian("\000\000\000\000\000\000\000\200", 8), [@bignum1].pack("Q"))
   end
 
-  def test_pack_Q_expected_errors
-    assert_raises(TypeError){ @char_array.pack("Q") }
-    assert_raises(RangeError){ [(2**128)].pack("Q") }
+  unless RUBY_VERSION =~ /1\.9/
+    def test_pack_Q_expected_errors
+      assert_raises(TypeError){ @char_array.pack("Q") }
+      assert_raises(RangeError){ [(2**128)].pack("Q") }
+    end
   end
 
   # JRUBY-2502
@@ -73,6 +77,14 @@ class TestPack < Test::Unit::TestCase
     assert_equal(
       "M04%!04%!04%!04%!04%!04%!04%!04%!04%!04%!04%!04%!04%!04%!04%!\n%04%!04$`\n",
       ["A"*50].pack('u'))
+  end
+
+  def test_pack_m_0_RFC4648
+    tobe = "QUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJD\nQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJD\nQUJD\n"
+    if RUBY_VERSION >= "1.9"
+      tobe.gsub!(/\n/, '')
+    end
+    assert_equal(tobe, ["ABC"*31].pack('m0'))
   end
 
   # JRUBY-3677
@@ -91,5 +103,17 @@ class TestPack < Test::Unit::TestCase
   def test_unpack_M
     assert_equal(["foo\r\n\r\r\r1\r2\r\r\r\rvvs"], "foo\r\n\r\r\r1\r=\r\n2\r\r\r\rvvs".unpack("M"))
     assert_equal(["foo\r\n"], "foo\r\n".unpack("M"))
+  end
+
+  # JRUBY-4967
+  def test_pack_CC
+    assert_raises(ArgumentError) { [0].pack('CC') }
+  end
+
+  unless RUBY_VERSION =~ /1\.9/
+    def test_unpack_at_on_substring
+      assert_equal([?c], 'abcdef'[1..-1].unpack('@1c'))
+      assert_equal([?f], 'abcdef'[1..-1].unpack('x1@*c'))
+    end
   end
 end

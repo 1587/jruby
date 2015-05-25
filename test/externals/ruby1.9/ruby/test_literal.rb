@@ -27,6 +27,7 @@ class TestRubyLiteral < Test::Unit::TestCase
     assert_equal '123456789012345678901234567890', 123456789012345678901234567890.inspect
     assert_instance_of Bignum, 123456789012345678901234567890
     assert_instance_of Float, 1.3
+    assert_equal '2', eval("0x00+2").inspect
   end
 
   def test_self
@@ -52,6 +53,41 @@ class TestRubyLiteral < Test::Unit::TestCase
     assert_equal "\1", "\1"
     assert_equal "3", "\x33"
     assert_equal "\n", "\n"
+    bug2500 = '[ruby-core:27228]'
+    bug5262 = '[ruby-core:39222]'
+    %w[c C- M-].each do |pre|
+      ["u", %w[u{ }]].each do |open, close|
+        ["?", ['"', '"']].each do |qopen, qclose|
+          str = "#{qopen}\\#{pre}\\#{open}5555#{close}#{qclose}"
+          assert_raise(SyntaxError, "#{bug2500} eval(#{str})") {eval(str)}
+
+          str = "#{qopen}\\#{pre}\\#{open}\u201c#{close}#{qclose}"
+          assert_raise(SyntaxError, "#{bug5262} eval(#{str})") {eval(str)}
+
+          str = "#{qopen}\\#{pre}\\#{open}\u201c#{close}#{qclose}".encode("euc-jp")
+          assert_raise(SyntaxError, "#{bug5262} eval(#{str})") {eval(str)}
+
+          str = "#{qopen}\\#{pre}\\#{open}\u201c#{close}#{qclose}".encode("iso-8859-13")
+          assert_raise(SyntaxError, "#{bug5262} eval(#{str})") {eval(str)}
+
+          str = "#{qopen}\\#{pre}\\#{open}\xe2\x7f#{close}#{qclose}".force_encoding("utf-8")
+          assert_raise(SyntaxError, "#{bug5262} eval(#{str})") {eval(str)}
+        end
+      end
+    end
+    bug6069 = '[ruby-dev:45278]'
+    assert_equal "\x13", "\c\x33"
+    assert_equal "\x13", "\C-\x33"
+    assert_equal "\xB3", "\M-\x33"
+    assert_equal "\u201c", eval(%["\\\u{201c}"]), bug5262
+    assert_equal "\u201c".encode("euc-jp"), eval(%["\\\u{201c}"].encode("euc-jp")), bug5262
+    assert_equal "\u201c".encode("iso-8859-13"), eval(%["\\\u{201c}"].encode("iso-8859-13")), bug5262
+    assert_equal "\\\u201c", eval(%['\\\u{201c}']), bug6069
+    assert_equal "\\\u201c".encode("euc-jp"), eval(%['\\\u{201c}'].encode("euc-jp")), bug6069
+    assert_equal "\\\u201c".encode("iso-8859-13"), eval(%['\\\u{201c}'].encode("iso-8859-13")), bug6069
+    assert_equal "\u201c", eval(%[?\\\u{201c}]), bug6069
+    assert_equal "\u201c".encode("euc-jp"), eval(%[?\\\u{201c}].encode("euc-jp")), bug6069
+    assert_equal "\u201c".encode("iso-8859-13"), eval(%[?\\\u{201c}].encode("iso-8859-13")), bug6069
   end
 
   def test_dstring
@@ -77,16 +113,16 @@ class TestRubyLiteral < Test::Unit::TestCase
 
   def test_regexp
     assert_instance_of Regexp, //
-    assert_match //, 'a'
-    assert_match //, ''
+    assert_match(//, 'a')
+    assert_match(//, '')
     assert_instance_of Regexp, /a/
-    assert_match /a/, 'a'
-    assert_no_match /test/, 'tes'
+    assert_match(/a/, 'a')
+    assert_no_match(/test/, 'tes')
     re = /test/
     assert_match re, 'test'
     str = 'test'
     assert_match re, str
-    assert_match /test/, str
+    assert_match(/test/, str)
     assert_equal 0, (/test/ =~ 'test')
     assert_equal 0, (re =~ 'test')
     assert_equal 0, (/test/ =~ str)
@@ -100,6 +136,8 @@ class TestRubyLiteral < Test::Unit::TestCase
   def test_dregexp
     assert_instance_of Regexp, /re#{'ge'}xp/
     assert_equal(/regexp/, /re#{'ge'}xp/)
+    bug3903 = '[ruby-core:32682]'
+    assert_raise(SyntaxError, bug3903) {eval('/[#{"\x80"}]/')}
   end
 
   def test_array
@@ -210,6 +248,16 @@ class TestRubyLiteral < Test::Unit::TestCase
           assert_equal(r1, r2, "Integer(#{s.inspect}) != eval(#{s.inspect})")
         }
       }
+    }
+    bug2407 = '[ruby-dev:39798]'
+    head.each {|h|
+      if /^0/ =~ h
+        begin
+          eval("#{h}_")
+        rescue SyntaxError => e
+          assert_match(/numeric literal without digits\Z/, e.message, bug2407)
+        end
+      end
     }
   end
 

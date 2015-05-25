@@ -1,14 +1,8 @@
-#--
-# Copyright 2006 by Chad Fowler, Rich Kilmer, Jim Weirich and others.
-# All rights reserved.
-# See LICENSE.txt for permissions.
-#++
-
-require_relative 'gemutilities'
-require_relative 'simple_gem'
+require 'rubygems/test_case'
+require "rubygems/simple_gem"
 require 'rubygems/validator'
 
-class TestGemValidator < RubyGemTestCase
+class TestGemValidator < Gem::TestCase
 
   def setup
     super

@@ -1,4 +1,5 @@
 require 'test/unit'
+require 'envutil'
 
 class TestEncodingConverter < Test::Unit::TestCase
   def check_ec(edst, esrc, eres, dst, src, ec, off, len, opts=nil)
@@ -399,7 +400,7 @@ class TestEncodingConverter < Test::Unit::TestCase
     src << "abc\r\ndef"; check_ec("abc\ndef",                             "", :source_buffer_empty, *a)
     src << "ghi\njkl";   check_ec("abc\ndefghi\njkl",                     "", :source_buffer_empty, *a)
     src << "mno\rpqr";   check_ec("abc\ndefghi\njklmno\npqr",             "", :source_buffer_empty, *a)
-    src << "stu\r";      check_ec("abc\ndefghi\njklmno\npqrstu\n",        "", :source_buffer_empty, *a)
+    src << "stu\r";      check_ec("abc\ndefghi\njklmno\npqrstu",          "", :source_buffer_empty, *a)
     src << "\nvwx";      check_ec("abc\ndefghi\njklmno\npqrstu\nvwx",     "", :source_buffer_empty, *a)
     src << "\nyz";       check_ec("abc\ndefghi\njklmno\npqrstu\nvwx\nyz", "", :source_buffer_empty, *a)
   end
@@ -410,9 +411,23 @@ class TestEncodingConverter < Test::Unit::TestCase
     src << "abc\r\ndef"; check_ec("abc\ndef",                             "", :source_buffer_empty, *a)
     src << "ghi\njkl";   check_ec("abc\ndefghi\njkl",                     "", :source_buffer_empty, *a)
     src << "mno\rpqr";   check_ec("abc\ndefghi\njklmno\npqr",             "", :source_buffer_empty, *a)
-    src << "stu\r";      check_ec("abc\ndefghi\njklmno\npqrstu\n",        "", :source_buffer_empty, *a)
+    src << "stu\r";      check_ec("abc\ndefghi\njklmno\npqrstu",          "", :source_buffer_empty, *a)
     src << "\nvwx";      check_ec("abc\ndefghi\njklmno\npqrstu\nvwx",     "", :source_buffer_empty, *a)
     src << "\nyz";       check_ec("abc\ndefghi\njklmno\npqrstu\nvwx\nyz", "", :source_buffer_empty, *a)
+  end
+
+  def test_universal_newline3
+    ec = Encoding::Converter.new("", "", universal_newline: true)
+    a = ["", src="", ec, nil, 50, :partial_input=>true]
+    src << "abc\r\ndef"; check_ec("abc\ndef",                               "", :source_buffer_empty, *a)
+    src << "ghi\njkl";   check_ec("abc\ndefghi\njkl",                       "", :source_buffer_empty, *a)
+    src << "mno\rpqr";   check_ec("abc\ndefghi\njklmno\npqr",               "", :source_buffer_empty, *a)
+    src << "stu\r";      check_ec("abc\ndefghi\njklmno\npqrstu",            "", :source_buffer_empty, *a)
+    src << "\nvwx";      check_ec("abc\ndefghi\njklmno\npqrstu\nvwx",       "", :source_buffer_empty, *a)
+    src << "\nyz";       check_ec("abc\ndefghi\njklmno\npqrstu\nvwx\nyz",   "", :source_buffer_empty, *a)
+    src << "\r";         check_ec("abc\ndefghi\njklmno\npqrstu\nvwx\nyz",   "", :source_buffer_empty, *a)
+    a[-1] = nil
+    src << "";           check_ec("abc\ndefghi\njklmno\npqrstu\nvwx\nyz\n", "", :finished, *a)
   end
 
   def test_crlf_newline
@@ -433,6 +448,16 @@ class TestEncodingConverter < Test::Unit::TestCase
   def test_cr_newline2
     ec = Encoding::Converter.new("", "", cr_newline: true)
     assert_econv("abc\rdef", :finished, 50, ec, "abc\ndef", "")
+  end
+
+  def test_no_universal_newline1
+    ec = Encoding::Converter.new("UTF-8", "EUC-JP", universal_newline: false)
+    assert_econv("abc\r\ndef", :finished, 50, ec, "abc\r\ndef", "")
+  end
+
+  def test_no_universal_newline2
+    ec = Encoding::Converter.new("", "", universal_newline: false)
+    assert_econv("abc\r\ndef", :finished, 50, ec, "abc\r\ndef", "")
   end
 
   def test_after_output
@@ -872,18 +897,35 @@ class TestEncodingConverter < Test::Unit::TestCase
                  Encoding::Converter.search_convpath("ISO-8859-1", "UTF-32BE", universal_newline: true))
   end
 
-  def test_invalid_replace
+  def test_invalid_replace2
     assert_raise(ArgumentError) {
       broken = "\x80".force_encoding("euc-jp")
       "".encode("euc-jp", :undef => :replace, :replace => broken)
     }
   end
 
-  def test_utf8_mac
-    assert_equal("\u{fb4d}", "\u05DB\u05BF".encode("UTF-8", "UTF8-MAC"))
-    assert_equal("\u{1ff7}", "\u03C9\u0345\u0342".encode("UTF-8", "UTF8-MAC"))
+  def test_newline_option
+    ec1 = Encoding::Converter.new("", "", universal_newline: true)
+    ec2 = Encoding::Converter.new("", "", newline: :universal)
+    assert_equal(ec1, ec2)
+  end
 
-    assert_equal("\u05DB\u05BF", "\u{fb4d}".encode("UTF8-MAC").force_encoding("UTF-8"))
-    assert_equal("\u03C9\u0345\u0342", "\u{1ff7}".encode("UTF8-MAC").force_encoding("UTF-8"))
+  def test_default_external
+    cmd = <<EOS
+    Encoding.default_external = ext = ARGV[0]
+    Encoding.default_internal = int ='utf-8'
+    begin
+      Encoding::Converter.new(ext, int)
+    ensure
+      Marshal.dump($!, STDOUT)
+      STDOUT.flush
+    end
+EOS
+    Encoding.list.grep(->(enc) {/^ISO-8859-\d(?:[0-5])?\z/i =~ enc.name}) do |enc|
+      error = IO.popen([EnvUtil.rubybin, "-e", cmd, enc.name]) do |child|
+        Marshal.load(child)
+      end
+      assert_nil(error)
+    end
   end
 end

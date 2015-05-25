@@ -55,6 +55,13 @@ if defined?(WIN32OLE)
       assert_match(/^\(in setting property `compareMode': \)/, exc.message) #`
     end
 
+    def test_no_method_error
+      exc = assert_raise(NoMethodError) {
+          @dict1.non_exist_method
+      }
+      assert_match(/non_exist_method/, exc.message)
+    end
+
     def test_ole_methods
       methods = @dict1.ole_methods
       mnames = methods.collect {|m|
@@ -344,8 +351,9 @@ if defined?(WIN32OLE)
 
         WIN32OLE.codepage = cp
         file = fso.opentextfile(fname, 2, true)
+        test_str = [0x3042].pack("U*").encode("UTF-16LE")
         begin
-          file.write [0x3042].pack("U*").force_encoding("UTF-8")
+          file.write test_str.force_encoding("UTF-16")
         ensure
           file.close
         end
@@ -353,7 +361,7 @@ if defined?(WIN32OLE)
         open(fname, "r:ascii-8bit") {|ifs|
           str = ifs.read
         }
-        assert_equal("\202\240", str)
+        assert_equal(test_str.force_encoding("ascii-8bit"), str)
 
         # This test fail if codepage 20932 (euc) is not installed.
         begin
@@ -364,14 +372,14 @@ if defined?(WIN32OLE)
           WIN32OLE.codepage = cp
           file = fso.opentextfile(fname, 2, true)
           begin
-            file.write [164, 162].pack("c*").force_encoding("EUC-JP")
+            file.write [164, 162].pack("c*").force_encoding("UTF-16")
           ensure
             file.close
           end
           open(fname, "r:ascii-8bit") {|ifs|
             str = ifs.read
           }
-          assert_equal("\202\240", str)
+          assert_equal("\244\242", str)
         end
 
       ensure

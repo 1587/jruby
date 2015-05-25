@@ -100,6 +100,7 @@ class TestGlobals < Test::Unit::TestCase
     assert_equal $&, $MATCH
   end
   
+  # This test just checks if JRuby allows $= assignment (and ignored)
   def test_english_ignore_case
     alias $IGNORECASE $=
     assert_not_nil($IGNORECASE)
@@ -107,6 +108,8 @@ class TestGlobals < Test::Unit::TestCase
     assert_nil("fOo" =~ /foo/)
     assert("fOo" =~ /foo/i)
     $= = true
+    # The following matches on CRuby 1.8 (ignore case) but not on CRuby 1.9 and JRuby (both on 1.8 and 1.9 modes.)
+    # assert("fOo" =~ /foo/)
     assert("fOo" =~ /foo/i)
     $= = false
   end
@@ -114,9 +117,6 @@ class TestGlobals < Test::Unit::TestCase
   # JRUBY-1396, $? was returning Java null instead of nil when uninitialized
   def test_last_exit_status_as_param
     assert_nothing_raised {'foo' == $?}
-  end
-  def test_that_last_exit_status_is_nil
-    assert_nil $?
   end
   
   def test_backref_set_checks_for_matchdata

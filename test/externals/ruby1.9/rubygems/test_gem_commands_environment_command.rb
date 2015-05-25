@@ -1,7 +1,7 @@
-require_relative 'gemutilities'
+require 'rubygems/test_case'
 require 'rubygems/commands/environment_command'
 
-class TestGemCommandsEnvironmentCommand < RubyGemTestCase
+class TestGemCommandsEnvironmentCommand < Gem::TestCase
 
   def setup
     super
@@ -12,6 +12,7 @@ class TestGemCommandsEnvironmentCommand < RubyGemTestCase
   def test_execute
     orig_sources = Gem.sources.dup
     Gem.sources.replace %w[http://gems.example.com]
+    Gem.configuration['gemcutter_key'] = 'blah'
 
     @cmd.send :handle_options, %w[]
 
@@ -32,6 +33,7 @@ class TestGemCommandsEnvironmentCommand < RubyGemTestCase
     assert_match %r|GEM PATHS:|, @ui.output
     assert_match %r|- #{Regexp.escape @gemhome}|, @ui.output
     assert_match %r|GEM CONFIGURATION:|, @ui.output
+    assert_match %r|"gemcutter_key" => "\*\*\*\*"|, @ui.output
     assert_match %r|:verbose => |, @ui.output
     assert_match %r|REMOTE SOURCES:|, @ui.output
     assert_equal '', @ui.error
@@ -125,9 +127,18 @@ class TestGemCommandsEnvironmentCommand < RubyGemTestCase
       @cmd.execute
     end
 
-    assert_equal "#{Gem::RubyGemsVersion}\n", @ui.output
+    assert_equal "#{Gem::VERSION}\n", @ui.output
     assert_equal '', @ui.error
   end
 
-end
+  def test_execute_platform
+    @cmd.send :handle_options, %w[platform]
 
+    use_ui @ui do
+      @cmd.execute
+    end
+
+    assert_equal "#{Gem.platforms.join File::PATH_SEPARATOR}\n", @ui.output
+    assert_equal '', @ui.error
+  end
+end

@@ -87,7 +87,7 @@ module WEBrick
               content = io.read(last-first+1)
               body << "--" << boundary << CRLF
               body << "Content-Type: #{mtype}" << CRLF
-              body << "Content-Range: #{first}-#{last}/#{filesize}" << CRLF
+              body << "Content-Range: bytes #{first}-#{last}/#{filesize}" << CRLF
               body << CRLF
               body << content
               body << CRLF
@@ -107,7 +107,7 @@ module WEBrick
               content = io.read(last-first+1)
             end
             res['content-type'] = mtype
-            res['content-range'] = "#{first}-#{last}/#{filesize}"
+            res['content-range'] = "bytes #{first}-#{last}/#{filesize}"
             res['content-length'] = last - first + 1
             res.body = content
           else
@@ -125,16 +125,47 @@ module WEBrick
       end
     end
 
+    ##
+    # Serves files from a directory
+
     class FileHandler < AbstractServlet
       HandlerTable = Hash.new
+
+      ##
+      # Allow custom handling of requests for files with +suffix+ by class
+      # +handler+
 
       def self.add_handler(suffix, handler)
         HandlerTable[suffix] = handler
       end
 
+      ##
+      # Remove custom handling of requests for files with +suffix+
+
       def self.remove_handler(suffix)
         HandlerTable.delete(suffix)
       end
+
+      ##
+      # Creates a FileHandler servlet on +server+ that serves files starting
+      # at directory +root+
+      #
+      # If +options+ is a Hash the following keys are allowed:
+      #
+      # :AcceptableLanguages:: Array of languages allowed for accept-language
+      # :DirectoryCallback:: Allows preprocessing of directory requests
+      # :FancyIndexing:: If true, show an index for directories
+      # :FileCallback:: Allows preprocessing of file requests
+      # :HandlerCallback:: Allows preprocessing of requests
+      # :HandlerTable:: Maps file suffixes to file handlers.
+      #                 DefaultFileHandler is used by default but any servlet
+      #                 can be used.
+      # :NondisclosureName:: Do not show files matching this array of globs
+      # :UserDir:: Directory inside ~user to serve content from for /~user
+      #            requests.  Only works if mounted on /
+      #
+      # If +options+ is true or false then +:FancyIndexing+ is enabled or
+      # disabled respectively.
 
       def initialize(server, root, options={}, default=Config::FileHandler)
         @config = server.config
@@ -214,16 +245,20 @@ module WEBrick
         # character in URI notation. So the value of path_info should be
         # normalize before accessing to the filesystem.
 
+        # dirty hack for filesystem encoding; in nature, File.expand_path
+        # should not be used for path normalization.  [Bug #3345]
+        path = req.path_info.dup.force_encoding(Encoding.find("filesystem"))
         if trailing_pathsep?(req.path_info)
           # File.expand_path removes the trailing path separator.
           # Adding a character is a workaround to save it.
           #  File.expand_path("/aaa/")        #=> "/aaa"
           #  File.expand_path("/aaa/" + "x")  #=> "/aaa/x"
-          expanded = File.expand_path(req.path_info + "x")
+          expanded = File.expand_path(path + "x")
           expanded.chop!  # remove trailing "x"
         else
-          expanded = File.expand_path(req.path_info)
+          expanded = File.expand_path(path)
         end
+        expanded.force_encoding(req.path_info.encoding)
         req.path_info = expanded
       end
 
@@ -412,7 +447,7 @@ module WEBrick
           else
             dname = name
           end
-          s =  " <A HREF=\"#{HTTPUtils::escape(name)}\">#{dname}</A>"
+          s =  " <A HREF=\"#{HTTPUtils::escape(name)}\">#{HTMLUtils::escape(dname)}</A>"
           s << " " * (30 - dname.bytesize)
           s << (time ? time.strftime("%Y/%m/%d %H:%M      ") : " " * 22)
           s << (size >= 0 ? size.to_s : "-") << "\n"
