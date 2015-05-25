@@ -5,10 +5,11 @@ require 'ffi'
 include Java
 import java.nio.ByteBuffer
 
-iter = 10_000
+iter = 100_000
 
 module Posix
   extend FFI::Library
+  ffi_lib FFI::Platform::LIBC
   if FFI::Platform.linux?
     attach_function :__xstat, :__xstat64, [ :int, :string, :buffer_out ], :int
     STAT_VER = FFI::Platform::ADDRESS_SIZE == 32 ? 3 : 0
@@ -75,11 +76,12 @@ puts "blocks=#{st[:st_blocks]} File.stat.blocks=#{File.stat('/tmp').blocks.to_i}
 puts "FFI stat(file) #{iter}x"
 10.times {
   puts Benchmark.measure {
-
-    iter.times do
+    i = 0
+    while i < iter
       # Allocate on the java/ruby heap, data only copied out of native memory, not in to it
       buf = Stat.alloc_out false # don't clear the memory
       Posix.stat("/tmp", buf)
+      i += 1
     end
   }
 }
@@ -88,11 +90,13 @@ StatStruct = Struct.new(:st_ino, :st_mtime, :st_ctime, :st_atime, :st_blocks)
 10.times {
   puts Benchmark.measure {
 
-    iter.times do
+    i = 0
+    while i < iter
       buf = Stat.alloc_out false # don't clear the memory
       Posix.stat("/tmp", buf)
       StatStruct.new(buf[:st_ino], Time.at(buf[:st_mtime]), Time.at(buf[:st_ctime]), Time.at(buf[:st_atime]),
         buf[:st_blocks])
+      i += 1
     end
   }
 }
@@ -100,24 +104,30 @@ puts "File.stat(file) #{iter}x"
 10.times {
   puts Benchmark.measure {
 
-    iter.times do
+    i = 0
+    while i < iter
       File.stat("/tmp")
+      i += 1
     end
   }
 }
 puts "File.mtime(file) #{iter}x"
 10.times {
   puts Benchmark.measure {
-    iter.times do
+    i = 0
+    while i < iter
       File.mtime("/tmp")
+      i += 1
     end
   }
 }
 puts "FFIFile.mtime(file) #{iter}x"
 10.times {
   puts Benchmark.measure {
-    iter.times do
+    i = 0
+    while i < iter
       FFIFile.mtime("/tmp")
+      i += 1
     end
   }
 }
@@ -125,16 +135,20 @@ puts "FFIFile.mtime(file) #{iter}x"
 puts "File.ctime(file) #{iter}x"
 10.times {
   puts Benchmark.measure {
-    iter.times do
+    i = 0
+    while i < iter
       File.ctime("/tmp")
+      i += 1
     end
   }
 }
 puts "FFIFile.ctime(file) #{iter}x"
 10.times {
   puts Benchmark.measure {
-    iter.times do
+    i = 0
+    while i < iter
       FFIFile.ctime("/tmp")
+      i += 1
     end
   }
 }

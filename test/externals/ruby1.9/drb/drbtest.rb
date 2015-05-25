@@ -2,18 +2,19 @@ require 'test/unit'
 require 'drb/drb'
 require 'drb/extservm'
 require 'timeout'
+require 'shellwords'
 require_relative '../ruby/envutil'
 
 class DRbService
   @@manager = DRb::ExtServManager.new
-  @@ruby = EnvUtil.rubybin
+  @@ruby = Shellwords.escape(EnvUtil.rubybin)
   @@ruby += " -d" if $DEBUG
   def self.add_service_command(nm)
     dir = File.dirname(File.expand_path(__FILE__))
-    DRb::ExtServManager.command[nm] = "\"#{@@ruby}\" \"#{dir}/#{nm}\""
+    DRb::ExtServManager.command[nm] = [@@ruby, "#{dir}/#{nm}"]
   end
 
-  %w(ut_drb.rb ut_array.rb ut_port.rb ut_large.rb ut_safe1.rb ut_eval.rb).each do |nm|
+  %w(ut_drb.rb ut_array.rb ut_port.rb ut_large.rb ut_safe1.rb ut_eval.rb ut_eq.rb).each do |nm|
     add_service_command(nm)
   end
   @server = @@server = DRb::DRbServer.new('druby://localhost:0', @@manager, {})
@@ -64,12 +65,24 @@ end
 
 module DRbCore
   def setup
-    @ext = DRbService.ext_service('ut_drb.rb')
+    @service_name = 'ut_drb.rb'
+    @ext = DRbService.ext_service(@service_name)
     @there = @ext.front
   end
 
   def teardown
-    @ext.stop_service if @ext
+    @ext.stop_service if defined?(@ext) && @ext
+    DRbService.manager.unregist(@service_name)
+    signal = /mswin|mingw/ =~ RUBY_PLATFORM ? :INT : :TERM
+    Thread.list.each {|th|
+      if th.respond_to?(:pid) && th[:drb_service] == @service_name
+        begin
+          Process.kill signal, th.pid
+        rescue Errno::ESRCH
+        end
+        th.join
+      end
+    }
   end
 
   def test_00_DRbObject
@@ -134,7 +147,7 @@ module DRbCore
 
   def test_03
     assert_equal(8, @there.sum(1, 1, 1, 1, 1, 1, 1, 1))
-    assert_raise(ArgumentError) do
+    assert_raise(DRb::DRbConnError) do
       @there.sum(1, 1, 1, 1, 1, 1, 1, 1, 1)
     end
     assert_raise(DRb::DRbConnError) do
@@ -270,12 +283,24 @@ end
 
 module DRbAry
   def setup
-    @ext = DRbService.ext_service('ut_array.rb')
+    @service_name = 'ut_array.rb'
+    @ext = DRbService.ext_service(@service_name)
     @there = @ext.front
   end
 
   def teardown
-    @ext.stop_service if @ext
+    @ext.stop_service if defined?(@ext) && @ext
+    DRbService.manager.unregist(@service_name)
+    signal = /mswin|mingw/ =~ RUBY_PLATFORM ? :INT : :TERM
+    Thread.list.each {|th|
+      if th.respond_to?(:pid) && th[:drb_service] == @service_name
+        begin
+          Process.kill signal, th.pid
+        rescue Errno::ESRCH
+        end
+        th.join
+      end
+    }
   end
 
   def test_01

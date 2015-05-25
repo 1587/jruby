@@ -8,6 +8,7 @@ require 'test/unit'
 
 class TestFileUtils < Test::Unit::TestCase
   TMPROOT = "#{Dir.tmpdir}/fileutils.rb.#{$$}"
+  include Test::Unit::FileAssertions
 end
 
 prevdir = Dir.pwd
@@ -77,7 +78,7 @@ class TestFileUtils
   include FileUtils
 
   def check_singleton(name)
-    assert_equal true, ::FileUtils.public_methods.include?(name.to_sym)
+    assert_respond_to ::FileUtils, name
   end
 
   def my_rm_rf(path)
@@ -229,6 +230,16 @@ class TestFileUtils
     }
   end
 
+  def test_cp_preserve_permissions
+    bug4507 = '[ruby-core:35518]'
+    touch 'tmp/cptmp'
+    chmod 0755, 'tmp/cptmp'
+    cp 'tmp/cptmp', 'tmp/cptmp2'
+    assert_equal(File.stat('tmp/cptmp').mode,
+                 File.stat('tmp/cptmp2').mode,
+                 bug4507)
+  end
+
   def test_cp_symlink
     touch 'tmp/cptmp'
     # src==dest (2) symlink and its target
@@ -286,6 +297,15 @@ class TestFileUtils
     assert_directory 'tmp/cpr_dest/d'
     my_rm_rf 'tmp/cpr_src'
     my_rm_rf 'tmp/cpr_dest'
+
+    bug3588 = '[ruby-core:31360]'
+    assert_nothing_raised(ArgumentError, bug3588) do
+      cp_r 'tmp', 'tmp2'
+    end
+    assert_directory 'tmp2/tmp'
+    assert_raise(ArgumentError, bug3588) do
+      cp_r 'tmp2', 'tmp2/new_tmp2'
+    end
   end
 
   def test_cp_r_symlink
@@ -300,8 +320,7 @@ class TestFileUtils
     ln_s 'cpr_src', 'tmp/cpr_src2'
     cp_r 'tmp/cpr_src2', 'tmp/cpr_dest2'
     assert_directory 'tmp/cpr_dest2'
-    #assert_not_symlink 'tmp/cpr_dest2'
-    assert_symlink 'tmp/cpr_dest2'   # 2005-05-26: feature change
+    assert_not_symlink 'tmp/cpr_dest2'
     assert_symlink 'tmp/cpr_dest2/symlink'
     assert_equal 'SLdest', File.readlink('tmp/cpr_dest2/symlink')
   end if have_symlink?
@@ -452,7 +471,7 @@ class TestFileUtils
 
     # [ruby-dev:39345]
     touch 'tmp/[rmtmp]'
-    rm_f 'tmp/[rmtmp]'
+    FileUtils.rm_f 'tmp/[rmtmp]'
     assert_file_not_exist 'tmp/[rmtmp]'
   end
 
@@ -726,7 +745,7 @@ class TestFileUtils
     Dir.rmdir "tmp-first-line\ntmp-second-line"
   end if lf_in_path_allowed?
 
-    def test_mkdir_pathname
+  def test_mkdir_pathname
     # pathname
     assert_nothing_raised {
       mkdir Pathname.new('tmp/tmpdirtmp')
@@ -874,6 +893,37 @@ class TestFileUtils
     assert_equal 0500, File.stat('tmp/a').mode & 0777
   end if have_file_perm?
 
+  def test_chmod_symbol_mode
+    check_singleton :chmod
+
+    touch 'tmp/a'
+    chmod "u=wrx,g=,o=", 'tmp/a'
+    assert_equal 0700, File.stat('tmp/a').mode & 0777
+    chmod "u=rx,go=", 'tmp/a'
+    assert_equal 0500, File.stat('tmp/a').mode & 0777
+    chmod "+wrx", 'tmp/a'
+    assert_equal 0777, File.stat('tmp/a').mode & 0777
+    chmod "u+s,o=s", 'tmp/a'
+    assert_equal 04770, File.stat('tmp/a').mode & 07777
+    chmod "u-w,go-wrx", 'tmp/a'
+    assert_equal 04500, File.stat('tmp/a').mode & 07777
+    chmod "+s", 'tmp/a'
+    assert_equal 06500, File.stat('tmp/a').mode & 07777
+
+    # FreeBSD ufs and tmpfs don't allow to change sticky bit against
+    # regular file. It's slightly strange. Anyway it's no effect bit.
+    # see /usr/src/sys/ufs/ufs/ufs_chmod()
+    # NetBSD and OpenBSD also denies it.
+    if /freebsd|netbsd|openbsd/ !~ RUBY_PLATFORM
+      chmod "u+t,o+t", 'tmp/a'
+      assert_equal 07500, File.stat('tmp/a').mode & 07777
+      chmod "a-t,a-s", 'tmp/a'
+      assert_equal 0500, File.stat('tmp/a').mode & 07777
+    end
+
+  end if have_file_perm?
+
+
   def test_chmod_R
     check_singleton :chmod_R
 
@@ -888,6 +938,24 @@ class TestFileUtils
     assert_equal 0500, File.stat('tmp/dir').mode & 0777
     assert_equal 0500, File.stat('tmp/dir/file').mode & 0777
     assert_equal 0500, File.stat('tmp/dir/dir').mode & 0777
+    assert_equal 0500, File.stat('tmp/dir/dir/file').mode & 0777
+    chmod_R 0700, 'tmp/dir'   # to remove
+  end if have_file_perm?
+
+  def test_chmod_symbol_mode_R
+    check_singleton :chmod_R
+
+    mkdir_p 'tmp/dir/dir'
+    touch %w( tmp/dir/file tmp/dir/dir/file )
+    chmod_R "u=wrx,g=,o=", 'tmp/dir'
+    assert_equal 0700, File.stat('tmp/dir').mode & 0777
+    assert_equal 0700, File.stat('tmp/dir/file').mode & 0777
+    assert_equal 0700, File.stat('tmp/dir/dir').mode & 0777
+    assert_equal 0700, File.stat('tmp/dir/dir/file').mode & 0777
+    chmod_R "u=xr,g+X,o=", 'tmp/dir'
+    assert_equal 0510, File.stat('tmp/dir').mode & 0777
+    assert_equal 0500, File.stat('tmp/dir/file').mode & 0777
+    assert_equal 0510, File.stat('tmp/dir/dir').mode & 0777
     assert_equal 0500, File.stat('tmp/dir/dir/file').mode & 0777
     chmod_R 0700, 'tmp/dir'   # to remove
   end if have_file_perm?
@@ -942,20 +1010,21 @@ class TestFileUtils
     check_singleton :copy_stream
     # IO
     each_srcdest do |srcpath, destpath|
-      File.open(srcpath) {|src|
-        File.open(destpath, 'w') {|dest|
+      File.open(srcpath, 'rb') {|src|
+        File.open(destpath, 'wb') {|dest|
           copy_stream src, dest
         }
       }
       assert_same_file srcpath, destpath
     end
+  end
 
+  def test_copy_stream_duck
+    check_singleton :copy_stream
     # duck typing test  [ruby-dev:25369]
-    my_rm_rf 'tmp'
-    Dir.mkdir 'tmp'
     each_srcdest do |srcpath, destpath|
-      File.open(srcpath) {|src|
-        File.open(destpath, 'w') {|dest|
+      File.open(srcpath, 'rb') {|src|
+        File.open(destpath, 'wb') {|dest|
           copy_stream Stream.new(src), Stream.new(dest)
         }
       }

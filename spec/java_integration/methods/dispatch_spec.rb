@@ -1,8 +1,8 @@
 require File.dirname(__FILE__) + "/../spec_helper"
 
-import "java_integration.fixtures.ClassWithVarargs"
-import "java_integration.fixtures.CoreTypeMethods"
-import "java_integration.fixtures.StaticMethodSelection"
+java_import "java_integration.fixtures.ClassWithVarargs"
+java_import "java_integration.fixtures.CoreTypeMethods"
+java_import "java_integration.fixtures.StaticMethodSelection"
 
 describe "Non-overloaded static Java methods" do
   it "should raise ArgumentError when called with incorrect arity" do
@@ -48,15 +48,13 @@ describe "An overloaded Java static method" do
   end
 
   it "should raise error when called with too few args" do
-    pending do
-      lambda do
-        CoreTypeMethods.getType()
-      end.should raise_error(ArgumentError)
+    lambda do
+      CoreTypeMethods.getType()
+    end.should raise_error(ArgumentError)
 
-      lambda do
-        CoreTypeMethods.getType()
-      end.should raise_error(ArgumentError)
-    end
+    lambda do
+      CoreTypeMethods.getType()
+    end.should raise_error(ArgumentError)
   end
 end
 
@@ -110,87 +108,67 @@ describe "An overloaded Java instance method" do
   end
 
   it "should raise error when called with too few args" do
-    pending "not sure why these are failing" do
-      lambda do
-        CoreTypeMethods.new.getTypeInstance()
-      end.should raise_error(ArgumentError)
+    lambda do
+      CoreTypeMethods.new.getTypeInstance()
+    end.should raise_error(ArgumentError)
 
-      lambda do
-        CoreTypeMethods.new.getTypeInstance()
-      end.should raise_error(ArgumentError)
-    end
+    lambda do
+      CoreTypeMethods.new.getTypeInstance()
+    end.should raise_error(ArgumentError)
   end
 end
 
 describe "A class with varargs constructors" do
   it "should be called with the most exact overload" do
-    lambda do
-      obj = ClassWithVarargs.new(1)
-      obj.constructor.should == "0: [1]"
-    end.should_not raise_error
-    lambda do
-      obj = ClassWithVarargs.new(1,2)
-      obj.constructor.should == "0: [1, 2]"
-    end.should_not raise_error
-    lambda do
-      obj = ClassWithVarargs.new(1,2,3)
-      obj.constructor.should == "0: [1, 2, 3]"
-    end.should_not raise_error
-    lambda do
-      obj = ClassWithVarargs.new(1,2,3,4)
-      obj.constructor.should == "0: [1, 2, 3, 4]"
-    end.should_not raise_error
+    obj = ClassWithVarargs.new()
+    obj.constructor.should == "0: []"
+    obj = ClassWithVarargs.new(1)
+    obj.constructor.should == "0: [1]"
+    obj = ClassWithVarargs.new(1,2)
+    obj.constructor.should == "0: [1, 2]"
+    obj = ClassWithVarargs.new(1,2,3)
+    obj.constructor.should == "0: [1, 2, 3]"
+    obj = ClassWithVarargs.new(1,2,3,4)
+    obj.constructor.should == "0: [1, 2, 3, 4]"
 
-    lambda do
-      obj = ClassWithVarargs.new('foo', 1)
-      obj.constructor.should == "1: [1]"
-    end.should_not raise_error
-    lambda do
-      obj = ClassWithVarargs.new('foo', 1, 2)
-      obj.constructor.should == "1: [1, 2]"
-    end.should_not raise_error
-    lambda do
-      obj = ClassWithVarargs.new('foo', 1, 2, 3)
-      obj.constructor.should == "1: [1, 2, 3]"
-    end.should_not raise_error
-    lambda do
-      obj = ClassWithVarargs.new('foo', 1, 2, 3, 4)
-      obj.constructor.should == "1: [1, 2, 3, 4]"
-    end.should_not raise_error
+    pending("needs better type-driven ranking of overloads") do
+      obj = ClassWithVarargs.new('foo')
+      obj.constructor.should == "1: []"
+    end
+    obj = ClassWithVarargs.new('foo', 1)
+    obj.constructor.should == "1: [1]"
+    obj = ClassWithVarargs.new('foo', 1, 2)
+    obj.constructor.should == "1: [1, 2]"
+    obj = ClassWithVarargs.new('foo', 1, 2, 3)
+    obj.constructor.should == "1: [1, 2, 3]"
+    obj = ClassWithVarargs.new('foo', 1, 2, 3, 4)
+    obj.constructor.should == "1: [1, 2, 3, 4]"
 
-    lambda do
-      obj = ClassWithVarargs.new('foo', 'bar', 1)
-      obj.constructor.should == "2: [1]"
-    end.should_not raise_error
-    lambda do
-      obj = ClassWithVarargs.new('foo', 'bar', 1, 2)
-      obj.constructor.should == "2: [1, 2]"
-    end.should_not raise_error
-    lambda do
-      obj = ClassWithVarargs.new('foo', 'bar', 1, 2, 3)
-      obj.constructor.should == "2: [1, 2, 3]"
-    end.should_not raise_error
-    lambda do
-      obj = ClassWithVarargs.new('foo', 'bar', 1, 2, 3, 4)
-      obj.constructor.should == "2: [1, 2, 3, 4]"
-    end.should_not raise_error
+    pending("needs better type-driven ranking of overloads") do
+      obj = ClassWithVarargs.new('foo', 'bar')
+      obj.constructor.should == "2: []"
+    end
+    obj = ClassWithVarargs.new('foo', 'bar', 1)
+    obj.constructor.should == "2: [1]"
+    obj = ClassWithVarargs.new('foo', 'bar', 1, 2)
+    obj.constructor.should == "2: [1, 2]"
+    obj = ClassWithVarargs.new('foo', 'bar', 1, 2, 3)
+    obj.constructor.should == "2: [1, 2, 3]"
+    obj = ClassWithVarargs.new('foo', 'bar', 1, 2, 3, 4)
+    obj.constructor.should == "2: [1, 2, 3, 4]"
 
-    lambda do
-      obj = ClassWithVarargs.new('foo', 'bar', 'baz', 1)
-      obj.constructor.should == "3: [1]"
-    end.should_not raise_error
-    lambda do
-      obj = ClassWithVarargs.new('foo', 'bar', 'baz', 1, 2)
-      obj.constructor.should == "3: [1, 2]"
-    end.should_not raise_error
-    lambda do
-      obj = ClassWithVarargs.new('foo', 'bar', 'baz', 1, 2, 3)
-      obj.constructor.should == "3: [1, 2, 3]"
-    end.should_not raise_error
-    lambda do
-      obj = ClassWithVarargs.new('foo', 'bar', 'baz', 1, 2, 3, 4)
-      obj.constructor.should == "3: [1, 2, 3, 4]"
-    end.should_not raise_error
+    pending("needs better type-driven ranking of overloads") do
+      obj = ClassWithVarargs.new('foo', 'bar', 'baz')
+      obj.constructor.should == "3: []"
+    end
+    obj = ClassWithVarargs.new('foo', 'bar', 'baz', 1)
+    obj.constructor.should == "3: [1]"
+    obj = ClassWithVarargs.new('foo', 'bar', 'baz', 1, 2)
+    obj.constructor.should == "3: [1, 2]"
+    obj = ClassWithVarargs.new('foo', 'bar', 'baz', 1, 2, 3)
+    obj.constructor.should == "3: [1, 2, 3]"
+    obj = ClassWithVarargs.new('foo', 'bar', 'baz', 1, 2, 3, 4)
+    obj.constructor.should == "3: [1, 2, 3, 4]"
   end
 
   it "should be callable with an array" do
@@ -204,57 +182,36 @@ end
 describe "A class with varargs instance methods" do
   it "should be called with the most exact overload" do
     obj = ClassWithVarargs.new(1)
-    lambda do
-      obj.varargs(1).should == "0: [1]";
-    end.should_not raise_error
-    lambda do
-      obj.varargs(1,2).should == "0: [1, 2]";
-    end.should_not raise_error
-    lambda do
-      obj.varargs(1,2,3).should == "0: [1, 2, 3]";
-    end.should_not raise_error
-    lambda do
-      obj.varargs(1,2,3,4).should == "0: [1, 2, 3, 4]";
-    end.should_not raise_error
 
-    lambda do
-      obj.varargs('foo', 1).should == "1: [1]";
-    end.should_not raise_error
-    lambda do
-      obj.varargs('foo', 1, 2).should == "1: [1, 2]";
-    end.should_not raise_error
-    lambda do
-      obj.varargs('foo', 1, 2, 3).should == "1: [1, 2, 3]";
-    end.should_not raise_error
-    lambda do
-      obj.varargs('foo', 1, 2, 3, 4).should == "1: [1, 2, 3, 4]";
-    end.should_not raise_error
+    obj.varargs().should == "0: []";
+    obj.varargs(1).should == "0: [1]";
+    obj.varargs(1,2).should == "0: [1, 2]";
+    obj.varargs(1,2,3).should == "0: [1, 2, 3]";
+    obj.varargs(1,2,3,4).should == "0: [1, 2, 3, 4]";
 
-    lambda do
-      obj.varargs('foo', 'bar', 1).should == "2: [1]";
-    end.should_not raise_error
-    lambda do
-      obj.varargs('foo', 'bar', 1, 2).should == "2: [1, 2]";
-    end.should_not raise_error
-    lambda do
-      obj.varargs('foo', 'bar', 1, 2, 3).should == "2: [1, 2, 3]";
-    end.should_not raise_error
-    lambda do
-      obj.varargs('foo', 'bar', 1, 2, 3, 4).should == "2: [1, 2, 3, 4]";
-    end.should_not raise_error
+    pending("needs better type-driven ranking of overloads") do
+      obj.varargs('foo').should == "1: []";
+    end
+    obj.varargs('foo', 1).should == "1: [1]";
+    obj.varargs('foo', 1, 2).should == "1: [1, 2]";
+    obj.varargs('foo', 1, 2, 3).should == "1: [1, 2, 3]";
+    obj.varargs('foo', 1, 2, 3, 4).should == "1: [1, 2, 3, 4]";
 
-    lambda do
-      obj.varargs('foo', 'bar', 'baz', 1).should == "3: [1]";
-    end.should_not raise_error
-    lambda do
-      obj.varargs('foo', 'bar', 'baz', 1, 2).should == "3: [1, 2]";
-    end.should_not raise_error
-    lambda do
-      obj.varargs('foo', 'bar', 'baz', 1, 2, 3).should == "3: [1, 2, 3]";
-    end.should_not raise_error
-    lambda do
-      obj.varargs('foo', 'bar', 'baz', 1, 2, 3, 4).should == "3: [1, 2, 3, 4]";
-    end.should_not raise_error
+    pending("needs better type-driven ranking of overloads") do
+      obj.varargs('foo', 'bar').should == "2: []";
+    end
+    obj.varargs('foo', 'bar', 1).should == "2: [1]";
+    obj.varargs('foo', 'bar', 1, 2).should == "2: [1, 2]";
+    obj.varargs('foo', 'bar', 1, 2, 3).should == "2: [1, 2, 3]";
+    obj.varargs('foo', 'bar', 1, 2, 3, 4).should == "2: [1, 2, 3, 4]";
+
+    pending("needs better type-driven ranking of overloads") do
+      obj.varargs('foo', 'bar', 'baz').should == "3: []";
+    end
+    obj.varargs('foo', 'bar', 'baz', 1).should == "3: [1]";
+    obj.varargs('foo', 'bar', 'baz', 1, 2).should == "3: [1, 2]";
+    obj.varargs('foo', 'bar', 'baz', 1, 2, 3).should == "3: [1, 2, 3]";
+    obj.varargs('foo', 'bar', 'baz', 1, 2, 3, 4).should == "3: [1, 2, 3, 4]";
   end
 
   it "should be callable with an array" do
@@ -268,57 +225,35 @@ end
 
 describe "A class with varargs static methods" do
   it "should be called with the most exact overload" do
-    lambda do
-      ClassWithVarargs.varargs_static(1).should == "0: [1]";
-    end.should_not raise_error
-    lambda do
-      ClassWithVarargs.varargs_static(1,2).should == "0: [1, 2]";
-    end.should_not raise_error
-    lambda do
-      ClassWithVarargs.varargs_static(1,2,3).should == "0: [1, 2, 3]";
-    end.should_not raise_error
-    lambda do
-      ClassWithVarargs.varargs_static(1,2,3,4).should == "0: [1, 2, 3, 4]";
-    end.should_not raise_error
+    ClassWithVarargs.varargs_static().should == "0: []";
+    ClassWithVarargs.varargs_static(1).should == "0: [1]";
+    ClassWithVarargs.varargs_static(1,2).should == "0: [1, 2]";
+    ClassWithVarargs.varargs_static(1,2,3).should == "0: [1, 2, 3]";
+    ClassWithVarargs.varargs_static(1,2,3,4).should == "0: [1, 2, 3, 4]";
 
-    lambda do
-      ClassWithVarargs.varargs_static('foo', 1).should == "1: [1]";
-    end.should_not raise_error
-    lambda do
-      ClassWithVarargs.varargs_static('foo', 1, 2).should == "1: [1, 2]";
-    end.should_not raise_error
-    lambda do
-      ClassWithVarargs.varargs_static('foo', 1, 2, 3).should == "1: [1, 2, 3]";
-    end.should_not raise_error
-    lambda do
-      ClassWithVarargs.varargs_static('foo', 1, 2, 3, 4).should == "1: [1, 2, 3, 4]";
-    end.should_not raise_error
+    pending("needs better type-driven ranking of overloads") do
+      ClassWithVarargs.varargs_static('foo').should == "1: []";
+    end
+    ClassWithVarargs.varargs_static('foo', 1).should == "1: [1]";
+    ClassWithVarargs.varargs_static('foo', 1, 2).should == "1: [1, 2]";
+    ClassWithVarargs.varargs_static('foo', 1, 2, 3).should == "1: [1, 2, 3]";
+    ClassWithVarargs.varargs_static('foo', 1, 2, 3, 4).should == "1: [1, 2, 3, 4]";
 
-    lambda do
-      ClassWithVarargs.varargs_static('foo', 'bar', 1).should == "2: [1]";
-    end.should_not raise_error
-    lambda do
-      ClassWithVarargs.varargs_static('foo', 'bar', 1, 2).should == "2: [1, 2]";
-    end.should_not raise_error
-    lambda do
-      ClassWithVarargs.varargs_static('foo', 'bar', 1, 2, 3).should == "2: [1, 2, 3]";
-    end.should_not raise_error
-    lambda do
-      ClassWithVarargs.varargs_static('foo', 'bar', 1, 2, 3, 4).should == "2: [1, 2, 3, 4]";
-    end.should_not raise_error
+    pending("needs better type-driven ranking of overloads") do
+      ClassWithVarargs.varargs_static('foo', 'bar').should == "2: []";
+    end
+    ClassWithVarargs.varargs_static('foo', 'bar', 1).should == "2: [1]";
+    ClassWithVarargs.varargs_static('foo', 'bar', 1, 2).should == "2: [1, 2]";
+    ClassWithVarargs.varargs_static('foo', 'bar', 1, 2, 3).should == "2: [1, 2, 3]";
+    ClassWithVarargs.varargs_static('foo', 'bar', 1, 2, 3, 4).should == "2: [1, 2, 3, 4]";
 
-    lambda do
-      ClassWithVarargs.varargs_static('foo', 'bar', 'baz', 1).should == "3: [1]";
-    end.should_not raise_error
-    lambda do
-      ClassWithVarargs.varargs_static('foo', 'bar', 'baz', 1, 2).should == "3: [1, 2]";
-    end.should_not raise_error
-    lambda do
-      ClassWithVarargs.varargs_static('foo', 'bar', 'baz', 1, 2, 3).should == "3: [1, 2, 3]";
-    end.should_not raise_error
-    lambda do
-      ClassWithVarargs.varargs_static('foo', 'bar', 'baz', 1, 2, 3, 4).should == "3: [1, 2, 3, 4]";
-    end.should_not raise_error
+    pending("needs better type-driven ranking of overloads") do
+      ClassWithVarargs.varargs_static('foo', 'bar').should == "3: []";
+    end
+    ClassWithVarargs.varargs_static('foo', 'bar', 'baz', 1).should == "3: [1]";
+    ClassWithVarargs.varargs_static('foo', 'bar', 'baz', 1, 2).should == "3: [1, 2]";
+    ClassWithVarargs.varargs_static('foo', 'bar', 'baz', 1, 2, 3).should == "3: [1, 2, 3]";
+    ClassWithVarargs.varargs_static('foo', 'bar', 'baz', 1, 2, 3, 4).should == "3: [1, 2, 3, 4]";
   end
 
   it "should be callable with an array" do
@@ -326,5 +261,37 @@ describe "A class with varargs static methods" do
     ClassWithVarargs.varargs_static('foo', [1,2,3].to_java).should == "1: [1, 2, 3]"
     ClassWithVarargs.varargs_static('foo', 'bar', [1,2,3].to_java).should == "2: [1, 2, 3]"
     ClassWithVarargs.varargs_static('foo', 'bar', 'baz', [1,2,3].to_java).should == "3: [1, 2, 3]"
+  end
+end
+
+# JRUBY-5418
+describe "A Java method dispatch downstream from a Kernel#catch block" do
+  it "should propagate rather than wrap the 'throw' exception" do
+    lambda do
+      catch(:foo) do
+        UsesSingleMethodInterface.new { throw :foo }
+      end
+    end.should_not raise_error
+    lambda do
+      catch(:foo) do
+        UsesSingleMethodInterface.new(nil) { throw :foo }
+      end
+    end.should_not raise_error
+    lambda do
+      catch(:foo) do
+        UsesSingleMethodInterface.new(nil, nil) { throw :foo }
+      end
+    end.should_not raise_error
+    lambda do
+      catch(:foo) do
+        UsesSingleMethodInterface.new(nil, nil, nil) { throw :foo }
+      end
+    end.should_not raise_error
+    # 3 normal args is our cutoff for specific-arity optz, so test four
+    lambda do
+      catch(:foo) do
+        UsesSingleMethodInterface.new(nil, nil, nil, nil) { throw :foo }
+      end
+    end.should_not raise_error
   end
 end

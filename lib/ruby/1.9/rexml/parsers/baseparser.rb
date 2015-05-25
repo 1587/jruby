@@ -25,24 +25,17 @@ module REXML
     #
     # Nat Price gave me some good ideas for the API.
     class BaseParser
-      if String.method_defined? :encode
-        # Oniguruma / POSIX [understands unicode]
-        LETTER = '[[:alpha:]]'
-        DIGIT = '[[:digit:]]'
-      else
-        # Ruby < 1.9 [doesn't understand unicode]
-        LETTER = 'a-zA-Z'
-        DIGIT = '\d'
-      end
+      LETTER = '[:alpha:]'
+      DIGIT = '[:digit:]'
 
       COMBININGCHAR = '' # TODO
       EXTENDER = ''      # TODO
 
-      NCNAME_STR= "[#{LETTER}_:][-#{LETTER}#{DIGIT}._:#{COMBININGCHAR}#{EXTENDER}]*"
+      NCNAME_STR= "[#{LETTER}_:][-[:alnum:]._:#{COMBININGCHAR}#{EXTENDER}]*"
       NAME_STR= "(?:(#{NCNAME_STR}):)?(#{NCNAME_STR})"
       UNAME_STR= "(?:#{NCNAME_STR}:)?#{NCNAME_STR}"
 
-      NAMECHAR = '[\-\w\d\.:]'
+      NAMECHAR = '[\-\w\.:]'
       NAME = "([\\w:]#{NAMECHAR}*)"
       NMTOKEN = "(?:#{NAMECHAR})+"
       NMTOKENS = "#{NMTOKEN}(\\s+#{NMTOKEN})*"
@@ -66,7 +59,7 @@ module REXML
 
       VERSION = /\bversion\s*=\s*["'](.*?)['"]/um
       ENCODING = /\bencoding\s*=\s*["'](.*?)['"]/um
-      STANDALONE = /\bstandalone\s*=\s["'](.*?)['"]/um
+      STANDALONE = /\bstandalone\s*=\s*["'](.*?)['"]/um
 
       ENTITY_START = /^\s*<!ENTITY/
       IDENTITY = /^([!\*\w\-]+)(\s+#{NCNAME_STR})?(\s+["'](.*?)['"])?(\s+['"](.*?)["'])?/u
@@ -121,22 +114,10 @@ module REXML
 
       def initialize( source )
         self.stream = source
+        @listeners = []
       end
 
       def add_listener( listener )
-        if !defined?(@listeners) or !@listeners
-          @listeners = []
-          instance_eval <<-EOL
-            alias :_old_pull :pull
-            def pull
-              event = _old_pull
-              @listeners.each do |listener|
-                listener.receive event
-              end
-              event
-            end
-          EOL
-        end
         @listeners << listener
       end
 
@@ -199,6 +180,14 @@ module REXML
 
       # Returns the next event.  This is a +PullEvent+ object.
       def pull
+        pull_event.tap do |event|
+          @listeners.each do |listener|
+            listener.receive event
+          end
+        end
+      end
+
+      def pull_event
         if @closed
           x, @closed = @closed, nil
           return [ :end_element, x ]
@@ -256,9 +245,7 @@ module REXML
             @source.read if @source.buffer.size<2
             md = @source.match(/\s*/um, true)
             if @source.encoding == "UTF-8"
-              if @source.buffer.respond_to? :force_encoding
-                @source.buffer.force_encoding(Encoding::UTF_8)
-              end
+              @source.buffer.force_encoding(::Encoding::UTF_8)
             end
           end
         end
@@ -355,7 +342,7 @@ module REXML
                 md = @source.match( COMMENT_PATTERN, true )
 
                 case md[1]
-                when /--/, /-$/
+                when /--/, /-\z/
                   raise REXML::ParseException.new("Malformed comment", @source)
                 end
 
@@ -389,7 +376,7 @@ module REXML
                 attrs.each { |a,b,c,d,e|
                   if b == "xmlns"
                     if c == "xml"
-                      if d != "http://www.w3.org/XML/1998/namespace"
+                      if e != "http://www.w3.org/XML/1998/namespace"
                         msg = "The 'xml' prefix must not be bound to any other namespace "+
                         "(http://www.w3.org/TR/REC-xml-names/#ns-decl)"
                         raise REXML::ParseException.new( msg, @source, self )
@@ -449,6 +436,7 @@ module REXML
         end
         return [ :dummy ]
       end
+      private :pull_event
 
       def entity( reference, entities )
         value = nil

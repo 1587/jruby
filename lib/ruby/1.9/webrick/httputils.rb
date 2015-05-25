@@ -129,11 +129,11 @@ module WEBrick
         when /^\s+(.*?)\s*\z/om
           value = $1
           unless field
-            raise "bad header '#{line.inspect}'."
+            raise HTTPStatus::BadRequest, "bad header '#{line}'."
           end
           header[field][-1] << " " << value
         else
-          raise "bad header '#{line.inspect}'."
+          raise HTTPStatus::BadRequest, "bad header '#{line}'."
         end
       }
       header.each{|key, values|
@@ -350,8 +350,18 @@ module WEBrick
 
     def _make_regex(str) /([#{Regexp.escape(str)}])/n end
     def _make_regex!(str) /([^#{Regexp.escape(str)}])/n end
-    def _escape(str, regex) str.gsub(regex){ "%%%02X" % $1.ord } end
-    def _unescape(str, regex) str.gsub(regex){ $1.hex.chr } end
+    def _escape(str, regex)
+      str = str.dup.force_encoding('binary')
+      str.gsub!(regex) {"%%%02X" % $1.ord}
+      # %-escaped string should contain US-ASCII only
+      str.force_encoding(Encoding::US_ASCII)
+    end
+    def _unescape(str, regex)
+      str = str.dup.force_encoding('binary')
+      str.gsub!(regex) {$1.hex.chr}
+      # encoding of %-unescaped string is unknown
+      str
+    end
 
     UNESCAPED = _make_regex(control+space+delims+unwise+nonascii)
     UNESCAPED_FORM = _make_regex(reserved+control+delims+unwise+nonascii)

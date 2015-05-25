@@ -269,13 +269,15 @@ module ScanfTests
       [ "%[[:upper:]]", "ABCdefGHI", [ "ABC" ] ],
 
 # Testing 'f'
-      [ "%2f", "x", [0.0] ],  # width-floats match anything (by design)
-      [ "%f", "1.23e45", [1.23e+45] ],
-      [ "%f", "3.25ee", [3.25] ],
-      [ "%f", "3..25", [3.0] ],
-      [ "%f", "+3.25", [3.25] ],
-      [ "%f", "+3.25e2", [325.0] ],
+      [ "%2f", "x", [] ],
+      [ "%F", "1.23e45", [1.23e+45] ],
+      [ "%e", "3.25ee", [3.25] ],
+      [ "%E", "3..25", [3.0] ],
+      [ "%g", "+3.25", [3.25] ],
+      [ "%G", "+3.25e2", [325.0] ],
       [ "%f", "3.z", [3.0] ],
+      [ "%a", "0X1P+10", [1024.0] ],
+      [ "%A", "0x1.deadbeefp+99", [1.1851510441583988e+30] ],
 
 # Testing embedded matches including literal '[' behavior
       [",%d,%f", ",10,1.1", [10,1.1] ],
@@ -285,18 +287,23 @@ module ScanfTests
 
      ]
   end
+
+  def each_test
+    i = "0" * (Math.log(self.tests.size, 10).floor+1)
+    self.tests.each do |test|
+      yield test, i.succ!
+    end
+  end
 end
 
 class TestStringScanf
   include Scanf
   extend ScanfTests
 
-  i = 1
-  self.tests.each do |test|
+  self.each_test do |test, i|
     define_method("test_#{i}") do ||
       assert_equal(test[2], test[1].scanf(test[0]))
-      end
-    i += 1
+    end
   end
 end
 
@@ -306,8 +313,7 @@ class TestIOScanf
 
   tmpfilename = "#{Dir.tmpdir}/iotest.dat.#{$$}"
 
-  i = 1
-  self.tests.each do |test|
+  self.each_test do |test, i|
     define_method("test_#{i}") do ||
       File.open(tmpfilename, "w") {|fh| fh.print test[1]}
       File.open(tmpfilename, "r") { |fh|
@@ -315,6 +321,5 @@ class TestIOScanf
       }
       File.delete(tmpfilename)
     end
-    i += 1
   end
 end

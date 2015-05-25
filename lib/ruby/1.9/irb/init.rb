@@ -1,7 +1,7 @@
 #
 #   irb/init.rb - irb initialize module
 #   	$Release Version: 0.9.6$
-#   	$Revision: 24229 $
+#   	$Revision$
 #   	by Keiju ISHITSUKA(keiju@ruby-lang.org)
 #
 # --
@@ -112,9 +112,9 @@ module IRB
 
 #    @CONF[:LC_MESSAGES] = "en"
     @CONF[:LC_MESSAGES] = Locale.new
-    
+
     @CONF[:AT_EXIT] = []
-    
+
     @CONF[:DEBUG_LEVEL] = 1
   end
 
@@ -135,6 +135,19 @@ module IRB
 	@CONF[:MATH_MODE] = true
       when "-d"
 	$DEBUG = true
+	$VERBOSE = true
+      when "-w"
+	$VERBOSE = true
+      when /^-W(.+)?/
+	opt = $1 || ARGV.shift
+	case opt
+	when "0"
+	  $VERBOSE = nil
+	when "1"
+	  $VERBOSE = false
+	else
+	  $VERBOSE = true
+	end
       when /^-r(.+)?/
 	opt = $1 || ARGV.shift
 	@CONF[:LOAD_MODULES].push opt if opt
@@ -147,7 +160,7 @@ module IRB
 	opt = $1 || ARGV.shift
 	set_encoding(*opt.split(':', 2))
       when "--inspect"
-	if /^-/ !~ ARGV.first 
+	if /^-/ !~ ARGV.first
 	  @CONF[:INSPECT_MODE] = ARGV.shift
 	else
 	  @CONF[:INSPECT_MODE] = true
@@ -194,7 +207,7 @@ module IRB
 	IRB.print_usage
 	exit 0
       when "--"
-	if opt = ARGV.shfit
+	if opt = ARGV.shift
 	  @CONF[:SCRIPT] = opt
 	  $0 = opt
 	end

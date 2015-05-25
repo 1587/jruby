@@ -3,7 +3,7 @@
 #
 # Copyright (C) 2001, 2002, 2003 by Michael Neumann (mneumann@ntecs.de)
 #
-# $Id: parser.rb 22784 2009-03-06 03:56:38Z nobu $
+# $Id$
 #
 
 
@@ -54,11 +54,10 @@ module XMLRPC
   class FaultException < StandardError
     attr_reader :faultCode, :faultString
 
-    alias message faultString
-
     def initialize(faultCode, faultString)
       @faultCode   = faultCode
       @faultString = faultString
+      super(@faultString)
     end
 
     # returns a hash
@@ -133,7 +132,7 @@ module XMLRPC
 
           hash.delete "___class___"
           hash.each {|key, value|
-            obj.instance_variable_set("@#{ key }", value) if key =~ /^([\w_][\w_0-9]*)$/
+            obj.instance_variable_set("@#{ key }", value) if key =~ /^([a-zA-Z_]\w*)$/
           }
           obj
         rescue
@@ -714,7 +713,7 @@ module XMLRPC
         end
 
         def parse(str)
-          parser = REXML::Document.parse_stream(str, self)
+          REXML::Document.parse_stream(str, self)
         end
       end
 
@@ -743,7 +742,7 @@ module XMLRPC
         end
 
         alias :on_stag :startElement
- 	alias :on_etag :endElement
+        alias :on_etag :endElement
 
         def on_stag_end(name); end
 

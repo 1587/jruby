@@ -24,21 +24,30 @@ class TestEtc < Test::Unit::TestCase
       assert_kind_of(Integer, s.expire) if s.respond_to?(:expire)
     end
 
-    assert_raise(RuntimeError) { Etc.passwd { Etc.passwd { } } }
+    Etc.passwd { assert_raise(RuntimeError) { Etc.passwd { } }; break }
   end
 
   def test_getpwuid
-    passwd = {}
-    Etc.passwd {|s| passwd[s.uid] ||= s }
-    passwd.each_value do |s|
-      assert_equal(s, Etc.getpwuid(s.uid))
-      assert_equal(s, Etc.getpwuid) if Process.euid == s.uid
+    # password database is not unique on UID, and which entry will be
+    # returned by getpwuid() is not specified.
+    passwd = Hash.new {[]}
+    # on MacOSX, same entries are returned from /etc/passwd and Open
+    # Directory.
+    Etc.passwd {|s| passwd[s.uid] |= [s]}
+    passwd.each_pair do |uid, s|
+      assert_include(s, Etc.getpwuid(uid))
+    end
+    s = passwd[Process.euid]
+    unless s.empty?
+      assert_include(s, Etc.getpwuid)
     end
   end
 
   def test_getpwnam
     passwd = {}
-    Etc.passwd {|s| passwd[s.name] ||= s }
+    Etc.passwd do |s|
+      passwd[s.name] ||= s unless /\A\+/ =~ s.name
+    end
     passwd.each_value do |s|
       assert_equal(s, Etc.getpwnam(s.name))
     end
@@ -63,7 +72,7 @@ class TestEtc < Test::Unit::TestCase
       assert_kind_of(Integer, s.gid)
     end
 
-    assert_raise(RuntimeError) { Etc.group { Etc.group { } } }
+    Etc.group { assert_raise(RuntimeError) { Etc.group { } }; break }
   end
 
   def test_getgrgid
@@ -80,7 +89,7 @@ class TestEtc < Test::Unit::TestCase
   def test_getgrnam
     groups = {}
     Etc.group do |s|
-      groups[s.name] ||= s
+      groups[s.name] ||= s unless /\A\+/ =~ s.name
     end
     groups.each_value do |s|
       assert_equal(s, Etc.getgrnam(s.name))

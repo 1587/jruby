@@ -22,7 +22,7 @@
 # http://www.ruby-lang.org/ja/man/?cmd=view;name=net%2Fhttp.rb
 # 
 #--
-# $Id: http.rb 25851 2009-11-19 06:32:19Z shyouhei $
+# $Id$
 #++ 
 
 require 'net/protocol'
@@ -637,8 +637,16 @@ module Net   #:nodoc:
     #       # connecting proxy.foo.org:8080
     #                     :
     #     }
+    #
+    # In JRuby, this will default to the JSE proxy settings provided in the
+    # 'http.proxyHost' and 'http.proxyPort' Java system properties, if they
+    # are set and no alternative proxy has been provided.
     # 
     def HTTP.Proxy(p_addr, p_port = nil, p_user = nil, p_pass = nil)
+      j_addr = ENV_JAVA['http.proxyHost']
+      j_port = ENV_JAVA['http.proxyPort']
+      p_addr = p_addr || j_addr
+      p_port = p_port || j_port
       return self unless p_addr
       delta = ProxyDelta
       proxyclass = Class.new(self)
@@ -1056,7 +1064,7 @@ module Net   #:nodoc:
         end_transport req, res
       rescue => exception
         D "Conn close because of error #{exception}"
-        @socket.close unless @socket.closed?
+        @socket.close if @socket and not @socket.closed?
         raise exception
       end
 
@@ -1366,13 +1374,13 @@ module Net   #:nodoc:
       return nil unless @header['content-range']
       m = %r<bytes\s+(\d+)-(\d+)/(\d+|\*)>i.match(self['Content-Range']) or
           raise HTTPHeaderSyntaxError, 'wrong Content-Range format'
-      m[1].to_i .. m[2].to_i + 1
+      m[1].to_i .. m[2].to_i
     end
 
     # The length of the range represented in Content-Range: header.
     def range_length
       r = content_range() or return nil
-      r.end - r.begin
+      r.end - r.begin + 1
     end
 
     # Returns a content type string such as "text/html".

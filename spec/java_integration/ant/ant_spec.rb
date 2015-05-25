@@ -1,16 +1,30 @@
 require File.expand_path('../../ant_spec_helper', __FILE__)
 
-describe Ant, '.load', :type => :ant do
-  before :each do
-    @previous_java_home = ENV['JAVA_HOME']
+describe Ant, '.load' do
+  include Ant::RSpec::AntExampleGroup
 
-    ENV['JAVA_HOME'] = '/System/Library/Frameworks/JavaVM.framework/Home'
+  before :each do
+    @previous_java_home = ENV['JAVA_HOME'] || ENV_JAVA['java.home']
+
+    if (TestHelper::WINDOWS)
+      ENV['JAVA_HOME'] = '/C:/java6'
+    else
+      ENV['JAVA_HOME'] = '/System/Library/Frameworks/JavaVM.framework/Home'
+    end
     @tools_jar = "#{ENV['JAVA_HOME']}/lib/tools.jar"
     @classes_zip = "#{ENV['JAVA_HOME']}/lib/classes.zip"
+
+    Ant.instance_eval do
+      remove_const(:JAVA_HOME) rescue nil
+    end
   end
 
   after :each do
     ENV['JAVA_HOME'] = @previous_java_home
+    Ant.instance_eval do
+      remove_const(:JAVA_HOME)
+      const_set(:JAVA_HOME, @previous_java_home)
+    end
   end
 
   it "adds tools.jar to the CLASSPATH when JAVA_HOME is set and it exists" do
@@ -33,7 +47,9 @@ describe Ant, '.load', :type => :ant do
   end
 end
 
-describe Ant, ".new", :type => :ant do
+describe Ant, ".new" do
+  include Ant::RSpec::AntExampleGroup
+
   it "can be instantiated with a block" do
     Ant.new do
       self.class.should == Ant
@@ -60,13 +76,19 @@ describe Ant, ".new", :type => :ant do
   end
 end
 
-describe Ant, :type => :ant do
+describe Ant do
+  include Ant::RSpec::AntExampleGroup
+
   before :each do
     @ant = example_ant
   end
 
   it "should define methods corresponding to ant tasks" do
-    @ant.methods.should include("java", "antcall", "property", "import", "path", "patternset")
+    if RUBY_VERSION =~ /\A1\.8/
+      @ant.methods.should include("java", "antcall", "property", "import", "path", "patternset")
+    else
+      @ant.methods.should include(:java, :antcall, :property, :import, :path, :patternset)
+    end
   end
 
   it "should execute the default target" do
@@ -99,5 +121,17 @@ describe Ant, :type => :ant do
     end
     @ant.run
     @ant.properties["msg"].should == "hello"
+  end
+end
+
+describe Ant, '.ant' do
+  it "prefers $ANT_HOME to $PATH" do
+    if ENV['ANT_HOME']
+      hide_ant_from_path
+      lambda { Ant.ant(:basedir => File.join(File.dirname(__FILE__), '..', '..', '..')) }.
+        should_not raise_error
+    else
+      pending '$ANT_HOME is not set'
+    end
   end
 end

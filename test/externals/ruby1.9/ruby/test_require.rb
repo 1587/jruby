@@ -2,6 +2,7 @@ require 'test/unit'
 
 require 'tempfile'
 require_relative 'envutil'
+require 'tmpdir'
 
 class TestRequire < Test::Unit::TestCase
   def test_require_invalid_shared_object
@@ -19,7 +20,7 @@ class TestRequire < Test::Unit::TestCase
   end
 
   def test_require_too_long_filename
-    assert_in_out_err([], <<-INPUT, %w(:ok), [])
+    assert_in_out_err(["RUBYOPT"=>nil], <<-INPUT, %w(:ok), [])
       begin
         require '#{ "foo/" * 10000 }foo'
       rescue LoadError
@@ -28,10 +29,10 @@ class TestRequire < Test::Unit::TestCase
     INPUT
 
     begin
-      assert_in_out_err(["-S", "foo/" * 10000 + "foo"], "") do |r, e|
+      assert_in_out_err(["-S", "-w", "foo/" * 1024 + "foo"], "") do |r, e|
         assert_equal([], r)
         assert_operator(2, :<=, e.size)
-        assert_equal("openpath: pathname too long (ignored)", e.first)
+        assert_match(/warning: openpath: pathname too long \(ignored\)/, e.first)
         assert_match(/\(LoadError\)/, e.last)
       end
     rescue Errno::EINVAL
@@ -39,21 +40,49 @@ class TestRequire < Test::Unit::TestCase
     end
   end
 
-  def test_require_path_home
+  def test_require_nonascii
+    bug3758 = '[ruby-core:31915]'
+    e = assert_raise(LoadError, bug3758) {require "\u{221e}"}
+    assert_match(/\u{221e}\z/, e.message, bug3758)
+  end
+
+  def test_require_path_home_1
     env_rubypath, env_home = ENV["RUBYPATH"], ENV["HOME"]
+    pathname_too_long = /pathname too long \(ignored\).*\(LoadError\)/m
 
     ENV["RUBYPATH"] = "~"
-    ENV["HOME"] = "/foo" * 10000
-    assert_in_out_err(%w(-S test_ruby_test_require), "", [], /^.+$/)
+    ENV["HOME"] = "/foo" * 1024
+    assert_in_out_err(%w(-S -w test_ruby_test_require), "", [], pathname_too_long)
 
-    ENV["RUBYPATH"] = "~" + "/foo" * 10000
+  ensure
+    env_rubypath ? ENV["RUBYPATH"] = env_rubypath : ENV.delete("RUBYPATH")
+    env_home ? ENV["HOME"] = env_home : ENV.delete("HOME")
+  end
+
+  def test_require_path_home_2
+    env_rubypath, env_home = ENV["RUBYPATH"], ENV["HOME"]
+    pathname_too_long = /pathname too long \(ignored\).*\(LoadError\)/m
+
+    ENV["RUBYPATH"] = "~" + "/foo" * 1024
     ENV["HOME"] = "/foo"
-    assert_in_out_err(%w(-S test_ruby_test_require), "", [], /^.+$/)
+    assert_in_out_err(%w(-S -w test_ruby_test_require), "", [], pathname_too_long)
+
+  ensure
+    env_rubypath ? ENV["RUBYPATH"] = env_rubypath : ENV.delete("RUBYPATH")
+    env_home ? ENV["HOME"] = env_home : ENV.delete("HOME")
+  end
+
+  def test_require_path_home_3
+    env_rubypath, env_home = ENV["RUBYPATH"], ENV["HOME"]
 
     t = Tempfile.new(["test_ruby_test_require", ".rb"])
     t.puts "p :ok"
     t.close
+
     ENV["RUBYPATH"] = "~"
+    ENV["HOME"] = t.path
+    assert_in_out_err(%w(-S test_ruby_test_require), "", [], /\(LoadError\)/)
+
     ENV["HOME"], name = File.split(t.path)
     assert_in_out_err(["-S", name], "", %w(:ok), [])
 
@@ -61,6 +90,10 @@ class TestRequire < Test::Unit::TestCase
     env_rubypath ? ENV["RUBYPATH"] = env_rubypath : ENV.delete("RUBYPATH")
     env_home ? ENV["HOME"] = env_home : ENV.delete("HOME")
   end
+
+  def test_require_with_unc
+    assert(system(File.expand_path(EnvUtil.rubybin).sub(/\A(\w):/, '//127.0.0.1/\1$/'), "-rabbrev", "-e0"))
+  end if /mswin|mingw/ =~ RUBY_PLATFORM
 
   def test_define_class
     begin
@@ -84,7 +117,7 @@ class TestRequire < Test::Unit::TestCase
       begin
         require 'socket'
         p :ng
-      rescue NameError
+      rescue TypeError
         p :ok
       end
     INPUT
@@ -196,6 +229,19 @@ class TestRequire < Test::Unit::TestCase
     assert_raise(ArgumentError) { at_exit }
   end
 
+  def test_load2  # [ruby-core:25039]
+    t = Tempfile.new(["test_ruby_test_require", ".rb"])
+    t.puts "Hello = 'hello'"
+    t.puts "class Foo"
+    t.puts "  p Hello"
+    t.puts "end"
+    t.close
+
+    assert_in_out_err([], <<-INPUT, %w("hello"), [])
+      load(#{ t.path.dump }, true)
+    INPUT
+  end
+
   def test_tainted_loadpath
     t = Tempfile.new(["test_ruby_test_require", ".rb"])
     abs_dir, file = File.split(t.path)
@@ -246,7 +292,6 @@ class TestRequire < Test::Unit::TestCase
   end
 
   def test_relative
-    require 'tmpdir'
     load_path = $:.dup
     $:.delete(".")
     Dir.mktmpdir do |tmp|
@@ -267,5 +312,48 @@ class TestRequire < Test::Unit::TestCase
     end
   ensure
     $:.replace(load_path) if load_path
+  end
+
+  def test_relative_symlink
+    Dir.mktmpdir {|tmp|
+      Dir.chdir(tmp) {
+        Dir.mkdir "a"
+        Dir.mkdir "b"
+        File.open("a/lib.rb", "w") {|f| f.puts 'puts "a/lib.rb"' }
+        File.open("b/lib.rb", "w") {|f| f.puts 'puts "b/lib.rb"' }
+        File.open("a/tst.rb", "w") {|f| f.puts 'require_relative "lib"' }
+        begin
+          File.symlink("../a/tst.rb", "b/tst.rb")
+          result = IO.popen([EnvUtil.rubybin, "b/tst.rb"]).read
+          assert_equal("a/lib.rb\n", result, "[ruby-dev:40040]")
+        rescue NotImplementedError
+          skip "File.symlink is not implemented"
+        end
+      }
+    }
+  end
+
+  def test_frozen_loaded_features
+    bug3756 = '[ruby-core:31913]'
+    assert_in_out_err(['-e', '$LOADED_FEATURES.freeze; require "ostruct"'], "",
+                      [], /\$LOADED_FEATURES is frozen; cannot append feature \(RuntimeError\)$/,
+                      bug3756)
+  end
+
+  def test_loaded_features_encoding
+    bug6377 = '[ruby-core:44750]'
+    loadpath = $:.dup
+    features = $".dup
+    $".clear
+    $:.clear
+    Dir.mktmpdir {|tmp|
+      $: << tmp
+      open(File.join(tmp, "foo.rb"), "w") {}
+      require "foo"
+      assert_not_equal(Encoding::ASCII_8BIT, $"[0].encoding, bug6377)
+    }
+  ensure
+    $:.replace(loadpath)
+    $".replace(features)
   end
 end

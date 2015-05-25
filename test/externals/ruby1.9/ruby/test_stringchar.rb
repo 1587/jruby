@@ -37,8 +37,8 @@ END
     $x.gsub!(/((.|\n)*?)B((.|\n)*?)D/m ,'\1\3')
     assert_equal("AC\nAC\n", $x)
 
-    assert("foobar" =~ /foo(?=(bar)|(baz))/)
-    assert("foobaz" =~ /foo(?=(bar)|(baz))/)
+    assert_match(/foo(?=(bar)|(baz))/, "foobar")
+    assert_match(/foo(?=(bar)|(baz))/, "foobaz")
 
     $foo = "abc"
     assert_equal("abc = abc", "#$foo = abc")
@@ -162,5 +162,20 @@ EOS
     assert_equal("aaBBcc", s)
     s.delete!("a-z")
     assert_equal("BB", s)
+  end
+
+  def test_dump
+    bug3996 = '[ruby-core:32935]'
+    Encoding.list.find_all {|enc| enc.ascii_compatible?}.each do |enc|
+      (0..256).map do |c|
+        begin
+          s = c.chr(enc)
+        rescue RangeError, ArgumentError
+          break
+        else
+          assert_not_match(/\0/, s.dump, bug3996)
+        end
+      end
+    end
   end
 end

@@ -1,18 +1,11 @@
-#!/usr/bin/env ruby
-#--
-# Copyright 2006 by Chad Fowler, Rich Kilmer, Jim Weirich and others.
-# All rights reserved.
-# See LICENSE.txt for permissions.
-#++
-
-require_relative 'gemutilities'
+require 'rubygems/test_case'
 require 'rubygems/command'
 
 class Gem::Command
   public :parser
 end
 
-class TestGemCommand < RubyGemTestCase
+class TestGemCommand < Gem::TestCase
 
   def setup
     super
@@ -94,7 +87,7 @@ class TestGemCommand < RubyGemTestCase
     assert done
   end
 
-  def test_invode_with_bad_options
+  def test_invoke_with_bad_options
     use_ui @ui do
       @cmd.when_invoked do true end
 

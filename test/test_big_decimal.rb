@@ -27,11 +27,15 @@ class TestBigDecimal < Test::Unit::TestCase
     assert_nothing_raised {BigDecimal("3.14159")}
   end
 
-  def test_reject_arguments_not_responding_to_to_str
-    assert_raise(TypeError) { BigDecimal.new(4) }
-    assert_raise(TypeError) { BigDecimal.new(3.14159) }
-    assert_raise(TypeError) { BigDecimal(4) }
-    assert_raise(TypeError) { BigDecimal(3.14159) }
+  if RUBY_VERSION =~ /1\.8/
+    def test_reject_arguments_not_responding_to_to_str
+      assert_raise(TypeError) { BigDecimal.new(4) }
+      assert_raise(TypeError) { BigDecimal(4) }
+      if RUBY_VERSION =~ /1\.8/
+        assert_raise(TypeError) { BigDecimal.new(3.14159) }
+        assert_raise(TypeError) { BigDecimal(3.14159) }
+      end
+    end
   end
 
   def test_alphabetic_args_return_zero
@@ -165,7 +169,7 @@ class TestBigDecimal < Test::Unit::TestCase
     
     # Reject invalid arguments to #mode
     assert_raises(TypeError) { BigDecimal.mode(true) } # first argument must be a Fixnum
-    assert_raises(TypeError) { BigDecimal.mode(BigDecimal::EXCEPTION_OVERFLOW, 1) } # second argument must be [true|false]
+    assert_raises(ArgumentError) { BigDecimal.mode(BigDecimal::EXCEPTION_OVERFLOW, 1) } # second argument must be [true|false]
     assert_raises(TypeError) { BigDecimal.mode(512) } # first argument must be == 256, or return non-zero when AND-ed with 255
     
     # exception mode defaults to 0
@@ -205,7 +209,7 @@ class TestBigDecimal < Test::Unit::TestCase
     BigDecimal.mode(BigDecimal::ROUND_MODE, BigDecimal::ROUND_HALF_UP)
     
     assert_raises(TypeError) { BigDecimal.mode(BigDecimal::ROUND_MODE, true) } # second argument must be a Fixnum
-    assert_raises(TypeError) { BigDecimal.mode(BigDecimal::ROUND_MODE, 8) } # any Fixnum >= 8 should trigger this error, as the valid rounding modes are currently [0..6]
+    assert_raises(ArgumentError) { BigDecimal.mode(BigDecimal::ROUND_MODE, 8) } # any Fixnum >= 8 should trigger this error, as the valid rounding modes are currently [0..6]
   end
 
   def test_marshaling
@@ -235,8 +239,28 @@ class TestBigDecimal < Test::Unit::TestCase
   def test_decimal_format
     require 'java'
     format = java.text.DecimalFormat.new("#,##0.00")
+    locale_separator = java.text.DecimalFormatSymbols.new().getDecimalSeparator()
     value = java.math.BigDecimal.new("10")
-    assert format.format(value) == "10.00"
+    assert_equal "10" + locale_separator.chr + "00", format.format(value)
   end
 
+  #JRUBY-5190
+  def test_large_precisions 
+    a = BigDecimal("1").div(BigDecimal("3"), 307)
+    b = BigDecimal("1").div(BigDecimal("3"), 308)
+    assert_equal a.to_f, b.to_f
+  end
+
+  if RUBY_VERSION =~ /1\.9/ || RUBY_VERSION =~ /2\.0/
+    # GH-644, GH-648
+    def test_div_by_float_precision_gh644
+      a = BigDecimal.new(11023)/2.2046
+      assert_equal 5_000, a.to_f
+    end
+
+    def test_div_by_float_precision_gh648
+      b = BigDecimal.new(1.05, 10)/1.48
+      assert (b.to_f - 0.7094594594594595) < Float::EPSILON
+    end
+  end
 end

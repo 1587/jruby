@@ -45,7 +45,7 @@ class TestThread < Test::Unit::TestCase
     assert(Thread.current.key?(:x))
     Thread.current["y"] = 2
     assert(Thread.current.key?("y"))
-    assert([:x, :y], Thread.current.keys.sort {|x, y| x.to_s <=> y.to_s})
+    assert_equal([:x, :y], Thread.current.keys.sort {|x, y| x.to_s <=> y.to_s} & [:x, :y])
     assert_raises(TypeError) { Thread.current[Object.new] }
     assert_raises(TypeError) { Thread.current[Object.new] = 1 }
     assert_raises(ArgumentError) { Thread.current[1] }
@@ -68,6 +68,11 @@ class TestThread < Test::Unit::TestCase
     t.kill
     t.join rescue nil
     assert(t.inspect["dead"])
+  end
+
+  def test_inspect
+    t = Thread.new {}.join
+    assert_match /#<Thread:0x[0-9a-z]+ \w+>/, t.inspect
   end
 
   def thread_foo()
@@ -95,6 +100,7 @@ class TestThread < Test::Unit::TestCase
       e = error
     end
     assert(! e.nil?)
+    assert_match /thread [0-9a-z]+ tried to join itself/, e.message
   end
 
   def test_raise
@@ -148,12 +154,17 @@ class TestThread < Test::Unit::TestCase
     assert_equal(2, x.value)
   end
   
-  def test_dead_thread_priority
-    x = Thread.new {}
-    1 while x.alive?
-    x.priority = 5
-    assert_equal(5, x.priority)
-  end
+  # Because a Ruby thread may use a pooled thread, we will
+  # not preserve priorities set into dead threads. Because
+  # this is a meaningless feature, anyway, I remove it here
+  # and consider this behavior undefined. CON@20120306
+  
+  # def test_dead_thread_priority
+  #   x = Thread.new {}
+  #   1 while x.alive?
+  #   x.priority = 5
+  #   assert_equal(5, x.priority)
+  # end
   
   def test_join_returns_thread
     x = Thread.new {}
@@ -225,6 +236,7 @@ class TestThread < Test::Unit::TestCase
       end
  
       a.join
+      fail
       b.join
     rescue SystemExit
       # rescued!
@@ -304,11 +316,15 @@ class TestThread < Test::Unit::TestCase
 
     awoke = false
     start_time = Time.now
-    end_time = nil
-    t = Thread.new { sleep 100; end_time = Time.now }
+    done = false
+    t = Thread.new { sleep 100; done = true }
     Thread.pass until t.status == "sleep"
-    t.wakeup.join
-    assert (end_time - start_time) < 1
+    t.wakeup
+    loop {
+      break if done || Time.now - start_time > 10
+      Thread.pass
+    }
+    assert done
   end
 
   # JRUBY-4154
@@ -317,5 +333,13 @@ class TestThread < Test::Unit::TestCase
       out = Thread.exclusive { :result }
       assert_equal(:result, out)
     end
+  end
+
+  # JRUBY-5290
+  def test_default_priority
+    require 'java'
+    t = Thread.new { sleep 1 while true }
+    assert_equal 0, t.priority
+    t.exit
   end
 end

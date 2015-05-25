@@ -1,4 +1,4 @@
-require 'drbtest'
+require_relative 'drbtest'
 
 class TestDRbCore < Test::Unit::TestCase
   include DRbCore
@@ -202,7 +202,8 @@ end
 
 class TestDRbSafe1 < TestDRbAry
   def setup
-    @ext = DRbService.ext_service('ut_safe1.rb')
+    @service_name = 'ut_safe1.rb'
+    @ext = DRbService.ext_service(@service_name)
     @there = @ext.front
   end
 end
@@ -283,7 +284,7 @@ class TestDRbLarge < Test::Unit::TestCase
   end
 
   def test_04_many_arg
-    assert_raise(ArgumentError) {
+    assert_raise(DRb::DRbConnError) {
       @there.arg_test(1, 2, 3, 4, 5, 6, 7, 8, 9, 0)
     }
   end
@@ -297,5 +298,21 @@ class TestDRbLarge < Test::Unit::TestCase
       exception = $!
     end
     assert_kind_of(StandardError, exception)
+  end
+end
+
+class TestBug4409 < Test::Unit::TestCase
+  def setup
+    @ext = DRbService.ext_service('ut_eq.rb')
+    @there = @ext.front
+  end
+
+  def teardown
+    @ext.stop_service if @ext
+  end
+  
+  def test_bug4409
+    foo = @there.foo
+    assert(@there.foo?(foo))
   end
 end

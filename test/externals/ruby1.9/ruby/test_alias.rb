@@ -52,14 +52,16 @@ class TestAlias < Test::Unit::TestCase
     end
   end
 
-  def test_JVN_83768862
-    d = lambda {
-      $SAFE = 4
-      dclass = Class.new(C)
-      dclass.send(:alias_method, :mm, :m)
-      dclass.new
-    }.call
-    assert_raise(SecurityError) { d.mm }
+  unless RUBY_ENGINE == 'jruby'
+    def test_JVN_83768862
+      d = lambda {
+        $SAFE = 4
+        dclass = Class.new(C)
+        dclass.send(:alias_method, :mm, :m)
+        dclass.new
+      }.call
+      assert_raise(SecurityError) { d.mm }
+    end
   end
 
   def test_nonexistmethod
@@ -76,5 +78,32 @@ class TestAlias < Test::Unit::TestCase
       alias_method :try, :__send__
     end
     assert_equal("ABC", x.try(:upcase), '[ruby-dev:38824]')
+  end
+
+  def test_special_const_alias
+    assert_raise(TypeError) do
+      1.instance_eval do
+        alias to_string to_s
+      end
+    end
+  end
+
+  def test_alias_with_zsuper_method
+    c = Class.new
+    c.class_eval do
+      def foo
+        :ok
+      end
+      def bar
+        :ng
+      end
+      private :foo
+    end
+    d = Class.new(c)
+    d.class_eval do
+      public :foo
+      alias bar foo
+    end
+    assert_equal(:ok, d.new.bar)
   end
 end

@@ -22,7 +22,7 @@ module WEBrick
     General = {
       :ServerName     => Utils::getservername,
       :BindAddress    => nil,   # "0.0.0.0" or "::" or nil
-      :Port           => nil,   # users MUST specifiy this!!
+      :Port           => nil,   # users MUST specify this!!
       :MaxClients     => 100,   # maximum number of the concurrent connections
       :ServerType     => nil,   # default: WEBrick::SimpleServer
       :Logger         => nil,   # default: WEBrick::Log.new
@@ -81,6 +81,27 @@ module WEBrick
     BasicAuth = {
       :AutoReloadUserDB     => true,
     }
+
+    ##
+    # Default configuration for WEBrick::HTTPAuth::DigestAuth.
+    #
+    # :Algorithm:: MD5, MD5-sess (default), SHA1, SHA1-sess
+    # :Domain:: An Array of URIs that define the protected space
+    # :Qop:: 'auth' for authentication, 'auth-int' for integrity protection or
+    #        both
+    # :UseOpaque:: Should the server send opaque values to the client?  This
+    #              helps prevent replay attacks.
+    # :CheckNc:: Should the server check the nonce count?  This helps the
+    #            server detect replay attacks.
+    # :UseAuthenticationInfoHeader:: Should the server send an
+    #                                AuthenticationInfo header?
+    # :AutoReloadUserDB:: Reload the user database provided by :UserDB
+    #                     automatically?
+    # :NonceExpirePeriod:: How long should we store used nonces?  Default is
+    #                      30 minutes.
+    # :NonceExpireDelta:: How long is a nonce valid?  Default is 1 minute
+    # :InternetExplorerHack:: Hack which allows Internet Explorer to work.
+    # :OperaHack:: Hack which allows Opera to work.
 
     DigestAuth = {
       :Algorithm            => 'MD5-sess', # or 'MD5'

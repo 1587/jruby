@@ -49,7 +49,7 @@ class TestEnv < Test::Unit::TestCase
 
   def test_has_value
     val = 'a'
-    val.succ! while ENV.has_value?(val) && ENV.has_value?(val.upcase)
+    val.succ! while ENV.has_value?(val) || ENV.has_value?(val.upcase)
     ENV['test'] = val[0...-1]
 
     assert_equal(false, ENV.has_value?(val))
@@ -64,10 +64,11 @@ class TestEnv < Test::Unit::TestCase
 
   def test_key
     val = 'a'
-    val.succ! while ENV.has_value?(val) && ENV.has_value?(val.upcase)
+    val.succ! while ENV.has_value?(val) || ENV.has_value?(val.upcase)
     ENV['test'] = val[0...-1]
 
     assert_nil(ENV.key(val))
+    assert_nil(ENV.index(val))
     assert_nil(ENV.key(val.upcase))
     ENV['test'] = val
     if IGNORE_CASE
@@ -95,6 +96,7 @@ class TestEnv < Test::Unit::TestCase
     assert_raise(ArgumentError) { ENV["foo\0bar"] }
     ENV[PATH_ENV] = ""
     assert_equal("", ENV[PATH_ENV])
+    assert_nil(ENV[""])
   end
 
   def test_fetch
@@ -122,6 +124,17 @@ class TestEnv < Test::Unit::TestCase
     assert_equal(nil, ENV["test"])
     assert_raise(ArgumentError) { ENV["foo\0bar"] = "test" }
     assert_raise(ArgumentError) { ENV["test"] = "foo\0bar" }
+
+    begin
+      # setenv(3) allowed the name includes '=',
+      # but POSIX.1-2001 says it should fail with EINVAL.
+      # see also http://togetter.com/li/22380
+      ENV["foo=bar"] = "test"
+      assert_equal("test", ENV["foo=bar"])
+      assert_equal("test", ENV["foo"])
+    rescue Errno::EINVAL
+    end
+
     ENV[PATH_ENV] = "/tmp/".taint
     assert_equal("/tmp/", ENV[PATH_ENV])
   end
@@ -168,6 +181,24 @@ class TestEnv < Test::Unit::TestCase
     ENV.each_pair {|k, v| h1[k] = v }
     ENV["test"] = "foo"
     ENV.delete_if {|k, v| IGNORE_CASE ? k.upcase == "TEST" : k == "test" }
+    h2 = {}
+    ENV.each_pair {|k, v| h2[k] = v }
+    assert_equal(h1, h2)
+  end
+
+  def test_select_bang
+    h1 = {}
+    ENV.each_pair {|k, v| h1[k] = v }
+    ENV["test"] = "foo"
+    ENV.select! {|k, v| IGNORE_CASE ? k.upcase != "TEST" : k != "test" }
+    h2 = {}
+    ENV.each_pair {|k, v| h2[k] = v }
+    assert_equal(h1, h2)
+
+    h1 = {}
+    ENV.each_pair {|k, v| h1[k] = v }
+    ENV["test"] = "foo"
+    ENV.keep_if {|k, v| IGNORE_CASE ? k.upcase != "TEST" : k != "test" }
     h2 = {}
     ENV.each_pair {|k, v| h2[k] = v }
     assert_equal(h1, h2)
@@ -347,5 +378,29 @@ class TestEnv < Test::Unit::TestCase
     ENV["baz"] = "qux"
     ENV.update({"baz"=>"quux","a"=>"b"}) {|k, v1, v2| v1 ? k + "_" + v1 + "_" + v2 : v2 }
     check(ENV.to_hash.to_a, [%w(foo bar), %w(baz baz_qux_quux), %w(a b)])
+  end
+
+  def test_huge_value
+    huge_value = "bar" * 40960
+    ENV["foo"] = "bar"
+    if /mswin|mingw/ =~ RUBY_PLATFORM
+      assert_raise(Errno::EINVAL) { ENV["foo"] = huge_value }
+      assert_equal("bar", ENV["foo"])
+    else
+      assert_nothing_raised { ENV["foo"] = huge_value }
+      assert_equal(huge_value, ENV["foo"])
+    end
+  end
+
+  if /mswin|mingw/ =~ RUBY_PLATFORM
+    def test_win32_blocksize
+      len = 32767 - ENV.to_a.flatten.inject(0) {|r,e| r + e.size + 2 }
+      val = "bar" * 1000
+      key = nil
+      1.upto(12) {|i|
+        ENV[key] = val while (len -= val.size + (key="foo#{len}").size + 2) > 0
+        assert_raise(Errno::EINVAL) { ENV[key] = val }
+      }
+    end
   end
 end

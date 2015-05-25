@@ -9,10 +9,10 @@ rescue LoadError
 end
 
 # Resolv is a thread-aware DNS resolver library written in Ruby.  Resolv can
-# handle multiple DNS requests concurrently without blocking.  The ruby
+# handle multiple DNS requests concurrently without blocking the entire ruby
 # interpreter.
 #
-# See also resolv-replace.rb to replace the libc resolver with # Resolv.
+# See also resolv-replace.rb to replace the libc resolver with Resolv.
 #
 # Resolv can look up various DNS resources using the DNS module directly.
 #
@@ -35,6 +35,11 @@ end
 # * /etc/nsswitch.conf is not supported.
 
 class Resolv
+  
+  ##
+  # Tests whether we're running on Windows
+  
+  WINDOWS = /mswin|cygwin|mingw|bccwin/ =~ RUBY_PLATFORM || ::RbConfig::CONFIG['host_os'] =~ /mswin/
 
   ##
   # Looks up the first IP address for +name+.
@@ -165,8 +170,7 @@ class Resolv
   # Resolv::Hosts is a hostname resolver that uses the system hosts file.
 
   class Hosts
-    require 'rbconfig'
-    if /mswin32|cygwin|mingw|bccwin/ =~ RUBY_PLATFORM || ::Config::CONFIG['host_os'] =~ /mswin/
+    if WINDOWS
       require 'win32/resolv'
       DefaultFileName = Win32::Resolv.get_hosts_path
     else
@@ -187,7 +191,7 @@ class Resolv
         unless @initialized
           @name2addr = {}
           @addr2name = {}
-          open(@filename) {|f|
+          open(@filename, 'rb') {|f|
             f.each {|line|
               line.sub!(/#.*/, '')
               addr, hostname, *aliases = line.split(/\s+/)
@@ -314,6 +318,16 @@ class Resolv
     # nil:: Uses /etc/resolv.conf.
     # String:: Path to a file using /etc/resolv.conf's format.
     # Hash:: Must contain :nameserver, :search and :ndots keys.
+    # :nameserver_port can be used to specify port number of nameserver address.
+    #
+    # The value of :nameserver should be an address string or
+    # an array of address strings.
+    # - :nameserver => '8.8.8.8'
+    # - :nameserver => ['8.8.8.8', '8.8.4.4']
+    #
+    # The value of :nameserver_port should be an array of
+    # pair of nameserver address and port number.
+    # - :nameserver_port => [['8.8.8.8', 53], ['8.8.4.4', 53]]
     #
     # Example:
     #
@@ -385,7 +399,7 @@ class Resolv
       end
     end
 
-    def use_ipv6?
+    def use_ipv6? # :nodoc:
       begin
         list = Socket.ip_address_list
       rescue NotImplementedError
@@ -483,21 +497,34 @@ class Resolv
 
     def each_resource(name, typeclass, &proc)
       lazy_initialize
-      requester = make_requester
+      requester = make_udp_requester
       senders = {}
       begin
-        @config.resolv(name) {|candidate, tout, nameserver|
+        @config.resolv(name) {|candidate, tout, nameserver, port|
           msg = Message.new
           msg.rd = 1
           msg.add_question(candidate, typeclass)
-          unless sender = senders[[candidate, nameserver]]
-            sender = senders[[candidate, nameserver]] =
-              requester.sender(msg, candidate, nameserver)
+          unless sender = senders[[candidate, nameserver, port]]
+            sender = requester.sender(msg, candidate, nameserver, port)
+            next if !sender
+            senders[[candidate, nameserver, port]] = sender
           end
           reply, reply_name = requester.request(sender, tout)
           case reply.rcode
           when RCode::NoError
-            extract_resources(reply, reply_name, typeclass, &proc)
+            if reply.tc == 1 and not Requester::TCP === requester
+              requester.close
+              # Retry via TCP:
+              requester = make_tcp_requester(nameserver, port)
+              senders = {}
+              # This will use TCP for all remaining candidates (assuming the
+              # current candidate does not already respond successfully via
+              # TCP).  This makes sense because we already know the full
+              # response will not fit in an untruncated UDP packet.
+              redo
+            else
+              extract_resources(reply, reply_name, typeclass, &proc)
+            end
             return
           when RCode::NXDomain
             raise Config::NXDomain.new(reply_name.to_s)
@@ -510,12 +537,17 @@ class Resolv
       end
     end
 
-    def make_requester # :nodoc:
-      if nameserver = @config.single?
-        Requester::ConnectedUDP.new(nameserver)
+    def make_udp_requester # :nodoc:
+      nameserver_port = @config.nameserver_port
+      if nameserver_port.length == 1
+        Requester::ConnectedUDP.new(*nameserver_port[0])
       else
-        Requester::UnconnectedUDP.new
+        Requester::UnconnectedUDP.new(*nameserver_port)
       end
+    end
+
+    def make_tcp_requester(host, port) # :nodoc:
+      return Requester::TCP.new(host, port)
     end
 
     def extract_resources(msg, name, typeclass) # :nodoc:
@@ -573,8 +605,8 @@ class Resolv
       base + random(len)
     end
 
-    RequestID = {}
-    RequestIDMutex = Mutex.new
+    RequestID = {} # :nodoc:
+    RequestIDMutex = Mutex.new # :nodoc:
 
     def self.allocate_request_id(host, port) # :nodoc:
       id = nil
@@ -600,10 +632,10 @@ class Resolv
       }
     end
 
-    def self.bind_random_port(udpsock) # :nodoc:
+    def self.bind_random_port(udpsock, bind_host="0.0.0.0") # :nodoc:
       begin
         port = rangerand(1024..65535)
-        udpsock.bind("", port)
+        udpsock.bind(bind_host, port)
       rescue Errno::EADDRINUSE
         retry
       end
@@ -612,18 +644,30 @@ class Resolv
     class Requester # :nodoc:
       def initialize
         @senders = {}
-        @sock = nil
+        @socks = nil
       end
 
       def request(sender, tout)
         timelimit = Time.now + tout
         sender.send
-        while (now = Time.now) < timelimit
+        while true
+          now = Time.now
           timeout = timelimit - now
-          if !IO.select([@sock], nil, nil, timeout)
+          if timeout <= 0
             raise ResolvTimeout
           end
-          reply, from = recv_reply
+          select_result = IO.select(@socks, nil, nil, timeout)
+          if !select_result
+            raise ResolvTimeout
+          end
+          begin
+            reply, from = recv_reply(select_result[0])
+          rescue Errno::ECONNREFUSED, # GNU/Linux, FreeBSD
+                 Errno::ECONNRESET # Windows
+            # No name server running on the server?
+            # Don't wait anymore.
+            raise ResolvTimeout
+          end
           begin
             msg = Message.decode(reply)
           rescue DecodeError
@@ -639,9 +683,11 @@ class Resolv
       end
 
       def close
-        sock = @sock
-        @sock = nil
-        sock.close if sock
+        socks = @socks
+        @socks = nil
+        if socks
+          socks.each {|sock| sock.close }
+        end
       end
 
       class Sender # :nodoc:
@@ -653,25 +699,47 @@ class Resolv
       end
 
       class UnconnectedUDP < Requester # :nodoc:
-        def initialize
+        def initialize(*nameserver_port)
           super()
-          @sock = UDPSocket.new
-          @sock.fcntl(Fcntl::F_SETFD, Fcntl::FD_CLOEXEC) if defined? Fcntl::F_SETFD
-          DNS.bind_random_port(@sock)
+          @nameserver_port = nameserver_port
+          @socks_hash = {}
+          @socks = []
+          nameserver_port.each {|host, port|
+            if host.index(':')
+              bind_host = "::"
+              af = Socket::AF_INET6
+            else
+              bind_host = "0.0.0.0"
+              af = Socket::AF_INET
+            end
+            next if @socks_hash[bind_host]
+            begin
+              sock = UDPSocket.new(af)
+            rescue Errno::EAFNOSUPPORT
+              next # The kernel doesn't support the address family.
+            end
+            sock.do_not_reverse_lookup = true
+            sock.fcntl(Fcntl::F_SETFD, Fcntl::FD_CLOEXEC) if defined? Fcntl::F_SETFD
+            DNS.bind_random_port(sock, bind_host)
+            @socks << sock
+            @socks_hash[bind_host] = sock
+          }
         end
 
-        def recv_reply
-          reply, from = @sock.recvfrom(UDPSize)
+        def recv_reply(readable_socks)
+          reply, from = readable_socks[0].recvfrom(UDPSize)
           return reply, [from[3],from[1]]
         end
 
         def sender(msg, data, host, port=Port)
+          sock = @socks_hash[host.index(':') ? "::" : "0.0.0.0"]
+          return nil if !sock
           service = [host, port]
           id = DNS.allocate_request_id(host, port)
           request = msg.encode
           request[0,2] = [id].pack('n')
           return @senders[[service, id]] =
-            Sender.new(request, data, @sock, host, port)
+            Sender.new(request, data, sock, host, port)
         end
 
         def close
@@ -690,6 +758,7 @@ class Resolv
           attr_reader :data
 
           def send
+            raise "@sock is nil." if @sock.nil?
             @sock.send(@msg, 0, @host, @port)
           end
         end
@@ -700,14 +769,17 @@ class Resolv
           super()
           @host = host
           @port = port
-          @sock = UDPSocket.new(host.index(':') ? Socket::AF_INET6 : Socket::AF_INET)
-          DNS.bind_random_port(@sock)
-          @sock.connect(host, port)
-          @sock.fcntl(Fcntl::F_SETFD, Fcntl::FD_CLOEXEC) if defined? Fcntl::F_SETFD
+          is_ipv6 = host.index(':')
+          sock = UDPSocket.new(is_ipv6 ? Socket::AF_INET6 : Socket::AF_INET)
+          @socks = [sock]
+          sock.do_not_reverse_lookup = true
+          sock.fcntl(Fcntl::F_SETFD, Fcntl::FD_CLOEXEC) if defined? Fcntl::F_SETFD
+          DNS.bind_random_port(sock, is_ipv6 ? "::" : "0.0.0.0")
+          sock.connect(host, port)
         end
 
-        def recv_reply
-          reply = @sock.recv(UDPSize)
+        def recv_reply(readable_socks)
+          reply = readable_socks[0].recv(UDPSize)
           return reply, nil
         end
 
@@ -718,7 +790,7 @@ class Resolv
           id = DNS.allocate_request_id(@host, @port)
           request = msg.encode
           request[0,2] = [id].pack('n')
-          return @senders[[nil,id]] = Sender.new(request, data, @sock)
+          return @senders[[nil,id]] = Sender.new(request, data, @socks[0])
         end
 
         def close
@@ -730,6 +802,7 @@ class Resolv
 
         class Sender < Requester::Sender # :nodoc:
           def send
+            raise "@sock is nil." if @sock.nil?
             @sock.send(@msg, 0)
           end
           attr_reader :data
@@ -741,14 +814,15 @@ class Resolv
           super()
           @host = host
           @port = port
-          @sock = TCPSocket.new(@host, @port)
-          @sock.fcntl(Fcntl::F_SETFD, Fcntl::FD_CLOEXEC) if defined? Fcntl::F_SETFD
+          sock = TCPSocket.new(@host, @port)
+          @socks = [sock]
+          sock.fcntl(Fcntl::F_SETFD, Fcntl::FD_CLOEXEC) if defined? Fcntl::F_SETFD
           @senders = {}
         end
 
-        def recv_reply
-          len = @sock.read(2).unpack('n')[0]
-          reply = @sock.read(len)
+        def recv_reply(readable_socks)
+          len = readable_socks[0].read(2).unpack('n')[0]
+          reply = @socks[0].read(len)
           return reply, nil
         end
 
@@ -759,7 +833,7 @@ class Resolv
           id = DNS.allocate_request_id(@host, @port)
           request = msg.encode
           request[0,2] = [request.length, id].pack('nn')
-          return @senders[[nil,id]] = Sender.new(request, data, @sock)
+          return @senders[[nil,id]] = Sender.new(request, data, @socks[0])
         end
 
         class Sender < Requester::Sender # :nodoc:
@@ -796,7 +870,7 @@ class Resolv
         nameserver = []
         search = nil
         ndots = 1
-        open(filename) {|f|
+        open(filename, 'rb') {|f|
           f.each {|line|
             line.sub!(/[#;].*/, '')
             keyword, *args = line.split(/\s+/)
@@ -830,8 +904,7 @@ class Resolv
         if File.exist? filename
           config_hash = Config.parse_resolv_conf(filename)
         else
-          require 'rbconfig'
-          if /mswin32|cygwin|mingw|bccwin/ =~ RUBY_PLATFORM || ::Config::CONFIG['host_os'] =~ /mswin/
+          if WINDOWS
             require 'win32/resolv'
             search, nameserver = Win32::Resolv.get_resolv_info
             config_hash = {}
@@ -839,13 +912,13 @@ class Resolv
             config_hash[:search] = [search].flatten if search
           end
         end
-        config_hash
+        config_hash || {}
       end
 
       def lazy_initialize
         @mutex.synchronize {
           unless @initialized
-            @nameserver = []
+            @nameserver_port = []
             @search = nil
             @ndots = 1
             case @config_info
@@ -864,11 +937,18 @@ class Resolv
             else
               raise ArgumentError.new("invalid resolv configuration: #{@config_info.inspect}")
             end
-            @nameserver = config_hash[:nameserver] if config_hash.include? :nameserver
+            if config_hash.include? :nameserver
+              @nameserver_port = config_hash[:nameserver].map {|ns| [ns, Port] }
+            end
+            if config_hash.include? :nameserver_port
+              @nameserver_port = config_hash[:nameserver_port].map {|ns, port| [ns, (port || Port)] }
+            end
             @search = config_hash[:search] if config_hash.include? :search
             @ndots = config_hash[:ndots] if config_hash.include? :ndots
 
-            @nameserver = ['0.0.0.0'] if @nameserver.empty?
+            if @nameserver_port.empty?
+              @nameserver_port << ['0.0.0.0', Port]
+            end
             if @search
               @search = @search.map {|arg| Label.split(arg) }
             else
@@ -880,9 +960,14 @@ class Resolv
               end
             end
 
-            if !@nameserver.kind_of?(Array) ||
-               !@nameserver.all? {|ns| String === ns }
-              raise ArgumentError.new("invalid nameserver config: #{@nameserver.inspect}")
+            if !@nameserver_port.kind_of?(Array) ||
+               @nameserver_port.any? {|ns_port|
+                  !(Array === ns_port) ||
+                  ns_port.length != 2
+                  !(String === ns_port[0]) ||
+                  !(Integer === ns_port[1])
+               }
+              raise ArgumentError.new("invalid nameserver config: #{@nameserver_port.inspect}")
             end
 
             if !@search.kind_of?(Array) ||
@@ -902,11 +987,15 @@ class Resolv
 
       def single?
         lazy_initialize
-        if @nameserver.length == 1
-          return @nameserver[0]
+        if @nameserver_port.length == 1
+          return @nameserver_port[0]
         else
           return nil
         end
+      end
+
+      def nameserver_port
+        @nameserver_port
       end
 
       def generate_candidates(name)
@@ -929,7 +1018,7 @@ class Resolv
 
       def generate_timeouts
         ts = [InitialTimeout]
-        ts << ts[-1] * 2 / @nameserver.length
+        ts << ts[-1] * 2 / @nameserver_port.length
         ts << ts[-1] * 2
         ts << ts[-1] * 2
         return ts
@@ -942,9 +1031,9 @@ class Resolv
           candidates.each {|candidate|
             begin
               timeouts.each {|tout|
-                @nameserver.each {|nameserver|
+                @nameserver_port.each {|nameserver, port|
                   begin
-                    yield candidate, tout, nameserver
+                    yield candidate, tout, nameserver, port
                   rescue ResolvTimeout
                   end
                 }
@@ -1362,6 +1451,10 @@ class Resolv
           yield self
         end
 
+        def inspect
+          "\#<#{self.class}: #{@data[0, @index].inspect} #{@data[@index..-1].inspect}>"
+        end
+
         def get_length16
           len, = self.get_unpack('n')
           save_limit = @limit
@@ -1377,6 +1470,7 @@ class Resolv
         end
 
         def get_bytes(len = @limit - @index)
+          raise DecodeError.new("limit exceeded") if @limit < @index + len
           d = @data[@index, len]
           @index += len
           return d
@@ -1404,6 +1498,7 @@ class Resolv
         end
 
         def get_string
+          raise DecodeError.new("limit exceeded") if @limit <= @index
           len = @data[@index].ord
           raise DecodeError.new("limit exceeded") if @limit < @index + 1 + len
           d = @data[@index + 1, len]
@@ -1427,6 +1522,7 @@ class Resolv
           limit = @index if !limit || @index < limit
           d = []
           while true
+            raise DecodeError.new("limit exceeded") if @limit <= @index
             case @data[@index].ord
             when 0
               @index += 1
@@ -1820,10 +1916,10 @@ class Resolv
         attr_reader :strings
 
         ##
-        # Returns the first string from +strings+.
+        # Returns the concatenated string from +strings+.
 
         def data
-          @strings[0]
+          @strings.join("")
         end
 
         def encode_rdata(msg) # :nodoc:
@@ -2053,7 +2149,11 @@ class Resolv
     ##
     # Regular expression IPv4 addresses must match.
 
-    Regex = /\A(\d+)\.(\d+)\.(\d+)\.(\d+)\z/
+    Regex256 = /0
+               |1(?:[0-9][0-9]?)?
+               |2(?:[0-4][0-9]?|5[0-5]?|[6-9])?
+               |[3-9][0-9]?/x
+    Regex = /\A(#{Regex256})\.(#{Regex256})\.(#{Regex256})\.(#{Regex256})\z/
 
     def self.create(arg)
       case arg
@@ -2074,8 +2174,11 @@ class Resolv
     end
 
     def initialize(address) # :nodoc:
-      unless address.kind_of?(String) && address.length == 4
-        raise ArgumentError.new('IPv4 address must be 4 bytes')
+      unless address.kind_of?(String)
+        raise ArgumentError, 'IPv4 address must be a string'
+      end
+      unless address.length == 4
+        raise ArgumentError, "IPv4 address expects 4 bytes but #{address.length} bytes"
       end
       @address = address
     end

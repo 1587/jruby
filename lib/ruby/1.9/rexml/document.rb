@@ -66,25 +66,27 @@ module REXML
     # of the document
     def add( child )
       if child.kind_of? XMLDecl
-        @children.unshift child
+        if @children[0].kind_of? XMLDecl
+          @children[0] = child
+        else
+          @children.unshift child
+        end
         child.parent = self
       elsif child.kind_of? DocType
         # Find first Element or DocType node and insert the decl right
         # before it.  If there is no such node, just insert the child at the
         # end.  If there is a child and it is an DocType, then replace it.
-        insert_before_index = 0
-        @children.find { |x|
-          insert_before_index += 1
+        insert_before_index = @children.find_index { |x|
           x.kind_of?(Element) || x.kind_of?(DocType)
         }
-        if @children[ insert_before_index ] # Not null = not end of list
-          if @children[ insert_before_index ].kind_of DocType
+        if insert_before_index # Not null = not end of list
+          if @children[ insert_before_index ].kind_of? DocType
             @children[ insert_before_index ] = child
           else
-            @children[ index_before_index-1, 0 ] = child
+            @children[ insert_before_index-1, 0 ] = child
           end
         else  # Insert at end of list
-          @children[insert_before_index] = child
+          @children << child
         end
         child.parent = self
       else
@@ -129,7 +131,8 @@ module REXML
       xml_decl().version
     end
 
-    # @return the XMLDecl encoding of this document as a String.
+    # @return the XMLDecl encoding of this document as an
+    # Encoding object.
     # If no XMLDecl has been set, returns the default encoding.
     def encoding
       xml_decl().encoding
@@ -162,7 +165,7 @@ module REXML
     #   Document.new("<a><b/></a>").serialize( tr )
     #
     # output::
-    #	  output an object which supports '<< string'; this is where the
+    #     output an object which supports '<< string'; this is where the
     #   document will be written.
     # indent::
     #   An integer.  If -1, no indenting will be used; otherwise, the
@@ -181,7 +184,7 @@ module REXML
     #   that IE's limited abilities can handle.  This hack inserts a space
     #   before the /> on empty tags.  Defaults to false
     def write( output=$stdout, indent=-1, transitive=false, ie_hack=false )
-      if xml_decl.encoding != "UTF-8" && !output.kind_of?(Output)
+      if xml_decl.encoding != 'UTF-8' && !output.kind_of?(Output)
         output = Output.new( output, xml_decl.encoding )
       end
       formatter = if indent > -1
@@ -214,6 +217,20 @@ module REXML
       return @@entity_expansion_limit
     end
 
+    # Set the entity expansion limit. By default the limit is set to 10240.
+    #
+    # Deprecated. Use REXML.entity_expansion_text_limit= instead.
+    def Document::entity_expansion_text_limit=( val )
+      REXML.entity_expansion_text_limit = val
+    end
+
+    # Get the entity expansion limit. By default the limit is set to 10240.
+    #
+    # Deprecated. Use REXML.entity_expansion_text_limit instead.
+    def Document::entity_expansion_text_limit
+      return REXML.entity_expansion_text_limit
+    end
+
     attr_reader :entity_expansion_count
 
     def record_entity_expansion
@@ -221,6 +238,10 @@ module REXML
       if @entity_expansion_count > @@entity_expansion_limit
         raise "number of entity expansions exceeded, processing aborted."
       end
+    end
+
+    def document
+      self
     end
 
     private

@@ -1,4 +1,5 @@
 class CGI
+  @@accept_charset="UTF-8" unless defined?(@@accept_charset)
   # URL-encode a string.
   #   url_encoded_string = CGI::escape("'Stop!' said Fred")
   #      # => "%27Stop%21%27+said+Fred"
@@ -8,17 +9,17 @@ class CGI
     end.tr(' ', '+')
   end
 
-
   # URL-decode a string with encoding(optional).
   #   string = CGI::unescape("%27Stop%21%27+said+Fred")
   #      # => "'Stop!' said Fred"
   def CGI::unescape(string,encoding=@@accept_charset)
-    str=string.tr('+', ' ').gsub(/((?:%[0-9a-fA-F]{2})+)/) do
+    str=string.tr('+', ' ').force_encoding(Encoding::ASCII_8BIT).gsub(/((?:%[0-9a-fA-F]{2})+)/) do
       [$1.delete('%')].pack('H*')
     end.force_encoding(encoding)
     str.valid_encoding? ? str : str.force_encoding(string.encoding)
   end
 
+  # The set of special characters and their escaped values
   TABLE_FOR_ESCAPE_HTML__ = {
     '&' => '&amp;',
     '"' => '&quot;',
@@ -32,7 +33,6 @@ class CGI
   def CGI::escapeHTML(string)
     string.gsub(/[&\"<>]/, TABLE_FOR_ESCAPE_HTML__)
   end
-
 
   # Unescape a string that has been HTML-escaped
   #   CGI::unescapeHTML("Usage: foo &quot;bar&quot; &lt;baz&gt;")
@@ -82,9 +82,13 @@ class CGI
       end
     end
   end
+
+  # Synonym for CGI::escapeHTML(str)
   def CGI::escape_html(str)
     escapeHTML(str)
   end
+  
+  # Synonym for CGI::unescapeHTML(str)
   def CGI::unescape_html(str)
     unescapeHTML(str)
   end
@@ -113,7 +117,6 @@ class CGI
     end
   end
 
-
   # Undo escaping such as that done by CGI::escapeElement()
   #
   #   print CGI::unescapeElement(
@@ -133,12 +136,22 @@ class CGI
       string
     end
   end
+
+  # Synonym for CGI::escapeElement(str)
   def CGI::escape_element(str)
     escapeElement(str)
   end
+  
+  # Synonym for CGI::unescapeElement(str)
   def CGI::unescape_element(str)
     unescapeElement(str)
   end
+
+  # Abbreviated day-of-week names specified by RFC 822
+  RFC822_DAYS = %w[ Sun Mon Tue Wed Thu Fri Sat ]
+
+  # Abbreviated month names specified by RFC 822
+  RFC822_MONTHS = %w[ Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec ]
 
   # Format a +Time+ object as a String using the format specified by RFC 1123.
   #
@@ -169,7 +182,7 @@ class CGI
   #     # </HTML>
   #
   def CGI::pretty(string, shift = "  ")
-    lines = string.gsub(/(?!\A)<(?:.|\n)*?>/, "\n\\0").gsub(/<(?:.|\n)*?>(?!\n)/, "\\0\n")
+    lines = string.gsub(/(?!\A)<.*?>/m, "\n\\0").gsub(/<.*?>(?!\n)/m, "\\0\n")
     end_pos = 0
     while end_pos = lines.index(/^<\/(\w+)/, end_pos)
       element = $1.dup

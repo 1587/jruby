@@ -55,6 +55,11 @@ class TestVariable < Test::Unit::TestCase
     assert_equal("Cronus", atlas.ruler0)
     assert_equal("Zeus", atlas.ruler3)
     assert_equal("Cronus", atlas.ruler4)
+    assert_nothing_raised do
+      class << Gods
+        defined?(@@rule) && @@rule
+      end
+    end
   end
 
   def test_local_variables
@@ -80,5 +85,13 @@ class TestVariable < Test::Unit::TestCase
 
   def test_global_variable_0
     assert_in_out_err(["-e", "$0='t'*1000;print $0"], "", /\At+\z/, [])
+  end
+
+  def test_global_variable_poped
+    assert_nothing_raised { eval("$foo; 1") }
+  end
+
+  def test_constant_poped
+    assert_nothing_raised { eval("TestVariable::Gods; 1") }
   end
 end

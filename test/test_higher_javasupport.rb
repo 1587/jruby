@@ -3,7 +3,7 @@ require 'rbconfig'
 require 'test/unit'
 
 TopLevelConstantExistsProc = Proc.new do
-  include_class 'java.lang.String'
+  java_import 'java.lang.String'
 end
 
 class TestHigherJavasupport < Test::Unit::TestCase
@@ -111,7 +111,11 @@ class TestHigherJavasupport < Test::Unit::TestCase
   def test_inner_classes
     assert_equal("java.nio.channels.Pipe$SinkChannel",
                  Pipe::SinkChannel.java_class.name)
-    assert(Pipe::SinkChannel.instance_methods.include?("keyFor"))
+    if RUBY_VERSION =~ /1\.9/
+      assert(Pipe::SinkChannel.instance_methods.include?(:keyFor))
+    else
+      assert(Pipe::SinkChannel.instance_methods.include?("keyFor"))
+    end
   end
 
   def test_subclasses_and_their_return_types
@@ -163,16 +167,16 @@ class TestHigherJavasupport < Test::Unit::TestCase
     constructor = alt_assert_helper_class.constructor();
     alt_assert_helper = constructor.new_instance();
     identityMethod = alt_assert_helper_class.java_method('identityTest')
-    identity = Java.java_to_primitive(identityMethod.invoke(alt_assert_helper))
+    identity = identityMethod.invoke(alt_assert_helper)
     assert_equal("ABCDEFGH",  identity)
   end
 
   module Foo
-    include_class("java.util.ArrayList")
+    java_import("java.util.ArrayList")
   end
 
-  include_class("java.lang.String") {|package,name| "J#{name}" }
-  include_class ["java.util.Hashtable", "java.util.Vector"]
+  java_import("java.lang.String") {|package,name| "J#{name}" }
+  java_import ["java.util.Hashtable", "java.util.Vector"]
 
   def test_class_constants_defined_under_correct_modules
     assert_equal(0, Foo::ArrayList.new.size)
@@ -188,14 +192,14 @@ class TestHigherJavasupport < Test::Unit::TestCase
 
   # We had a problem with accessing singleton class versus class earlier. Sanity check
   # to make sure we are not writing class methods to the same place.
-  include_class 'org.jruby.test.AlphaSingleton'
-  include_class 'org.jruby.test.BetaSingleton'
+  java_import 'org.jruby.test.AlphaSingleton'
+  java_import 'org.jruby.test.BetaSingleton'
 
   def test_make_sure_we_are_not_writing_class_methods_to_the_same_place
     assert_nothing_raised { AlphaSingleton.getInstance.alpha }
   end
 
-  include_class 'org.jruby.javasupport.test.Color'
+  java_import 'org.jruby.javasupport.test.Color'
   def test_lazy_proxy_method_tests_for_alias_and_respond_to
     color = Color.new('green')
     assert_equal(true, color.respond_to?(:setColor))
@@ -223,7 +227,7 @@ class TestHigherJavasupport < Test::Unit::TestCase
 
   # No explicit test, but implicitly EMPTY_LIST.each should not blow up interpreter
   # Old error was EMPTY_LIST is a private class implementing a public interface with public methods
-  include_class 'java.util.Collections'
+  java_import 'java.util.Collections'
   def test_empty_list_each_should_not_blow_up_interpreter
     assert_nothing_raised { Collections::EMPTY_LIST.each {|element| } }
   end
@@ -239,14 +243,14 @@ class TestHigherJavasupport < Test::Unit::TestCase
     
   def test_same_proxy_does_not_raise
     # JString already included and it is the same proxy, so do not throw an error
-    # (e.g. intent of include_class already satisfied)
+    # (e.g. intent of java_import already satisfied)
     assert_nothing_raised do
       begin
         old_stream = $stderr.dup
-        $stderr.reopen(Config::CONFIG['target_os'] =~ /Windows|mswin/ ? 'NUL:' : '/dev/null')
+        $stderr.reopen(RbConfig::CONFIG['target_os'] =~ /Windows|mswin/ ? 'NUL:' : '/dev/null')
         $stderr.sync = true
         class << self
-          include_class("java.lang.String") {|package,name| "J#{name}" }
+          java_import("java.lang.String") {|package,name| "J#{name}" }
         end
       ensure
         $stderr.reopen(old_stream)
@@ -254,7 +258,7 @@ class TestHigherJavasupport < Test::Unit::TestCase
     end
   end
 
-  include_class 'java.util.Calendar'
+  java_import 'java.util.Calendar'
   def test_date_time_conversion
     # Test java.util.Date <=> Time implicit conversion
     calendar = Calendar.getInstance
@@ -265,22 +269,25 @@ class TestHigherJavasupport < Test::Unit::TestCase
   end
 
   def test_expected_java_string_methods_exist
-    # test that the list of JString methods contains selected methods from Java
     jstring_methods = %w[bytes charAt char_at compareTo compareToIgnoreCase compare_to
-      compare_to_ignore_case concat contentEquals content_equals endsWith
-      ends_with equals equalsIgnoreCase equals_ignore_case getBytes getChars
-      getClass get_bytes get_chars get_class hashCode hash_code indexOf
-      index_of intern java_class java_object java_object= lastIndexOf last_index_of
-      length matches notify notifyAll notify_all regionMatches region_matches replace
-      replaceAll replaceFirst replace_all replace_first split startsWith starts_with
-      subSequence sub_sequence substring taint tainted? toCharArray toLowerCase
-      toString toUpperCase to_char_array to_lower_case to_string
-      to_upper_case trim wait]
+    compare_to_ignore_case concat contentEquals content_equals endsWith
+    ends_with equals equalsIgnoreCase equals_ignore_case getBytes getChars
+    getClass get_bytes get_chars get_class hashCode hash_code indexOf
+    index_of intern java_class java_object java_object= lastIndexOf last_index_of
+    length matches notify notifyAll notify_all regionMatches region_matches replace
+    replaceAll replaceFirst replace_all replace_first split startsWith starts_with
+    subSequence sub_sequence substring taint tainted? toCharArray toLowerCase
+    toString toUpperCase to_char_array to_lower_case to_string
+    to_upper_case trim wait]
+
+    if RUBY_VERSION =~ /1\.9/
+      jstring_methods = jstring_methods.map(&:to_sym)
+    end
 
     jstring_methods.each { |method| assert(JString.public_instance_methods.include?(method), "#{method} is missing from JString") }
   end
 
-  include_class 'java.math.BigDecimal'
+  java_import 'java.math.BigDecimal'
   def test_big_decimal_interaction
     assert_equal(BigDecimal, BigDecimal.new("1.23").add(BigDecimal.new("2.34")).class)
   end
@@ -331,8 +338,8 @@ class TestHigherJavasupport < Test::Unit::TestCase
 
   @@include_proc = Proc.new do
     Thread.stop
-    include_class "java.lang.System"
-    include_class "java.lang.Runtime"
+    java_import "java.lang.System"
+    java_import "java.lang.Runtime"
     Thread.current[:time] = System.currentTimeMillis
     Thread.current[:mem] = Runtime.getRuntime.freeMemory
   end
@@ -346,7 +353,7 @@ class TestHigherJavasupport < Test::Unit::TestCase
 
     begin
       old_stream = $stderr.dup
-      $stderr.reopen(Config::CONFIG['target_os'] =~ /Windows|mswin/ ? 'NUL:' : '/dev/null')
+      $stderr.reopen(RbConfig::CONFIG['target_os'] =~ /Windows|mswin/ ? 'NUL:' : '/dev/null')
       $stderr.sync = true
 
       50.times do
@@ -471,26 +478,34 @@ class TestHigherJavasupport < Test::Unit::TestCase
   end
 
   def test_impl_shortcut
-    has_run = false
+    $has_run = false
     java.lang.Runnable.impl do
-      has_run = true
+      $has_run = true
     end.run
 
-    assert has_run
+    assert $has_run
   end
 
   # JRUBY-674
   OuterClass = org.jruby.javasupport.test.OuterClass
   def test_inner_class_proxies
     assert defined?(OuterClass::PublicStaticInnerClass)
-    assert OuterClass::PublicStaticInnerClass.instance_methods.include?("a")
+    if RUBY_VERSION =~ /1\.9/
+      assert OuterClass::PublicStaticInnerClass.instance_methods.include?(:a)
+    else
+      assert OuterClass::PublicStaticInnerClass.instance_methods.include?("a")
+    end
 
     assert !defined?(OuterClass::ProtectedStaticInnerClass)
     assert !defined?(OuterClass::DefaultStaticInnerClass)
     assert !defined?(OuterClass::PrivateStaticInnerClass)
 
     assert defined?(OuterClass::PublicInstanceInnerClass)
-    assert OuterClass::PublicInstanceInnerClass.instance_methods.include?("a")
+    if RUBY_VERSION =~ /1\.9/
+      assert OuterClass::PublicInstanceInnerClass.instance_methods.include?(:a)
+    else
+      assert OuterClass::PublicInstanceInnerClass.instance_methods.include?("a")
+    end
 
     assert !defined?(OuterClass::ProtectedInstanceInnerClass)
     assert !defined?(OuterClass::DefaultInstanceInnerClass)
@@ -512,13 +527,13 @@ class TestHigherJavasupport < Test::Unit::TestCase
       list.get(5)
       assert(false)
     rescue java.lang.IndexOutOfBoundsException => e
-      assert(/java\.lang\.IndexOutOfBoundsException/ === e.message)
+      assert(e.message =~ /Index: 5, Size: 0$/)
     end
   end
 
   # test for JRUBY-698
   def test_java_method_returns_null
-    include_class 'org.jruby.test.ReturnsNull'
+    java_import 'org.jruby.test.ReturnsNull'
     rn = ReturnsNull.new
 
     assert_equal("", rn.returnNull.to_s)
@@ -667,7 +682,11 @@ CLASSDEF
     assert java.lang.respond_to?(:__methods__)
 
     java.lang.String # ensure java.lang.String has been loaded
-    assert java.lang.__constants__.include?('String')
+    if RUBY_VERSION =~ /1\.9/
+      assert java.lang.__constants__.include?(:String)
+    else
+      assert java.lang.__constants__.include?('String')
+    end
   end
 
   # JRUBY-2106
@@ -690,26 +709,26 @@ CLASSDEF
   
   # JRUBY-2169
   def test_java_class_resource_methods
-    # FIXME? not sure why this works, didn't modify build.xml
-    # to copy this file, yet it finds it anyway
-    props_file = 'test_java_class_resource_methods.properties'
-    
-    # nothing special about this class, selected at random for testing
-    jc = org.jruby.javasupport.test.RubyTestObject.java_class
-    
+    path = 'test/org/jruby/javasupport/test/'
+    $CLASSPATH << path
+    file = 'test_java_class_resource_methods.properties'
+
+    jc = JRuby.runtime.jruby_class_loader
+
     # get resource as URL
-    url = jc.resource(props_file)
+    url = jc.resource_as_url(file)
     assert(java.net.URL === url)
+    assert(url.path == File.expand_path(url.path))
     assert(/^foo=bar/ =~ java.io.DataInputStream.new(url.content).read_line)
 
     # get resource as stream
-    is = jc.resource_as_stream(props_file)
+    is = jc.resource_as_stream(file)
     assert(java.io.InputStream === is)
     assert(/^foo=bar/ =~ java.io.DataInputStream.new(is).read_line)
-    
+
 
     # get resource as string
-    str = jc.resource_as_string(props_file)
+    str = jc.resource_as_string(file)
     assert(/^foo=bar/ =~ str)
   end
   

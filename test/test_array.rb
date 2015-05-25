@@ -14,9 +14,20 @@ class TestArray < Test::Unit::TestCase
   end
 
   def test_initialize_on_frozen_array
-    assert_raises(TypeError) {  
-      [1, 2, 3].freeze.instance_eval { initialize }
-    }
+    if RUBY_VERSION =~ /1\.9/
+      assert_raises(RuntimeError) {
+        [1, 2, 3].freeze.instance_eval { initialize }
+      }
+    else
+      assert_raises(TypeError) {
+        [1, 2, 3].freeze.instance_eval { initialize }
+      }
+    end
+  end
+
+  def test_uniq_with_block_after_slice
+    assert_equal [1], [1, 1, 1][1,2].uniq { |x| x }
+    assert_equal [1], [1, 1, 1][1,2].uniq! { |x| x }
   end
 
   # JRUBY-4157

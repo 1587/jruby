@@ -71,6 +71,8 @@ module Open3
   # Closing stdin, stdout and stderr does not wait the process.
   #
   def popen3(*cmd, &block)
+    return IO::popen3(*cmd, &block) if RUBY_ENGINE == 'jruby'
+    
     if Hash === cmd.last
       opts = cmd.pop.dup
     else
@@ -205,9 +207,9 @@ module Open3
     result = [*parent_io, wait_thr]
     if defined? yield
       begin
-	return yield(*result)
+        return yield(*result)
       ensure
-	parent_io.each{|io| io.close unless io.closed?}
+        parent_io.each{|io| io.close unless io.closed?}
         wait_thr.join
       end
     end
@@ -223,7 +225,7 @@ module Open3
   #   stdout_str, stderr_str, status = Open3.capture3([env,] cmd... [, opts])
   #
   # The arguments env, cmd and opts are passed to Open3.popen3 except
-  # opts[:stdin_data] and opts[:stdin_data].  See Process.spawn.
+  # opts[:stdin_data] and opts[:binmode].  See Process.spawn.
   #
   # If opts[:stdin_data] is specified, it is sent to the command's standard input.
   #
@@ -257,7 +259,7 @@ module Open3
   #     STDOUT.binmode; print thumnail
   #   end
   #
-  def capture3(*cmd, &block)
+  def capture3(*cmd)
     if Hash === cmd.last
       opts = cmd.pop.dup
     else
@@ -287,7 +289,7 @@ module Open3
   #   stdout_str, status = Open3.capture2([env,] cmd... [, opts])
   #
   # The arguments env, cmd and opts are passed to Open3.popen3 except
-  # opts[:stdin_data] and opts[:stdin_data].  See Process.spawn.
+  # opts[:stdin_data] and opts[:binmode].  See Process.spawn.
   #
   # If opts[:stdin_data] is specified, it is sent to the command's standard input.
   #
@@ -311,7 +313,7 @@ module Open3
   #   End
   #   image, s = Open3.capture2("gnuplot", :stdin_data=>gnuplot_commands, :binmode=>true)
   #
-  def capture2(*cmd, &block)
+  def capture2(*cmd)
     if Hash === cmd.last
       opts = cmd.pop.dup
     else
@@ -339,7 +341,7 @@ module Open3
   #   stdout_and_stderr_str, status = Open3.capture2e([env,] cmd... [, opts])
   #
   # The arguments env, cmd and opts are passed to Open3.popen3 except
-  # opts[:stdin_data] and opts[:stdin_data].  See Process.spawn.
+  # opts[:stdin_data] and opts[:binmode].  See Process.spawn.
   #
   # If opts[:stdin_data] is specified, it is sent to the command's standard input.
   #
@@ -350,7 +352,7 @@ module Open3
   #   # capture make log
   #   make_log, s = Open3.capture2e("make")
   #
-  def capture2e(*cmd, &block)
+  def capture2e(*cmd)
     if Hash === cmd.last
       opts = cmd.pop.dup
     else
@@ -459,14 +461,14 @@ module Open3
   #
   #   Open3.pipeline_r("zcat /var/log/apache2/access.log.*.gz",
   #                    [{"LANG"=>"C"}, "grep", "GET /favicon.ico"],
-  #                    "logresolve") {|r, ts|
-  #     r.each_line {|line|
+  #                    "logresolve") {|o, ts|
+  #     o.each_line {|line|
   #       ...
   #     }
   #   }
   #
-  #   Open3.pipeline_r("yes", "head -10") {|r, ts|
-  #     p r.read      #=> "y\ny\ny\ny\ny\ny\ny\ny\ny\ny\n"
+  #   Open3.pipeline_r("yes", "head -10") {|o, ts|
+  #     p o.read      #=> "y\ny\ny\ny\ny\ny\ny\ny\ny\ny\n"
   #     p ts[0].value #=> #<Process::Status: pid 24910 SIGPIPE (signal 13)>
   #     p ts[1].value #=> #<Process::Status: pid 24913 exit 0>
   #   }
@@ -509,8 +511,8 @@ module Open3
   #
   # Example:
   #
-  #   Open3.pipeline_w("bzip2 -c", :out=>"/tmp/hello.bz2") {|w, ts|
-  #     w.puts "hello"
+  #   Open3.pipeline_w("bzip2 -c", :out=>"/tmp/hello.bz2") {|i, ts|
+  #     i.puts "hello"
   #   }
   #
   def pipeline_w(*cmds, &block)
@@ -653,7 +655,7 @@ module Open3
   end
   module_function :pipeline
 
-  def pipeline_run(cmds, pipeline_opts, child_io, parent_io, &block) # :nodoc:
+  def pipeline_run(cmds, pipeline_opts, child_io, parent_io) # :nodoc:
     if cmds.empty?
       raise ArgumentError, "no commands"
     end
@@ -700,9 +702,9 @@ module Open3
     child_io.each {|io| io.close }
     if defined? yield
       begin
-	return yield(*result)
+        return yield(*result)
       ensure
-	parent_io.each{|io| io.close unless io.closed?}
+        parent_io.each{|io| io.close unless io.closed?}
         wait_thrs.each {|t| t.join }
       end
     end

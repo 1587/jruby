@@ -1,0 +1,54 @@
+language: java
+before_script:
+  - unset GEM_PATH GEM_HOME IRBRC
+  - "export PATH=`pwd`/bin:$PATH"
+  - echo $HOME
+
+sudo: false
+
+cache:
+  directories:
+    - $HOME/.m2
+
+jdk: openjdk6
+
+env:
+  # disable cext
+  global:
+    - JAVA_OPTS="-XX:+TieredCompilation -XX:TieredStopAtLevel=1 -Djruby.cext.enabled=false"
+  matrix:
+    - TARGET='test-extended'
+    - TARGET='spec:ruby:fast'
+    - TARGET='spec:ruby19:fast'
+    - TARGET='jruby-jars'
+    - TARGET='complete'
+    - TARGET='main'
+    - TARGET='osgi'
+    - TARGET='j2ee'
+    - TARGET='test-jruby-jars'
+    - TARGET='jruby-jars-extended'
+    - TARGET='main-extended'
+
+matrix:
+  fast_finish: true
+
+branches:
+  only:
+    - master
+    - jruby-1_7
+    - /^test-.*$/
+
+before_install:
+  - if [[ $TRAVIS_JDK_VERSION = 'oraclejdk8' ]]; then sudo apt-get update; sudo apt-get install oracle-java8-installer; else true; fi
+
+install: /bin/true
+# |^[[:space:]]*\[exec\][[:space:]]*$
+script: "travis_retry ant $TARGET | egrep -v 'Download|\\[exec\\] [[:digit:]]+/[[:digit:]]+|^[[:space:]]*\\[exec\\][[:space:]]*$' ; [ ${PIPESTATUS[0]} == 0 ]"
+notifications:
+  irc:
+    channels:
+      - "irc.freenode.org#jruby"
+    on_success: change
+    on_failure: always
+    template:
+      - "%{repository} (%{branch}:%{commit} by %{author}): %{message} (%{build_url})"

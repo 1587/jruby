@@ -1,8 +1,8 @@
-require_relative 'gemutilities'
+require 'rubygems/test_case'
 require 'rubygems/platform'
 require 'rbconfig'
 
-class TestGemPlatform < RubyGemTestCase
+class TestGemPlatform < Gem::TestCase
 
   def test_self_local
     util_set_arch 'i686-darwin8.10.1'
@@ -30,6 +30,9 @@ class TestGemPlatform < RubyGemTestCase
       'hppa2.0w-hpux11.31'     => ['hppa2.0w',  'hpux',      '11'],
       'java'                   => [nil,         'java',      nil],
       'jruby'                  => [nil,         'java',      nil],
+      'universal-dotnet'       => ['universal', 'dotnet',    nil],
+      'universal-dotnet2.0'    => ['universal', 'dotnet',  '2.0'],
+      'universal-dotnet4.0'    => ['universal', 'dotnet',  '4.0'],
       'powerpc-aix5.3.0.0'     => ['powerpc',   'aix',       '5'],
       'powerpc-darwin7'        => ['powerpc',   'darwin',    '7'],
       'powerpc-darwin8'        => ['powerpc',   'darwin',    '8'],
@@ -40,6 +43,7 @@ class TestGemPlatform < RubyGemTestCase
       'sparc-solaris2.9'       => ['sparc',     'solaris',   '2.9'],
       'universal-darwin8'      => ['universal', 'darwin',    '8'],
       'universal-darwin9'      => ['universal', 'darwin',    '9'],
+      'universal-macruby'      => ['universal', 'macruby',   nil],
       'i386-cygwin'            => ['x86',       'cygwin',    nil],
       'i686-darwin'            => ['x86',       'darwin',    nil],
       'i686-darwin8.4.1'       => ['x86',       'darwin',    '8'],
@@ -114,7 +118,6 @@ class TestGemPlatform < RubyGemTestCase
 
   def test_initialize_platform
     platform = Gem::Platform.new 'cpu-my_platform1'
-    expected = Gem::Platform.new platform
 
     assert_equal 'cpu', platform.cpu
     assert_equal 'my_platform', platform.os
@@ -136,7 +139,7 @@ class TestGemPlatform < RubyGemTestCase
   def test_empty
     platform = Gem::Platform.new 'cpu-other_platform1'
     assert_respond_to platform, :empty?
-    assert_equal false, platform.empty?
+    assert_equal false, Gem::Deprecate.skip_during { platform.empty? }
   end
 
   def test_to_s
@@ -227,6 +230,28 @@ class TestGemPlatform < RubyGemTestCase
     util_set_arch 'java'
     assert_match 'java',  Gem::Platform.local
     assert_match 'jruby', Gem::Platform.local
+
+    util_set_arch 'universal-dotnet2.0'
+    assert_match 'universal-dotnet',     Gem::Platform.local
+    assert_match 'universal-dotnet-2.0', Gem::Platform.local
+    refute_match 'universal-dotnet-4.0', Gem::Platform.local
+    assert_match 'dotnet',               Gem::Platform.local
+    assert_match 'dotnet-2.0',           Gem::Platform.local
+    refute_match 'dotnet-4.0',           Gem::Platform.local
+
+    util_set_arch 'universal-dotnet4.0'
+    assert_match 'universal-dotnet',      Gem::Platform.local
+    refute_match 'universal-dotnet-2.0',  Gem::Platform.local
+    assert_match 'universal-dotnet-4.0',  Gem::Platform.local
+    assert_match 'dotnet',                Gem::Platform.local
+    refute_match 'dotnet-2.0',            Gem::Platform.local
+    assert_match 'dotnet-4.0',            Gem::Platform.local
+
+    util_set_arch 'universal-macruby-1.0'
+    assert_match 'universal-macruby',      Gem::Platform.local
+    assert_match 'macruby',                Gem::Platform.local
+    refute_match 'universal-macruby-0.10', Gem::Platform.local
+    assert_match 'universal-macruby-1.0',  Gem::Platform.local
 
     util_set_arch 'powerpc-darwin'
     assert_match 'powerpc-darwin', Gem::Platform.local

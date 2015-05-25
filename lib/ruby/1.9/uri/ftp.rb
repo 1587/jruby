@@ -1,9 +1,10 @@
-#
 # = uri/ftp.rb
 #
 # Author:: Akira Yamada <akira@ruby-lang.org>
 # License:: You can redistribute it and/or modify it under the same term as Ruby.
-# Revision:: $Id: ftp.rb 22784 2009-03-06 03:56:38Z nobu $
+# Revision:: $Id$
+#
+# See URI for general documentation
 #
 
 require 'uri/generic'
@@ -13,14 +14,24 @@ module URI
   #
   # FTP URI syntax is defined by RFC1738 section 3.2.
   #
+  # This class will be redesigned because of difference of implementations;
+  # the structure of its path. draft-hoffman-ftp-uri-04 is a draft but it
+  # is a good summary about the de facto spec.
+  # http://tools.ietf.org/html/draft-hoffman-ftp-uri-04
+  #
   class FTP < Generic
+    # A Default port of 21 for URI::FTP
     DEFAULT_PORT = 21
 
+    #
+    # An Array of the available components for URI::FTP
+    #
     COMPONENT = [
       :scheme,
       :userinfo, :host, :port,
       :path, :typecode
     ].freeze
+
     #
     # Typecode is "a", "i" or "d".
     #
@@ -29,8 +40,19 @@ module URI
     # * "d" indicates the contents of a directory should be displayed
     #
     TYPECODE = ['a', 'i', 'd'].freeze
+
+    # Typecode prefix
+    #  ';type='
     TYPECODE_PREFIX = ';type='.freeze
 
+    # alternate initialization
+    # Creates a new URI::FTP object.
+    #
+    # Unlike build(), this method does not escape the path component as
+    # required by RFC1738; instead it is treated as per RFC2396.
+    #
+    # Arguments are user, password, host, port, path, typecode,
+    # and arg_check, in that order.
     def self.new2(user, password, host, port, path,
                   typecode = nil, arg_check = true)
       typecode = nil if typecode.size == 0
@@ -113,12 +135,14 @@ module URI
     # +opaque+, +query+ and +fragment+, in that order.
     #
     def initialize(*arg)
+      raise InvalidURIError unless arg[5]
+      arg[5] = arg[5].sub(/^\//,'').sub(/^%2F/,'/')
       super(*arg)
       @typecode = nil
       tmp = @path.index(TYPECODE_PREFIX)
       if tmp
         typecode = @path[tmp + TYPECODE_PREFIX.size..-1]
-        self.set_path(@path[0..tmp - 1])
+        @path = @path[0..tmp - 1]
 
         if arg[-1]
           self.typecode = typecode
@@ -127,8 +151,15 @@ module URI
         end
       end
     end
+
+    # typecode accessor
+    #
+    # see URI::FTP::COMPONENT
     attr_reader :typecode
 
+    # validates typecode +v+,
+    # returns a +true+ or +false+ boolean
+    #
     def check_typecode(v)
       if TYPECODE.include?(v)
         return true
@@ -139,11 +170,39 @@ module URI
     end
     private :check_typecode
 
+    # private setter for the typecode +v+
+    #
+    # see also URI::FTP.typecode=
+    #
     def set_typecode(v)
       @typecode = v
     end
     protected :set_typecode
 
+    #
+    # == Args
+    #
+    # +v+::
+    #    String
+    #
+    # == Description
+    #
+    # public setter for the typecode +v+.
+    # (with validation)
+    #
+    # see also URI::FTP.check_typecode
+    #
+    # == Usage
+    #
+    #   require 'uri'
+    #
+    #   uri = URI.parse("ftp://john@ftp.example.com/my_file.img")
+    #   #=> #<URI::FTP:0x00000000923650 URL:ftp://john@ftp.example.com/my_file.img>
+    #   uri.typecode = "i"
+    #   # =>  "i"
+    #   uri
+    #   #=> #<URI::FTP:0x00000000923650 URL:ftp://john@ftp.example.com/my_file.img;type=i>
+    #
     def typecode=(typecode)
       check_typecode(typecode)
       set_typecode(typecode)
@@ -179,6 +238,11 @@ module URI
     def path
       return @path.sub(/^\//,'').sub(/^%2F/,'/')
     end
+
+    def set_path(v)
+      super("/" + v.sub(/^\//, "%2F"))
+    end
+    protected :set_path
 
     def to_s
       save_path = nil

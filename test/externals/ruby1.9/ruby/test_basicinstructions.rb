@@ -64,7 +64,7 @@ class TestBasicInstructions < Test::Unit::TestCase
   end
 
   def test_regexp
-    assert_equal /test/, /test/
+    assert_equal(/test/, /test/)
     assert_equal 'test', /test/.source
     assert_equal 'TEST', /TEST/.source
     assert_equal true, !!(/test/ =~ 'test')
@@ -76,9 +76,9 @@ class TestBasicInstructions < Test::Unit::TestCase
     assert_equal true, !!(re =~ 'test')
     assert_equal false, !!(re =~ 'does not match')
 
-    assert_equal /x#{1+1}x/, /x#{1+1}x/
+    assert_equal(/x#{1+1}x/, /x#{1+1}x/)
     s = "OK"
-    assert_equal /x#{s}x/, /x#{s}x/
+    assert_equal(/x#{s}x/, /x#{s}x/)
     assert_equal true, !!(/x#{s}x/ =~ "xOKx")
     assert_equal false, !!(/x#{s}x/ =~ "does not match")
 
@@ -632,7 +632,7 @@ class TestBasicInstructions < Test::Unit::TestCase
     assert_equal 'i', $~[9]
     assert_equal 'x', $`
     assert_equal 'abcdefghi', $&
-    assert_equal 'y', $'
+    assert_equal "y", $'
     assert_equal 'i', $+
     assert_equal 'a', $1
     assert_equal 'b', $2
@@ -662,15 +662,20 @@ class TestBasicInstructions < Test::Unit::TestCase
   end
 
   def test_array_splat
+    feature1125 = '[ruby-core:21901]'
+
     a = []
     assert_equal [], [*a]
     assert_equal [1], [1, *a]
+    assert_not_same(a, [*a], feature1125)
     a = [2]
     assert_equal [2], [*a]
     assert_equal [1, 2], [1, *a]
+    assert_not_same(a, [*a], feature1125)
     a = [2, 3]
     assert_equal [2, 3], [*a]
     assert_equal [1, 2, 3], [1, *a]
+    assert_not_same(a, [*a], feature1125)
 
     a = nil
     assert_equal [], [*a]

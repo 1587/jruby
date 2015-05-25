@@ -1,13 +1,15 @@
 require File.dirname(__FILE__) + "/../spec_helper"
+require 'rational'
+require 'complex'
 
-import "java_integration.fixtures.CoreTypeMethods"
-import "java_integration.fixtures.JavaFields"
-import "java_integration.fixtures.ValueReceivingInterface"
-import "java_integration.fixtures.ValueReceivingInterfaceHandler"
+java_import "java_integration.fixtures.CoreTypeMethods"
+java_import "java_integration.fixtures.JavaFields"
+java_import "java_integration.fixtures.ValueReceivingInterface"
+java_import "java_integration.fixtures.ValueReceivingInterfaceHandler"
 
-import "java_integration.fixtures.PackageConstructor"
-import "java_integration.fixtures.ProtectedConstructor"
-import "java_integration.fixtures.PrivateConstructor"
+java_import "java_integration.fixtures.PackageConstructor"
+java_import "java_integration.fixtures.ProtectedConstructor"
+java_import "java_integration.fixtures.PrivateConstructor"
 
 describe "Java String and primitive-typed methods" do
   it "should coerce to Ruby types when returned" do 
@@ -90,6 +92,8 @@ describe "Java String and primitive-typed methods" do
 
     CoreTypeMethods.setFloatObj(1).should == "1.0"
     CoreTypeMethods.setDoubleObj(1).should == "1.0"
+    CoreTypeMethods.setNumber(1).should == "java.lang.Long"
+    CoreTypeMethods.setSerializable(1).should == "java.lang.Long"
 
     CoreTypeMethods.setByteObj(1.5).should == "1"
     CoreTypeMethods.setShortObj(1.5).should == "1"
@@ -99,6 +103,8 @@ describe "Java String and primitive-typed methods" do
 
     CoreTypeMethods.setFloatObj(1.5).should == "1.5"
     CoreTypeMethods.setDoubleObj(1.5).should == "1.5"
+    CoreTypeMethods.setNumber(1.5).should == "java.lang.Double"
+    CoreTypeMethods.setSerializable(1.5).should == "java.lang.Double"
 
     CoreTypeMethods.setBooleanTrueObj(true).should == "true"
     CoreTypeMethods.setBooleanFalseObj(false).should == "false"
@@ -117,6 +123,31 @@ describe "Java String and primitive-typed methods" do
     
     CoreTypeMethods.setNull(nil).should == "null"
   end
+
+  it "coerce from boxed Java types to primitives when passing parameters" do
+    CoreTypeMethods.setString("string".to_java(:string)).should == "string"
+
+    CoreTypeMethods.setByte(1.to_java(:byte)).should == "1"
+    CoreTypeMethods.setShort(1.to_java(:short)).should == "1"
+    CoreTypeMethods.setChar(1.to_java(:char)).should == "\001"
+    CoreTypeMethods.setInt(1.to_java(:int)).should == "1"
+    CoreTypeMethods.setLong(1.to_java(:long)).should == "1"
+
+    CoreTypeMethods.setFloat(1.to_java(:float)).should == "1.0"
+    CoreTypeMethods.setDouble(1.to_java(:double)).should == "1.0"
+
+    CoreTypeMethods.setByte(1.5.to_java(:byte)).should == "1"
+    CoreTypeMethods.setShort(1.5.to_java(:short)).should == "1"
+    CoreTypeMethods.setChar(1.5.to_java(:char)).should == "\001"
+    CoreTypeMethods.setInt(1.5.to_java(:int)).should == "1"
+    CoreTypeMethods.setLong(1.5.to_java(:long)).should == "1"
+
+    CoreTypeMethods.setFloat(1.5.to_java(:float)).should == "1.5"
+    CoreTypeMethods.setDouble(1.5.to_java(:double)).should == "1.5"
+
+    CoreTypeMethods.setBooleanTrue(true.to_java(:boolean)).should == "true"
+    CoreTypeMethods.setBooleanFalse(false.to_java(:boolean)).should == "false"
+  end
   
   it "should raise errors when passed values can not be precisely coerced" do
     lambda { CoreTypeMethods.setByte(1 << 8) }.should raise_error(RangeError)
@@ -126,23 +157,12 @@ describe "Java String and primitive-typed methods" do
     lambda { CoreTypeMethods.setLong(1 << 64) }.should raise_error(RangeError)
   end
   
-  it "should select the most narrow and precise overloaded method" do
-    pending "selection based on precision is not supported yet" do
-      CoreTypeMethods.getType(1).should == "byte"
-      CoreTypeMethods.getType(1 << 8).should == "short"
-      CoreTypeMethods.getType(1 << 16).should == "int"
-      CoreTypeMethods.getType(1.0).should == "float"
-    end
+  it "should select the method that matches precision of the incoming value" do
     CoreTypeMethods.getType(1 << 32).should == "long"
     
     CoreTypeMethods.getType(2.0 ** 128).should == "double"
     
     CoreTypeMethods.getType("foo").should == "String"
-    pending "passing null to overloaded methods randomly selects from them" do
-      CoreTypeMethods.getType(nil).should == "CharSequence"
-    end
-
-    CoreTypeMethods.getType(BigDecimal.new('1.1')).should == "BigDecimal"
   end
 end
 
@@ -788,5 +808,37 @@ describe "Time\"to_java" do
       d = t.to_java(java.lang.Object)
       d.class.should == java.util.Date
     end
+  end
+end
+
+describe "A Rational object" do
+  before :each do
+    @rational = Rational(1,2)
+  end
+  
+  it "is left uncoerced with to_java" do
+    @rational.to_java.should == @rational
+  end
+  
+  it "fails to coerce to types not assignable from the given type" do
+    lambda do
+      @rational.to_java(java.lang.String)
+    end.should raise_error
+  end
+end
+
+describe "A Complex object" do
+  before :each do
+    @complex = Complex(1,2)
+  end
+
+  it "is left uncoerced with to_java" do
+    @complex.to_java.should == @complex
+  end
+  
+  it "fails to coerce to types not assignable from the given type" do
+    lambda do
+      @complex.to_java(java.lang.String)
+    end.should raise_error
   end
 end

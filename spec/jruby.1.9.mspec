@@ -3,20 +3,22 @@
 # detect windows platform:
 require 'rbconfig'
 require 'java'
-require 'jruby/util'
+require 'jruby'
+require 'mspec/runner/formatters'
 
 IKVM = java.lang.System.get_property('java.vm.name') =~ /IKVM\.NET/
-WINDOWS = Config::CONFIG['host_os'] =~ /mswin/
+WINDOWS = RbConfig::CONFIG['host_os'] =~ /mswin/
 
 SPEC_DIR = File.join(File.dirname(__FILE__), 'ruby') unless defined?(SPEC_DIR)
 TAGS_DIR = File.join(File.dirname(__FILE__), 'tags') unless defined?(TAGS_DIR)
+
+# update env to force children into proper mode
+ENV['JRUBY_OPTS'] = ENV['JRUBY_OPTS'].to_s + " --1.9"
 
 class MSpecScript
   # Language features specs
   set :language, [
     SPEC_DIR + '/language',
-
-    '^' + SPEC_DIR + '/language/symbol_spec.rb'
   ]
 
   # Core library specs
@@ -24,7 +26,28 @@ class MSpecScript
     SPEC_DIR + '/core',
 
     '^' + SPEC_DIR + '/core/continuation',
-    '^' + SPEC_DIR + '/core/module/name_spec.rb'
+    '^' + SPEC_DIR + '/core/encoding/converter'
+  ]
+
+  set :fast, [
+    *get(:language),
+    *get(:core),
+
+    # These all spawn sub-rubies, making them very slow to run
+    '^' + SPEC_DIR + '/core/process',
+    '^' + SPEC_DIR + '/core/kernel/exec',
+    '^' + SPEC_DIR + '/core/kernel/spawn',
+    '^' + SPEC_DIR + '/core/io/popen',
+    '^' + SPEC_DIR + '/core/argf/gets_spec.rb',
+    '^' + SPEC_DIR + '/core/argf/read_spec.rb',
+    '^' + SPEC_DIR + '/core/argf/readline_spec.rb',
+    '^' + SPEC_DIR + '/core/encoding/default_external_spec.rb',
+    '^' + SPEC_DIR + '/core/encoding/default_internal_spec.rb',
+    '^' + SPEC_DIR + '/core/io/pid_spec.rb',
+    '^' + SPEC_DIR + '/core/kernel/at_exit_spec.rb',
+    '^' + SPEC_DIR + '/language/break_spec.rb',
+    '^' + SPEC_DIR + '/language/predefined_spec.rb',
+    '^' + SPEC_DIR + '/language/predefined/data_spec.rb',
   ]
 
   # Filter out ObjectSpace specs if ObjectSpace is disabled
@@ -47,26 +70,29 @@ class MSpecScript
 
     # excluded for some reason, see JRUBY-4020
     '^' + SPEC_DIR + '/library/drb',
-    '^' + SPEC_DIR + '/library/etc',
     '^' + SPEC_DIR + '/library/net',
     '^' + SPEC_DIR + '/library/openssl',
-    '^' + SPEC_DIR + '/library/ping',
-    '^' + SPEC_DIR + '/library/readline',
 
     # unstable
-    '^' + SPEC_DIR + '/library/socket',
     '^' + SPEC_DIR + '/library/syslog',
 
-    # obsolete libraries
-    '^' + SPEC_DIR + '/library/enumerator',
-    '^' + SPEC_DIR + '/library/ftools',
-    '^' + SPEC_DIR + '/library/generator',
-    '^' + SPEC_DIR + '/library/parsedate',
-    '^' + SPEC_DIR + '/library/ping',
+    # masked out because of load-time errors that can't be tagged
+    '^' + SPEC_DIR + '/library/net/http'
   ]
 
   # Command Line specs
   set :command_line, [ SPEC_DIR + '/command_line' ]
+
+  # Enable features
+  MSpec.enable_feature :continuation
+  MSpec.enable_feature :fiber
+  MSpec.enable_feature :fiber_library
+  MSpec.enable_feature :encoding
+  MSpec.enable_feature :encoding_transition
+  MSpec.enable_feature :readline
+
+  # prepare additional tags for CI
+  set(:ci_xtags, ["java#{ENV_JAVA['java.specification.version']}"]) # Java version
 
   if WINDOWS
     # Some specs on Windows will fail in we launch JRuby via
@@ -76,11 +102,11 @@ class MSpecScript
     get(:core) << '^' + SPEC_DIR + '/core/file/stat'    # many failures
 
     # exclude specs tagged with 'windows' keyword
-    set :ci_xtags, ['windows']
+    get(:ci_xtags) << 'windows'
   end
 
-  # FIXME: add 1.9 library back at a later date
-  set :ci_files, get(:language) + get(:core) + get(:command_line) #+ get(:library)
+  # This set of files is run by mspec ci
+  set :ci_files, get(:language) + get(:core) + get(:command_line) + get(:library)
 
   # Optional library specs
   set :ffi, SPEC_DIR + '/optional/ffi'
@@ -88,7 +114,7 @@ class MSpecScript
   # A list of _all_ optional library specs
   set :optional, [get(:ffi)]
 
-  set :target, File.dirname(__FILE__) + '/../bin/' + Config::CONFIG['ruby_install_name'] + Config::CONFIG['EXEEXT']
+  set :target, File.dirname(__FILE__) + '/../bin/' + RbConfig::CONFIG['ruby_install_name'] + RbConfig::CONFIG['EXEEXT']
 
   set :backtrace_filter, /mspec\//
 
@@ -99,4 +125,10 @@ class MSpecScript
                         [%r(^.*/library/),      TAGS_DIR + '/1.9/ruby/library/'],
                         [/_spec.rb$/,       '_tags.txt']
                       ]
+
+  # If running specs with jit threshold = 1 or force (AOT) compile, additional tags
+  if JRuby.runtime.instance_config.compile_mode.to_s == "FORCE" ||
+      JRuby.runtime.instance_config.jit_threshold == 1
+    set(:ci_xtags, (get(:ci_xtags) || []) + ['compiler'])
+  end
 end

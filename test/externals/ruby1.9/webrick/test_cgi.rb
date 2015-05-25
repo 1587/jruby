@@ -1,5 +1,5 @@
+require_relative "utils"
 require "webrick"
-require File.join(File.dirname(__FILE__), "utils.rb")
 require "test/unit"
 
 class TestWEBrickCGI < Test::Unit::TestCase
@@ -10,10 +10,11 @@ class TestWEBrickCGI < Test::Unit::TestCase
       :CGIInterpreter => TestWEBrick::RubyBin,
       :DocumentRoot => File.dirname(__FILE__),
       :DirectoryIndex => ["webrick.cgi"],
-      :RequestHandler => Proc.new{|req, res|
+      :RequestCallback => Proc.new{|req, res|
         def req.meta_vars
           meta = super
           meta["RUBYLIB"] = $:.join(File::PATH_SEPARATOR)
+          meta[RbConfig::CONFIG['LIBPATHENV']] = ENV[RbConfig::CONFIG['LIBPATHENV']] if RbConfig::CONFIG['LIBPATHENV']
           return meta
         end
       },
@@ -96,6 +97,38 @@ class TestWEBrickCGI < Test::Unit::TestCase
       ensure
         sock.close
       end
+    }
+  end
+
+  CtrlSeq = [0x7f, *(1..31)].pack("C*").gsub(/\s+/, '')
+  CtrlPat = /#{Regexp.quote(CtrlSeq)}/o
+  DumpPat = /#{Regexp.quote(CtrlSeq.dump[1...-1])}/o
+
+  def test_bad_uri
+    start_cgi_server{|server, addr, port, log|
+      res = TCPSocket.open(addr, port) {|sock|
+        sock << "GET /#{CtrlSeq}#{CRLF}#{CRLF}"
+        sock.close_write
+        sock.read
+      }
+      assert_match(%r{\AHTTP/\d.\d 400 Bad Request}, res)
+      s = log.call.each_line.grep(/ERROR bad URI/)[0]
+      assert_match(DumpPat, s)
+      assert_not_match(CtrlPat, s)
+    }
+  end
+
+  def test_bad_header
+    start_cgi_server{|server, addr, port, log|
+      res = TCPSocket.open(addr, port) {|sock|
+        sock << "GET / HTTP/1.0#{CRLF}#{CtrlSeq}#{CRLF}#{CRLF}"
+        sock.close_write
+        sock.read
+      }
+      assert_match(%r{\AHTTP/\d.\d 400 Bad Request}, res)
+      s = log.call.each_line.grep(/ERROR bad header/)[0]
+      assert_match(DumpPat, s)
+      assert_not_match(CtrlPat, s)
     }
   end
 end

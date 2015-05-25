@@ -236,7 +236,7 @@
 # Rails, the web application framework, uses ERB to create views.
 #
 class ERB
-  Revision = '$Date: 2009-02-24 02:44:50 +0900 (Tue, 24 Feb 2009) $' 	#'
+  Revision = '$Date$' 	#'
 
   # Returns revision information for the erb.rb module.
   def self.version
@@ -697,7 +697,7 @@ class ERB
   end
 
   # Generate results and print them. (see ERB#result)
-  def run(b=TOPLEVEL_BINDING)
+  def run(b=new_toplevel)
     print self.result(b)
   end
 
@@ -709,7 +709,7 @@ class ERB
   # _b_ accepts a Binding or Proc object which is used to set the context of
   # code evaluation.
   #
-  def result(b=TOPLEVEL_BINDING)
+  def result(b=new_toplevel)
     if @safe_level
       proc { 
 	$SAFE = @safe_level
@@ -719,6 +719,11 @@ class ERB
       eval(@src, b, (@filename || '(erb)'), 1)
     end
   end
+
+  def new_toplevel
+    eval 'proc{binding}', TOPLEVEL_BINDING
+  end
+  private :new_toplevel
 
   # Define _methodname_ as instance method of _mod_ from compiled ruby source.
   #

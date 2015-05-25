@@ -3,6 +3,11 @@ require 'tempfile'
 require_relative 'ruby/envutil'
 
 class TestTempfile < Test::Unit::TestCase
+  def initialize(*)
+    super
+    @tempfile = nil
+  end
+
   def tempfile(*args, &block)
     t = Tempfile.new(*args, &block)
     @tempfile = (t unless block)
@@ -25,6 +30,10 @@ class TestTempfile < Test::Unit::TestCase
   def test_saves_in_dir_tmpdir_by_default
     t = tempfile("foo")
     assert_equal Dir.tmpdir, File.dirname(t.path)
+    bug3733 = '[ruby-dev:42089]'
+    assert_nothing_raised(SecurityError, bug3733) {
+      proc {$SAFE = 1; File.expand_path(Dir.tmpdir)}.call
+    }
   end
 
   def test_saves_in_given_directory
@@ -45,13 +54,13 @@ class TestTempfile < Test::Unit::TestCase
 
   def test_basename
     t = tempfile("foo")
-    assert_match /^foo/, File.basename(t.path)
+    assert_match(/^foo/, File.basename(t.path))
   end
 
   def test_basename_with_suffix
     t = tempfile(["foo", ".txt"])
-    assert_match /^foo/, File.basename(t.path)
-    assert_match /\.txt$/, File.basename(t.path)
+    assert_match(/^foo/, File.basename(t.path))
+    assert_match(/\.txt$/, File.basename(t.path))
   end
 
   def test_unlink
@@ -94,7 +103,7 @@ class TestTempfile < Test::Unit::TestCase
       tempfile.close
       tempfile.unlink
     end
-  end
+  end unless /mswin|mingw/ =~ RUBY_PLATFORM
 
   def test_close_and_close_p
     t = tempfile("foo")
@@ -123,7 +132,7 @@ class TestTempfile < Test::Unit::TestCase
     ensure
       File.unlink(path) rescue nil
     end
-  end
+  end unless /mswin|mingw/ =~ RUBY_PLATFORM
 
   def test_close_bang_works
     t = tempfile("foo")
@@ -145,10 +154,10 @@ class TestTempfile < Test::Unit::TestCase
     ensure
       File.unlink(path) rescue nil
     end
-  end
+  end unless /mswin|mingw/ =~ RUBY_PLATFORM
 
   def test_finalizer_does_not_unlink_if_already_unlinked
-    assert_in_out_err('-rtempfile', <<-'EOS') do |(filename), (error)|
+    assert_in_out_err('-rtempfile', <<-'EOS') do |(filename,*), (error,*)|
 file = Tempfile.new('foo')
 path = file.path
 puts path
@@ -160,7 +169,7 @@ File.open(path, "w").close
       assert_nil error
     end
 
-    assert_in_out_err('-rtempfile', <<-'EOS') do |(filename), (error)|
+    assert_in_out_err('-rtempfile', <<-'EOS') do |(filename,*), (error,*)|
 file = Tempfile.new('foo')
 path = file.path
 file.unlink
@@ -174,7 +183,7 @@ File.open(path, "w").close
       end
       assert_nil error
     end
-  end
+  end unless /mswin|mingw/ =~ RUBY_PLATFORM
 
   def test_close_does_not_make_path_nil
     t = tempfile("foo")
@@ -186,7 +195,7 @@ File.open(path, "w").close
     t = tempfile("foo")
     t.write("hello")
     t.close
-    assert 5, File.size(t.path)
+    assert_equal 5, File.size(t.path)
   end
 
   def test_tempfile_is_unlinked_when_ruby_exits
@@ -200,16 +209,16 @@ puts Tempfile.new('foo').path
   def test_size_flushes_buffer_before_determining_file_size
     t = tempfile("foo")
     t.write("hello")
-    assert 0, File.size(t.path)
-    assert 5, t.size
-    assert 5, File.size(t.path)
+    assert_equal 0, File.size(t.path)
+    assert_equal 5, t.size
+    assert_equal 5, File.size(t.path)
   end
 
   def test_size_works_if_file_is_closed
     t = tempfile("foo")
     t.write("hello")
     t.close
-    assert 5, t.size
+    assert_equal 5, t.size
   end
 
   def test_concurrency
@@ -283,6 +292,17 @@ puts Tempfile.new('foo').path
     t.write("\xE6\x9D\xBE\xE6\xB1\x9F")
     t.rewind
     assert_equal(Encoding::ASCII_8BIT,t.read.encoding)
+  end
+
+  def test_binmode
+    t = tempfile("TEST", mode: IO::BINARY)
+    if IO::BINARY.nonzero?
+      assert(t.binmode?)
+      t.open
+      assert(t.binmode?, 'binmode after reopen')
+    else
+      assert_equal(0600, t.stat.mode & 0777)
+    end
   end
 end
 

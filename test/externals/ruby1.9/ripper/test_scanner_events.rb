@@ -2,11 +2,14 @@
 # test_scanner_events.rb
 #
 begin
+  require 'ripper'
+  require 'test/unit'
+  ripper_test = true
+  module TestRipper; end
+rescue LoadError
+end
 
-require 'ripper'
-require 'test/unit'
-
-class TestRipper_ScannerEvents < Test::Unit::TestCase
+class TestRipper::ScannerEvents < Test::Unit::TestCase
 
   def test_event_coverage
     dispatched = Ripper::SCANNER_EVENTS.map {|event,_| event }
@@ -63,11 +66,27 @@ class TestRipper_ScannerEvents < Test::Unit::TestCase
                   [[2, 0], :on_tstring_content, "heredoc\n"],
                   [[3, 0], :on_heredoc_end, "EOS"]],
                  Ripper.lex("<<EOS\nheredoc\nEOS")
+    assert_equal [[[1, 0], :on_heredoc_beg, "<<EOS"],
+                  [[1, 5], :on_nl, "\n"],
+                  [[2, 0], :on_heredoc_end, "EOS"]],
+                 Ripper.lex("<<EOS\nEOS"),
+                 "bug#4543"
     assert_equal [[[1, 0], :on_regexp_beg, "/"],
-                  [[1, 1], :on_tstring_content, "foo\n"],
-                  [[2, 0], :on_tstring_content, "bar"],
+                  [[1, 1], :on_tstring_content, "foo\nbar"],
                   [[2, 3], :on_regexp_end, "/"]],
                  Ripper.lex("/foo\nbar/")
+    assert_equal [[[1, 0], :on_regexp_beg, "/"],
+                  [[1, 1], :on_tstring_content, "foo\n\u3020"],
+                  [[2, 3], :on_regexp_end, "/"]],
+                 Ripper.lex("/foo\n\u3020/")
+    assert_equal [[[1, 0], :on_tstring_beg, "'"],
+                  [[1, 1], :on_tstring_content, "foo\n\xe3\x80\xa0"],
+                  [[2, 3], :on_tstring_end, "'"]],
+                 Ripper.lex("'foo\n\xe3\x80\xa0'")
+    assert_equal [[[1, 0], :on_tstring_beg, "'"],
+                  [[1, 1], :on_tstring_content, "\u3042\n\u3044"],
+                  [[2, 3], :on_tstring_end, "'"]],
+                 Ripper.lex("'\u3042\n\u3044'")
   end
 
   def test_location
@@ -531,6 +550,12 @@ class TestRipper_ScannerEvents < Test::Unit::TestCase
                  scan('tstring_content', '"abc#{1}def"')
     assert_equal ['sym'],
                  scan('tstring_content', ':"sym"')
+    assert_equal ['a b c'],
+                 scan('tstring_content', ':"a b c"'),
+                 "bug#4544"
+    assert_equal ["a\nb\nc"],
+                 scan('tstring_content', ":'a\nb\nc'"),
+                 "bug#4544"
   end
 
   def test_tstring_end
@@ -628,22 +653,32 @@ class TestRipper_ScannerEvents < Test::Unit::TestCase
                  scan('tstring_content', "<<EOS\nheredoc\nEOS")
     assert_equal ["heredoc\n"],
                  scan('tstring_content', "<<EOS\nheredoc\nEOS\n")
-    assert_equal ["heredoc \n"],
-                 scan('tstring_content', "<<EOS\nheredoc \nEOS \n")
-    assert_equal ["heredoc\n"],
+    assert_equal ["here\ndoc \nEOS \n"],
+                 scan('tstring_content', "<<EOS\nhere\ndoc \nEOS \n")
+    assert_equal ["heredoc\n\tEOS \n"],
                  scan('tstring_content', "<<-EOS\nheredoc\n\tEOS \n")
+    bug7255 = '[ruby-core:48703]'
+    assert_equal ["there\n""heredoc", "\n"],
+                 scan('tstring_content', "<<""EOS\n""there\n""heredoc\#{foo}\nEOS"),
+                 bug7255
+    assert_equal ["there\n""heredoc", "\n"],
+                 scan('tstring_content', "<<""EOS\n""there\n""heredoc\#@foo\nEOS"),
+                 bug7255
   end
 
   def test_heredoc_end
     assert_equal [],
                  scan('heredoc_end', '')
     assert_equal ["EOS"],
+                 scan('heredoc_end', "<<EOS\nEOS"),
+                 "bug#4543"
+    assert_equal ["EOS"],
                  scan('heredoc_end', "<<EOS\nheredoc\nEOS")
     assert_equal ["EOS\n"],
                  scan('heredoc_end', "<<EOS\nheredoc\nEOS\n")
-    assert_equal ["EOS \n"],
+    assert_equal [],
                  scan('heredoc_end', "<<EOS\nheredoc\nEOS \n")
-    assert_equal ["\tEOS \n"],
+    assert_equal [],
                  scan('heredoc_end', "<<-EOS\nheredoc\n\tEOS \n")
   end
 
@@ -806,7 +841,4 @@ class TestRipper_ScannerEvents < Test::Unit::TestCase
   def test_tlambda_arg
   end
 
-end
-
-rescue LoadError
-end
+end if ripper_test

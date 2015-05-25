@@ -170,8 +170,7 @@ class TestClass < Test::Unit::TestCase
     o = Object.new
     c = class << o; self; end
     assert_raise(TypeError) { Class.new(c) }
-
-    assert_nothing_raised { Class.new(Class) } # is it OK?
+    assert_raise(TypeError) { Class.new(Class) }
     assert_raise(TypeError) { eval("class Foo < Class; end") }
   end
 
@@ -182,6 +181,8 @@ class TestClass < Test::Unit::TestCase
     o = Object.new
     c = class << o; self; end
     assert_raise(TypeError) { c.dup }
+
+    assert_raise(TypeError) { BasicObject.dup }
   end
 
   def test_singleton_class
@@ -209,5 +210,67 @@ class TestClass < Test::Unit::TestCase
     assert_equal("C\u{df}", c.name, '[ruby-core:24600]')
     c = eval("class C\u{df}; self; end")
     assert_equal("TestClass::C\u{df}", c.name, '[ruby-core:24600]')
+  end
+
+  def test_invalid_jump_from_class_definition
+    assert_raise(SyntaxError) { eval("class C; next; end") }
+    assert_raise(SyntaxError) { eval("class C; break; end") }
+    assert_raise(SyntaxError) { eval("class C; redo; end") }
+    assert_raise(SyntaxError) { eval("class C; retry; end") }
+    assert_raise(SyntaxError) { eval("class C; return; end") }
+    assert_raise(SyntaxError) { eval("class C; yield; end") }
+  end
+
+  def test_clone
+    original = Class.new {
+      def foo
+        return super()
+      end
+    }
+    mod = Module.new {
+      def foo
+        return "mod#foo"
+      end
+    }
+    copy = original.clone
+    copy.send(:include, mod)
+    assert_equal("mod#foo", copy.new.foo)
+  end
+
+  def test_nested_class_removal
+    assert_normal_exit('File.__send__(:remove_const, :Stat); at_exit{File.stat(".")}; GC.start')
+  end
+
+  class PrivateClass
+  end
+  private_constant :PrivateClass
+
+  def test_redefine_private_class
+    assert_raise(NameError) do
+      eval("class ::TestClass::PrivateClass; end")
+    end
+    eval <<-END
+      class ::TestClass
+        class PrivateClass
+          def foo; 42; end
+        end
+      end
+    END
+    assert_equal(42, PrivateClass.new.foo)
+  end
+
+  def test_cannot_reinitialize_class_with_initialize_copy # [ruby-core:50869]
+    assert_in_out_err([], <<-RUBY, ["Object"], [])
+      class Class
+        def initialize_copy(*); super; end
+      end
+
+      class A; end
+      class B; end
+
+      A.send(:initialize_copy, Class.new(B)) rescue nil
+
+      p A.superclass
+    RUBY
   end
 end

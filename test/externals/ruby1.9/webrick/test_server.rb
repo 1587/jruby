@@ -1,7 +1,7 @@
 require "test/unit"
 require "tempfile"
 require "webrick"
-require File.join(File.dirname(__FILE__), "utils.rb")
+require_relative "utils"
 
 class TestWEBrickServer < Test::Unit::TestCase
   class Echo < WEBrick::GenericServer
@@ -47,16 +47,19 @@ class TestWEBrickServer < Test::Unit::TestCase
   def test_daemon
     begin
       r, w = IO.pipe
-      Process.fork{
+      pid1 = Process.fork{
         r.close
         WEBrick::Daemon.start
         w.puts(Process.pid)
-        sleep
+        sleep 10
       }
-      assert(Process.kill(:KILL, r.gets.to_i))
+      pid2 = r.gets.to_i
+      assert(Process.kill(:KILL, pid2))
+      assert_not_equal(pid1, pid2)
     rescue NotImplementedError
       # snip this test
     ensure
+      Process.wait(pid1) if pid1
       r.close
       w.close
     end

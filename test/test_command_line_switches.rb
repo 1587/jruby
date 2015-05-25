@@ -7,7 +7,7 @@ class TestCommandLineSwitches < Test::Unit::TestCase
   include TestHelper
 
   # FIXME: currently fails on Windows
-  if (!WINDOWS)
+  if (!WINDOWS and not IS_JAR_EXECUTION)
     def test_dash_0_splits_records
       output = jruby_with_pipe("echo '1,2,3'", %Q{ -054 -n -e 'puts $_ + " "'})
       assert_equal 0, $?.exitstatus
@@ -61,14 +61,22 @@ class TestCommandLineSwitches < Test::Unit::TestCase
   # -s option (-g-a=123) is passed and is ignored.
   def test_dash_little_s
     with_temp_script(%q{puts $g, $v, $foo, *ARGV}) do |s|
-      assert_equal "nil\n123\nbar\n4\n5\n6", `#{RUBY} -s #{s.path} -g-a=123 -v=123 -foo=bar 4 5 6`.chomp
+      assert_equal "nil\n123\nbar\n4\n5\n6", `#{RUBY} --1.8 -s #{s.path} -g-a=123 -v=123 -foo=bar 4 5 6`.chomp
+      assert_equal 0, $?.exitstatus
+    end
+    with_temp_script(%q{puts $g, $v, $foo, *ARGV}) do |s|
+      assert_equal "\n123\nbar\n4\n5\n6", `#{RUBY} --1.9 -s #{s.path} -g-a=123 -v=123 -foo=bar 4 5 6`.chomp
       assert_equal 0, $?.exitstatus
     end
   end
 
   def test_dash_little_s_options_must_come_after_script
     with_temp_script(%q{puts $v, *ARGV}) do |s|
-      assert_equal "nil\na\n-v=123\nb\nc", `#{RUBY} -s #{s.path} a -v=123 b c`.chomp
+      assert_equal "nil\na\n-v=123\nb\nc", `#{RUBY} --1.8 -s #{s.path} a -v=123 b c`.chomp
+      assert_equal 0, $?.exitstatus
+    end
+    with_temp_script(%q{puts $v, *ARGV}) do |s|
+      assert_equal "\na\n-v=123\nb\nc", `#{RUBY} --1.9 -s #{s.path} a -v=123 b c`.chomp
       assert_equal 0, $?.exitstatus
     end
   end
@@ -108,42 +116,72 @@ class TestCommandLineSwitches < Test::Unit::TestCase
   def test_dash_big_S_resolves_relative___FILE___correctly
     
     with_temp_script(%q{puts __FILE__}) do |s|
-      Dir.chdir(Dir.tmpdir)
-      relative_tmp = File.basename(s.path)
-      output = jruby("-S #{relative_tmp}").chomp
+      Dir.chdir(Dir.tmpdir) do
+        relative_tmp = File.basename(s.path)
+        output = jruby("-S #{relative_tmp}").chomp
 
-      assert_equal 0, $?.exitstatus
-      assert_equal relative_tmp, output
+        assert_equal 0, $?.exitstatus
+        assert_equal relative_tmp, output
+      end
     end
   end
 
-  
+  # FIXME(donv) https://github.com/jruby/jruby/issues/1849
+  if false
+    def test_dash_little_v_version_verbose_T_taint_d_debug_K_kcode_r_require_b_benchmarks_a_splitsinput_I_loadpath_C_cwd_F_delimeter_J_javaprop_18
+      e_line = 'puts $VERBOSE, $SAFE, $DEBUG, $KCODE, $F.join(59.chr), $LOAD_PATH.join(44.chr), Dir.pwd, Java::java::lang::System.getProperty(:foo.to_s)'
+      args = "--1.8 -J-Dfoo=bar -v -T3 -d -Ku -a -n -Ihello -C .. -F, -e #{q + e_line + q}"
+      lines = jruby_with_pipe("echo 1,2,3", args).split("\n")
+      assert_equal 0, $?.exitstatus, "failed execution with output:\n#{lines}"
+      parent_dir = Dir.chdir('..') { Dir.pwd }
 
-  def test_dash_little_v_version_verbose_T_taint_d_debug_K_kcode_r_require_b_benchmarks_a_splitsinput_I_loadpath_C_cwd_F_delimeter_J_javaprop
-    e_line = 'puts $VERBOSE, $SAFE, $DEBUG, $KCODE, $F.join(59.chr), $LOAD_PATH.join(44.chr), Dir.pwd, Java::java::lang::System.getProperty(:foo.to_s)'
-    args = " -J-Dfoo=bar -v -T3 -d -Ku -b -a -n -Ihello -C .. -F, -e #{q + e_line + q}"
-    lines = jruby_with_pipe("echo 1,2,3", args).split("\n")
-    assert_equal 0, $?.exitstatus
-    parent_dir = Dir.chdir('..') { Dir.pwd }
+      assert_match /ruby \d+\.\d+\.\d+/, lines[0]
+      assert_match /true$/, lines[1]
+      assert_equal "0", lines[2]
+      assert_equal "true", lines[3]
+      assert_equal "UTF8", lines[4]
+      assert_equal "1;2;3", lines[5].rstrip
+      assert_match /^hello/, lines[6]
+      # The gsub is for windows
+      assert_equal "#{parent_dir}", lines[7].gsub('\\', '/')
+      assert_equal "bar", lines[8]
 
-    assert_match /ruby \d+\.\d+\.\d+/, lines[0]
-    assert_match /true$/, lines[1]
-    assert_equal "3", lines[2]
-    assert_equal "true", lines[3]
-    assert_equal "UTF8", lines[4]
-    assert_equal "1;2;3", lines[5].rstrip
-    assert_match /^hello/, lines[6]
-    # The gsub is for windows
-    assert_equal "#{parent_dir}", lines[7].gsub('\\', '/')
-    assert_equal "bar", lines[8]
-    assert_match /Runtime: \d+ ms/, lines[9]
+      e_line = 'puts Gem'
+      args = " -rrubygems -e #{q + e_line + q}"
+      lines = jruby_with_pipe("echo 1,2,3", args).split("\n")
+      assert_equal 0, $?.exitstatus
 
-    e_line = 'puts Gem'
-    args = " -rrubygems -e #{q + e_line + q}"
-    lines = jruby_with_pipe("echo 1,2,3", args).split("\n")
-    assert_equal 0, $?.exitstatus
+      assert_equal "Gem", lines[0]
+    end
+  end
 
-    assert_equal "Gem", lines[0]
+  # FIXME(donv) https://github.com/jruby/jruby/issues/1849
+  if false
+    def test_dash_little_v_version_verbose_T_taint_d_debug_K_kcode_r_require_b_benchmarks_a_splitsinput_I_loadpath_C_cwd_F_delimeter_J_javaprop_19
+      e_line = 'puts $VERBOSE, $SAFE, $DEBUG, Encoding.default_external, $F.join(59.chr), $LOAD_PATH.join(44.chr), Dir.pwd, Java::java::lang::System.getProperty(:foo.to_s)'
+      args = "--1.9 -J-Dfoo=bar -v -T3 -d -Ku -a -n -Ihello -C .. -F, -e #{q + e_line + q}"
+      lines = jruby_with_pipe("echo 1,2,3", args).split("\n")
+      assert_equal 0, $?.exitstatus, "failed execution with output:\n#{lines}"
+      parent_dir = Dir.chdir('..') { Dir.pwd }
+
+      assert_match /ruby \d+\.\d+\.\d+/, lines[0]
+      assert_match /true$/, lines[1]
+      assert_equal "0", lines[2]
+      assert_equal "true", lines[3]
+      assert_equal "UTF-8", lines[4]
+      assert_equal "1;2;3", lines[5].rstrip
+      assert_match /^hello/, lines[6]
+      # The gsub is for windows
+      assert_equal "#{parent_dir}", lines[7].gsub('\\', '/')
+      assert_equal "bar", lines[8]
+
+      e_line = 'puts Gem'
+      args = " -rrubygems -e #{q + e_line + q}"
+      lines = jruby_with_pipe("echo 1,2,3", args).split("\n")
+      assert_equal 0, $?.exitstatus
+
+      assert_equal "Gem", lines[0]
+    end
   end
 
   def test_dash_big_C
@@ -199,7 +237,7 @@ class TestCommandLineSwitches < Test::Unit::TestCase
   # TODO --jdb: cannot figure out how to test
 
   def test_dash_dash_properties_shows_list_of_properties
-    assert_match /^These properties can be used/, `#{RUBY} --properties`
+    assert_match /These properties can be used/, `#{RUBY} --properties`
     assert_equal 0, $?.exitstatus
   end
 
@@ -210,13 +248,36 @@ class TestCommandLineSwitches < Test::Unit::TestCase
     assert_match /jruby \d+\.\d+\.\d+/, version_string
   end
 
-  # JRUBY-2648 [Note: jre6 on windows does not ship server VM - use jdk]
-  def test_server_vm_option
-    # server VM when explicitly set --server
-    result = jruby(%Q{--server -rjava \
-      -e "print java.lang.management.ManagementFactory.getCompilationMXBean.name"})
-    assert_equal 0, $?.exitstatus
-    assert_match /(tiered|server|j9jit24|j9jit23|bea jrockit\(r\) optimizing compiler)/, result.downcase
+  # Only HotSpot has "client" and "server" so pointless to test others
+  if java.lang.System.get_property('java.vm.name') =~ /HotSpot/
+    # JRUBY-2648 [Note: jre6 on windows does not ship server VM - use jdk]
+    def test_server_vm_option
+      skip("test needs fix for jruby-complete.jar") if IS_JAR_EXECUTION
+      # server VM when explicitly set --server
+      result = jruby(%Q{--server -rjava \
+        -e "print java.lang.management.ManagementFactory.getCompilationMXBean.name"})
+      assert_equal 0, $?.exitstatus
+      assert_match /(tiered|server|j9jit24|j9jit23|(oracle|bea) jrockit\(r\) optimizing compiler)/, result.downcase
+    end
+
+    # JRUBY-2648 [Note: Originally these tests had tests for default vm and
+    # also for -J options in addition to jruby options (-J-client versus 
+    # --client).  In other tests we test that -J works and passes thru and
+    # we should not assume to know what versions of Java will have as their
+    # default VM.
+    def test_client_vm_option
+      arch = java.lang.System.getProperty('sun.arch.data.model')
+      if (arch == nil || arch == '64')
+        # Either non-Sun JVM, or x64 JVM (which doesn't have client VM)
+        return
+      end
+
+      # client VM when explicitly set via --client
+      result = jruby(%Q{--client -rjava \
+        -e "print java.lang.management.ManagementFactory.getCompilationMXBean.name"})
+      assert_equal 0, $?.exitstatus
+      assert_match /client|j9jit24|j9jit23|bea jrockit\(r\) optimizing compiler/, result.downcase
+    end
   end
 
   # JRUBY-3962
@@ -233,26 +294,6 @@ class TestCommandLineSwitches < Test::Unit::TestCase
     if rubyopt_org
       ENV['RUBYOPT'] = rubyopt_org
     end
-  end
-
-
-  # JRUBY-2648 [Note: Originally these tests had tests for default vm and
-  # also for -J options in addition to jruby options (-J-client versus 
-  # --client).  In other tests we test that -J works and passes thru and
-  # we should not assume to know what versions of Java will have as their
-  # default VM.
-  def test_client_vm_option
-    arch = java.lang.System.getProperty('sun.arch.data.model')
-    if (arch == nil || arch == '64')
-      # Either non-Sun JVM, or x64 JVM (which doesn't have client VM)
-      return
-    end
-
-    # client VM when explicitly set via --client
-    result = jruby(%Q{--client -rjava \
-      -e "print java.lang.management.ManagementFactory.getCompilationMXBean.name"})
-    assert_equal 0, $?.exitstatus
-    assert_match /client|j9jit24|j9jit23|bea jrockit\(r\) optimizing compiler/, result.downcase
   end
   
   # JRUBY-2821
@@ -285,7 +326,7 @@ class TestCommandLineSwitches < Test::Unit::TestCase
   # JRUBY-4288
   if (WINDOWS)
     def test_case_insensitive_jruby
-      weird_jruby = '"' + File.join([Config::CONFIG['bindir'], 'jRuBy']) << Config::CONFIG['EXEEXT'] + '"'
+      weird_jruby = '"' + File.join([RbConfig::CONFIG['bindir'], 'jRuBy']) << RbConfig::CONFIG['EXEEXT'] + '"'
       with_jruby_shell_spawning do
         res = `cmd.exe /c #{weird_jruby} -e "puts 1"`.rstrip
         assert_equal '1', res
@@ -297,7 +338,7 @@ class TestCommandLineSwitches < Test::Unit::TestCase
   # JRUBY-4289
   if (WINDOWS)
     def test_uppercase_exe
-      weird_jruby = '"' + File.join([Config::CONFIG['bindir'], 'jRuBy']) << '.ExE' + '"'
+      weird_jruby = '"' + File.join([RbConfig::CONFIG['bindir'], 'jRuBy']) << '.ExE' + '"'
       with_jruby_shell_spawning do
         res = `#{weird_jruby} -e "puts 1"`.rstrip
         assert_equal '1', res
@@ -313,5 +354,62 @@ class TestCommandLineSwitches < Test::Unit::TestCase
       assert_equal 0, $?.exitstatus
       assert_match /java/, version
     end
+  end
+
+  # JRUBY-4783
+  def test_rubyopts_with_require
+    rubyopt_org = ENV['RUBYOPT']
+    ENV['RUBYOPT'] = '-r rubygems'
+    
+    args = "-e 'p 0'"
+    assert_nothing_raised { jruby(args) }
+  ensure
+    ENV['RUBYOPT'] = rubyopt_org
+  end
+
+  # JRUBY-5517
+  def test_rubyopts_benchmark_cleared_in_child
+    rubyopt_org = ENV['RUBYOPT']
+    ENV['RUBYOPT'] = '-r benchmark'
+
+    # first subprocess will be "real", second should launch in-process
+    # this will test whether in-process child is getting proper env for RUBYOPT
+    script = <<-EOS
+      p defined?(Benchmark) != nil
+      ENV[%{RUBYOPT}] = nil
+      system %{bin/jruby -e 'p defined?(Benchmark) != nil'}
+    EOS
+    with_jruby_shell_spawning do
+      with_temp_script(script) do |s|
+        assert_equal "true\nfalse\n", jruby("#{s.path}")
+      end
+    end
+  ensure
+    ENV['RUBYOPT'] = rubyopt_org
+  end
+
+  def test_rubyopts_take_effect_with_double_dash
+    rubyopt_org = ENV['RUBYOPT']
+    ENV['RUBYOPT'] = '-rrubygems -Ilib'
+    jruby("-e \"defined?(::Gem) && $:.include?('lib') or abort\" --")
+    assert_equal 0 ,$?.exitstatus
+  ensure
+    ENV['RUBYOPT'] = rubyopt_org
+  end
+
+  # JRUBY-5592
+  def test_rubyopts_is_not_used_to_set_the_script
+    rubyopt, ENV['RUBYOPT'] = ENV['RUBYOPT'], 'rubygems'
+
+    jruby('-e "puts 1"')
+    assert_equal 0, $?.exitstatus
+  ensure
+    ENV['RUBYOPT'] = rubyopt
+  end
+
+  def test_inproc_execute_with_globs
+    skip("test needs fix for jruby-complete.jar") if IS_JAR_EXECUTION
+    args = %{-Xlaunch.inproc=true -e 'system %{jruby -e "p ARGV.sort" test/dir{1,2}/target*}'}
+    assert_equal %{["test/dir1/target.rb", "test/dir2/target.class"]\n}, jruby(args)
   end
 end

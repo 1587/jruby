@@ -1,77 +1,62 @@
 require 'test/unit'
+require 'stringio'
 
-#
-# FIXME: This tests should be move to Rubyspecs as soon as specs run with jruby 1.9 compatibility option
-#
-
+# Still used by test/org/jruby/embedMultipleScriptsRunner.java
 class TestIO19 < Test::Unit::TestCase
 
-  def test_external_encoding_concated_to_mode
-    io = IO.new(2, 'w:UTF-8')
-    assert_equal 'UTF-8', io.external_encoding.to_s
+  def setup
+    @file = "TestIO_19_tmp"
+    @stringio = StringIO.new 'abcde'
   end
 
-  def test_external_and_internal_encoding_concated_to_mode
-    io = IO.new(2, 'w:UTF-8:iso-8859-1')
-    assert_equal 'UTF-8', io.external_encoding.to_s
-    assert_equal 'ISO-8859-1', io.internal_encoding.to_s
+  def teardown
+    File.unlink @file rescue nil
   end
 
-  def test_external_encoding_as_option
-    io = IO.new(2, 'w', {:external_encoding => 'UTF-8'})
-    assert_equal 'UTF-8', io.external_encoding.to_s
+  # JRUBY-5436
+  def test_open_with_dash_encoding
+    filename = 'test.txt'
+    io = File.new(filename, 'w+:US-ASCII:-')
+    assert_nil io.internal_encoding
+  ensure
+    io.close
+    File.unlink(filename)
   end
 
-  def test_internal_encoding_as_option
-    io = IO.new(2, 'w', {:internal_encoding => 'iso-8859-1'})
-    assert_equal 'ISO-8859-1', io.internal_encoding.to_s
+  def test_gets_limit
+    File.open(@file, 'w') { |f| f.write 'abcde' }
+
+    File.open(@file) do |f|
+      assert_equal 'ab', f.gets(2)
+    end
   end
 
-  def test_encoding_as_option
-    io = IO.new(2, 'w', {:encoding => 'UTF-8:iso-8859-1'})
-    assert_equal 'UTF-8', io.external_encoding.to_s
-    assert_equal 'ISO-8859-1', io.internal_encoding.to_s
+  def test_gets_separator_limit
+    File.open(@file, 'w') { |f| f.write 'abcde' }
+
+    File.open(@file) do |f|
+      assert_equal 'ab', f.gets('c', 2)
+    end
   end
 
-  def test_encoding_option_ignored
-    io = IO.new(2, 'w', {:external_encoding => 'UTF-8', :encoding => 'iso-8859-1:iso-8859-1'})
-    assert_equal 'UTF-8', io.external_encoding.to_s
+  def test_gets_nil_separator_limit
+    File.open(@file, 'w') { |f| f.write 'abcde' }
 
-    io = IO.new(2, 'w', {:internal_encoding => 'iso-8859-1', :encoding => 'iso-8859-1:iso-8859-1'})
-    assert_equal 'ISO-8859-1', io.internal_encoding.to_s
+    File.open(@file) do |f|
+      assert_equal 'ab', f.gets(nil, 2)
+    end
   end
 
-  def test_mode_as_option
-    io = IO.new(2, {:mode => 'w:UTF-8:iso-8859-1'})
-    assert_equal 'UTF-8', io.external_encoding.to_s
-    assert_equal 'ISO-8859-1', io.internal_encoding.to_s
+  def test_stringio_gets_limit
+    assert_equal 'ab', @stringio.gets(2)
   end
 
-  def test_io_should_ignore_internal_encoding
-    io = IO.new(2, 'w:UTF-8:UTF-8')
-    assert_equal 'UTF-8', io.external_encoding.to_s
-    assert_equal nil, io.internal_encoding
+  def test_stringio_gets_separator_limit
+    assert_equal 'ab', @stringio.gets('c', 2)
   end
 
-  def test_binmode?
-    io = IO.new(2, 'wb')
-    assert_equal true, io.binmode?
+  def test_stringio_gets_nil_separator_limit
+    assert_equal 'ab', @stringio.gets(nil, 2)
   end
 
-  def test_new_file_with_encoding_in_mode
-    io = File.new(__FILE__, 'r:UTF-8:iso-8859-1')
-    assert_equal 'UTF-8', io.external_encoding.to_s
-    assert_equal 'ISO-8859-1', io.internal_encoding.to_s
-  end
-
-  def test_new_file_with_encoding_as_option
-    io = File.new(__FILE__, 'r', :encoding => 'UTF-8:iso-8859-1')
-    assert_equal 'UTF-8', io.external_encoding.to_s
-    assert_equal 'ISO-8859-1', io.internal_encoding.to_s
-  end
-
-  def test_new_file_with_default_external_encoding
-    io = File.new(__FILE__)
-    assert_equal 'UTF-8', io.external_encoding.to_s
-  end
 end

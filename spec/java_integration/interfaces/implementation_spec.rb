@@ -1,19 +1,19 @@
 require File.dirname(__FILE__) + "/../spec_helper"
 
-import "java_integration.fixtures.SingleMethodInterface"
-import "java_integration.fixtures.UsesSingleMethodInterface"
-import "java_integration.fixtures.DescendantOfSingleMethodInterface"
-import "java_integration.fixtures.UsesDescendantOfSingleMethodInterface"
-import "java_integration.fixtures.BeanLikeInterface"
-import "java_integration.fixtures.BeanLikeInterfaceHandler"
-import "java_integration.fixtures.ConstantHoldingInterface"
-import "java_integration.fixtures.CoerceToInterface"
-import "java_integration.fixtures.ReturnsInterface"
-import "java_integration.fixtures.ReturnsInterfaceConsumer"
-import "java_integration.fixtures.AnotherRunnable"
-import "java_integration.fixtures.BooleanReturningInterface"
-import "java_integration.fixtures.BooleanReturningInterfaceConsumer"
-import "java.lang.Runnable"
+java_import "java_integration.fixtures.SingleMethodInterface"
+java_import "java_integration.fixtures.UsesSingleMethodInterface"
+java_import "java_integration.fixtures.DescendantOfSingleMethodInterface"
+java_import "java_integration.fixtures.UsesDescendantOfSingleMethodInterface"
+java_import "java_integration.fixtures.BeanLikeInterface"
+java_import "java_integration.fixtures.BeanLikeInterfaceHandler"
+java_import "java_integration.fixtures.ConstantHoldingInterface"
+java_import "java_integration.fixtures.CoerceToInterface"
+java_import "java_integration.fixtures.ReturnsInterface"
+java_import "java_integration.fixtures.ReturnsInterfaceConsumer"
+java_import "java_integration.fixtures.AnotherRunnable"
+java_import "java_integration.fixtures.BooleanReturningInterface"
+java_import "java_integration.fixtures.BooleanReturningInterfaceConsumer"
+java_import "java.lang.Runnable"
 
 describe "Single-method Java interfaces implemented in Ruby" do
   before :all do
@@ -36,6 +36,19 @@ describe "Single-method Java interfaces implemented in Ruby" do
         @value
       end
     end
+  end
+
+  # JRUBY-6945
+  it "should allow aggregating interfaces in a module" do
+    a = Module.new do
+      include java.awt.event.ActionListener
+    end
+
+    lambda do
+      b = Module.new do
+        include a
+      end
+    end.should_not raise_error
   end
 
   it "should be kind_of? the interface" do
@@ -673,6 +686,30 @@ describe "A Ruby class implementing an interface" do
         include java.io.Serializable
       end
       lambda {c2.new}.should_not raise_error
+    end
+  end
+  
+  it "returns the Java class implementing the interface for .java_class" do
+    cls = Class.new do
+      include java.lang.Runnable
+    end
+    obj = cls.new
+    
+    java_cls = obj.java_class
+    
+    java_cls.interfaces.should include(java.lang.Runnable.java_class)
+  end
+end
+
+# JRUBY-6590
+require 'delegate'
+describe "A class that extends a DelegateClass" do
+  it "can include a Java interface without error" do
+    c1 = Class.new
+    lambda do
+      c2 = Class.new(DelegateClass(c1)) do
+        include java.io.Serializable
+      end
     end
   end
 end

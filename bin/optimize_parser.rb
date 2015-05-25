@@ -4,6 +4,7 @@ class PostProcessor
     @lines = File.readlines(source)
     @index = -1
     @case_bodies = {}
+    @max_case_number = -1
   end
 
   # Read/Unread with ability to push back one line for a single lookahead
@@ -36,14 +37,38 @@ class PostProcessor
   end
 
   def generate_action_body_methods
-    @case_bodies.each { |label, code_body| generate_action_body_method(label, code_body) }
+    if RIPPER
+      @out.puts "static RipperParserState[] states = new RipperParserState[#{@max_case_number+1}];"
+    else
+      @out.puts "static ParserState[] states = new ParserState[#{@max_case_number+1}];"
+    end
+    @out.puts "static {";
+    @case_bodies.each do |state, code_body| 
+      if RIPPER
+        generate_ripper_action_body_method(state, code_body) 
+      else
+        generate_action_body_method(state, code_body) 
+      end
+    end
+    @out.puts "}";
   end
 
-  def generate_action_body_method(label, code_body)
-    @out.puts "public static Object #{label}(ParserSupport support, RubyYaccLexer lexer, Object yyVal, Object[] yyVals, int yyTop) {"
+  def generate_ripper_action_body_method(state, code_body)
+    @out.puts "states[#{state}] = new RipperParserState() {"
+    @out.puts "  @Override public Object execute(RipperParser p, Object yyVal, Object[] yyVals, int yyTop) {"
     code_body.each { |line| @out.puts line }
     @out.puts "    return yyVal;"
-    @out.puts "}"
+    @out.puts "  }"
+    @out.puts "};"
+  end
+
+  def generate_action_body_method(state, code_body)
+    @out.puts "states[#{state}] = new ParserState() {"
+    @out.puts "  @Override public Object execute(ParserSupport support, RubyYaccLexer lexer, Object yyVal, Object[] yyVals, int yyTop) {"
+    code_body.each { |line| @out.puts line }
+    @out.puts "    return yyVal;"
+    @out.puts "  }"
+    @out.puts "};"
   end
 
   def translate_actions
@@ -60,7 +85,7 @@ class PostProcessor
   def translate_action
     line = read
     return false if end_of_actions?(line) || line !~ /case\s+(\d+):/
-    case_number = $1
+    case_number = $1.to_i
 
     line = read
     return false if line !~ /line\s+(\d+)/
@@ -70,9 +95,9 @@ class PostProcessor
     line = read
     return false if line !~ /^\s*\{\s*(\/\*.*\*\/)?$/
 
-    label = "case#{case_number}_line#{line_number}"
+    @max_case_number = case_number if case_number > @max_case_number
 
-    @out.puts "case #{case_number}: yyVal = #{label}(support, lexer, yyVal, yyVals, yyTop); // line #{line_number}"
+    label = "case#{case_number}_line#{line_number}"
 
     body = []
     last_line = nil
@@ -80,7 +105,6 @@ class PostProcessor
       if line =~ /^\s*\}\s*$/ # Extra trailing boiler plate
         next_line = read
         if next_line =~ /break;/
-          @out.puts "break;"
           break
         else
           body << line
@@ -91,9 +115,15 @@ class PostProcessor
       end
     end
 
-    @case_bodies[label] = body
+    @case_bodies[case_number] = body
     true
   end
+end
+
+if ARGV[0] =~ /Ripper/
+  RIPPER = true
+else
+  RIPPER = false
 end
 
 PostProcessor.new(ARGV.shift).translate

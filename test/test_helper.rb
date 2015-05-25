@@ -4,9 +4,25 @@ require 'tempfile'
 
 module TestHelper
   # TODO: Consider how this should work if we have --windows or similiar
-  WINDOWS = Config::CONFIG['host_os'] =~ /Windows|mswin/
+  WINDOWS = RbConfig::CONFIG['host_os'] =~ /Windows|mswin/
   SEPARATOR = WINDOWS ? '\\' : '/'
-  RUBY = '"' + File.join([Config::CONFIG['bindir'], Config::CONFIG['ruby_install_name']]) << Config::CONFIG['EXEEXT'] + '"'
+  IS_JAR_EXECUTION = RbConfig::CONFIG['bindir'].match( /!\//) || RbConfig::CONFIG['bindir'].match( /:\//)
+  RUBY = if IS_JAR_EXECUTION
+           exe = 'java'
+           exe += RbConfig::CONFIG['EXEEXT'] if RbConfig::CONFIG['EXEEXT']
+           # assume the parent CL of jruby-classloader has a getUrls method
+           urls = JRuby.runtime.getJRubyClassLoader.parent.get_ur_ls.collect do |u|
+             u.path
+           end
+           urls.unshift '.'
+           exe += " -cp #{urls.join(File::PATH_SEPARATOR)} org.jruby.Main"
+           exe
+         else
+           exe = '"' + File.join(RbConfig::CONFIG['bindir'], RbConfig::CONFIG['RUBY_INSTALL_NAME'])
+           exe += RbConfig::CONFIG['EXEEXT']  if RbConfig::CONFIG['EXEEXT']
+           exe += '"'
+           exe
+         end
 
   if (WINDOWS)
     RUBY.gsub!('/', '\\')
@@ -20,14 +36,29 @@ module TestHelper
     WINDOWS_JVM_64 = (WINDOWS && arch == '64')
   end
 
-  IBM_JVM = Config::CONFIG['host_vendor'] =~ /IBM Corporation/
+  IBM_JVM = RbConfig::CONFIG['host_vendor'] =~ /IBM Corporation/
 
   def q
     WINDOWS ? '"' : '\''
   end
 
+  def interpreter( options = {} )
+    options = options.collect { |k,v| "-D#{k}=\"#{v}\"" }
+    if RUBY =~ /-cp /
+      RUBY.sub(/-cp [.]/, "-cp #{ENV["CLASSPATH"]}").sub(/-cp /, options.join(' ') + ' -cp ')
+    else
+      RUBY
+    end
+  end
+
   def jruby(*args)
-    with_jruby_shell_spawning { `#{RUBY} #{args.join(' ')}` }
+    options = []
+    if args.last.is_a? Hash
+      options = args.last
+      args = args[0..-2]
+    end
+    options.each { |k,v| args.unshift "-J-D#{k}=\"#{v}\"" } unless RUBY =~ /-cp /
+    with_jruby_shell_spawning { `#{interpreter(options)} #{args.join(' ')}` }
   end
 
   def jruby_with_pipe(pipe, *args)
@@ -62,5 +93,16 @@ module TestHelper
   ensure
     STDOUT.reopen io.first
     STDERR.reopen io.last
+  end
+
+  def run_in_sub_runtime(script)
+    container = org.jruby.embed.ScriptingContainer.new(org.jruby.embed.LocalContextScope::SINGLETHREAD)
+    container.setLoadPaths(['.'])
+    container.runScriptlet("require 'java'")
+    container.runScriptlet(script)
+  end
+
+  def assert_in_sub_runtime(script)
+    assert run_in_sub_runtime(script)
   end
 end

@@ -1,5 +1,6 @@
 # delta.rb: Written by Tadayoshi Funaba 2004-2009
 
+require 'date'
 require 'date/delta/parser'
 
 class Date
@@ -113,8 +114,8 @@ class Date
       m,   fr = fr.divmod(1)
 
       if delta.imag < 0
-	y = -y
-	m = -m
+        y = -y
+        m = -m
       end
 
       fr = delta.real.abs
@@ -124,10 +125,10 @@ class Date
       min, s  = ss.divmod(60)
 
       if delta.real < 0
-	d = -d
-	h = -h
-	min = -min
-	s = -s
+        d = -d
+        h = -h
+        min = -min
+        s = -s
       end
 
       return y, m, d, h, min, s, fr
@@ -136,7 +137,7 @@ class Date
     def self.dhms_to_delta(y, m, d, h, min, s, fr)
       fr = 0 if fr == 0
       Complex(0, y.to_i * 12 + m.to_i) +
-	Rational(d * 86400 + h * 3600 + min * 60 + (s + fr), 86400) # 4p
+        Rational(d * 86400 + h * 3600 + min * 60 + (s + fr), 86400) # 4p
     end
 
     def initialize(delta)
@@ -148,25 +149,25 @@ class Date
 
     def self.new(arg=0, h=0, min=0, s=0)
       if Hash === arg
-	d = Complex(0)
-	arg.each do |k, v|
-	  k = k.to_s.downcase
-	  unless UNITS4KEY[k]
-	    raise ArgumentError, "unknown keyword #{k}"
-	  end
-	  d += v * UNITS4KEY[k]
-	end
+        d = Complex(0)
+        arg.each do |k, v|
+          k = k.to_s.downcase
+          unless UNITS4KEY[k]
+            raise ArgumentError, "unknown keyword #{k}"
+          end
+          d += v * UNITS4KEY[k]
+        end
       else
-	d = dhms_to_delta(0, 0, arg, h, min, s, 0)
+        d = dhms_to_delta(0, 0, arg, h, min, s, 0)
       end
       new!(d)
     end
 
     UNITS.each_key do |k|
       module_eval <<-"end;"
-	def self.#{k}s(n=1)
-	  new(:d=>n * UNITS['#{k}'])
-	end
+        def self.#{k}s(n=1)
+          new(:d=>n * UNITS['#{k}'])
+        end
       end;
     end
 
@@ -175,9 +176,9 @@ class Date
 
     def self.parse(str)
       d = begin (@@pa ||= Parser.new).parse(str)
-	  rescue Racc::ParseError
-	    raise ArgumentError, 'syntax error'
-	  end
+          rescue Racc::ParseError
+            raise ArgumentError, 'syntax error'
+          end
       new!(d)
     end
 
@@ -186,14 +187,14 @@ class Date
     class << self
 
       def once(*ids) # :nodoc: -- restricted
-	for id in ids
-	  module_eval <<-"end;"
-	    alias_method :__#{id.object_id}__, :#{id.to_s}
-	    private :__#{id.object_id}__
-	    def #{id.to_s}(*args)
-	      @__ca__[#{id.object_id}] ||= __#{id.object_id}__(*args)
-	    end
-	  end;
+        for id in ids
+          module_eval <<-"end;"
+            alias_method :__#{id.object_id}__, :#{id.to_s}
+            private :__#{id.object_id}__
+            def #{id.to_s}(*args)
+              @__ca__[#{id.object_id}] ||= __#{id.object_id}__(*args)
+            end
+          end;
         end
       end
 
@@ -223,14 +224,14 @@ class Date
 
     RUNITS.each_key do |k|
       module_eval <<-"end;"
-	def in_#{k}s(u=1)
-	  if @delta.imag != 0
-	    raise ArgumentError, "#{k}: #{self} has month"
-	  end
-	  @delta.real / (u * RUNITS['#{k}'])
-	end
+        def in_#{k}s(u=1)
+          if @delta.imag != 0
+            raise ArgumentError, "#{k}: #{self} has month"
+          end
+          @delta.real / (u * RUNITS['#{k}'])
+        end
       end;
-    end
+    end # <<dummy
 
     alias_method :in_mins, :in_minutes
     alias_method :in_secs, :in_seconds
@@ -248,8 +249,8 @@ class Date
       when Numeric; return self.class.new!(@delta.__send__(m, n))
       when Delta; return self.class.new!(@delta.__send__(m, n.delta))
       else
-	l, r = n.coerce(self)
-	return l.__send__(m, r)
+        l, r = n.coerce(self)
+        return l.__send__(m, r)
       end
     end
 
@@ -261,10 +262,10 @@ class Date
     def dx_muldiv(m, n)
       case n
       when Numeric
-	return self.class.new!(@delta.__send__(m, n))
+        return self.class.new!(@delta.__send__(m, n))
       else
-	l, r = n.coerce(self)
-	return l.__send__(m, r)
+        l, r = n.coerce(self)
+        return l.__send__(m, r)
       end
     end
 
@@ -275,14 +276,14 @@ class Date
 
     def dx_conv1(m, n)
       if @delta.imag != 0
-	raise ArgumentError, "#{m}: #{self} has month"
+        raise ArgumentError, "#{m}: #{self} has month"
       end
       case n
       when Numeric
-	return self.class.new!(Complex(@delta.real.__send__(m, n), 0))
+        return self.class.new!(Complex(@delta.real.__send__(m, n), 0))
       else
-	l, r = n.coerce(self)
-	return l.__send__(m, r)
+        l, r = n.coerce(self)
+        return l.__send__(m, r)
       end
     end
 
@@ -296,14 +297,14 @@ class Date
 
     def quotient(n)
       if @delta.imag != 0
-	raise ArgumentError, "quotient: #{self} has month"
+        raise ArgumentError, "quotient: #{self} has month"
       end
       case n
       when Numeric
-	return self.class.new!(Complex((@delta.real / n).truncate))
+        return self.class.new!(Complex((@delta.real / n).truncate))
       else
-	l, r = n.coerce(self)
-	return l.__send__(m, r)
+        l, r = n.coerce(self)
+        return l.__send__(m, r)
       end
     end
 
@@ -315,17 +316,17 @@ class Date
 
     def <=> (other)
       if @delta.imag != 0
-	raise ArgumentError, "<=>: #{self} has month"
+        raise ArgumentError, "<=>: #{self} has month"
       end
       case other
       when Numeric; return @delta.real <=> other
       when Delta;   return @delta.real <=> other.delta.real
       else
-	begin
-	  l, r = other.coerce(self)
-	  return l <=> r
-	rescue NoMethodError
-	end
+        begin
+          l, r = other.coerce(self)
+          return l <=> r
+        rescue NoMethodError
+        end
       end
       nil
     end
@@ -335,11 +336,11 @@ class Date
       when Numeric; return @delta == other
       when Delta;   return @delta == other
       else
-	begin
-	  l, r = other.coerce(self)
-	  return l == r
-	rescue NoMethodError
-	end
+        begin
+          l, r = other.coerce(self)
+          return l == r
+        rescue NoMethodError
+        end
       end
       nil
     end
@@ -348,7 +349,7 @@ class Date
       case other
       when Numeric; return other, @delta
       else
-	super
+        super
       end
     end
 
@@ -357,7 +358,7 @@ class Date
 
     def dx_conv0(m)
       if @delta.imag != 0
-	raise ArgumentError, "#{m}: #{self} has month"
+        raise ArgumentError, "#{m}: #{self} has month"
       end
       @delta.real.__send__(m)
     end
@@ -382,10 +383,10 @@ class Date
 
     def to_s
       format(%(%s(%dd %.02d:%02d'%02d"%03d)%s(%dy %dm)), # '
-	     if @delta.real < 0 then '-' else '+' end,
-	     days.abs, hours.abs, mins.abs, secs.abs, sec_fractions.abs * 1000,
-	     if @delta.imag < 0 then '-' else '+' end,
-	     years.abs, months.abs)
+             if @delta.real < 0 then '-' else '+' end,
+             days.abs, hours.abs, mins.abs, secs.abs, sec_fractions.abs * 1000,
+             if @delta.imag < 0 then '-' else '+' end,
+             years.abs, months.abs)
     end
 
     def marshal_dump() @delta end
@@ -398,3 +399,33 @@ class Date
   end
 
 end
+
+vsave = $VERBOSE
+$VERBOSE = false
+
+class Date
+
+  def + (n)
+    case n
+    when Numeric; return self.class.new!(@ajd + n, @of, @sg)
+    when Delta
+      d = n.__send__(:delta)
+      return (self >> d.imag) + d.real
+    end
+    raise TypeError, 'expected numeric'
+  end
+
+  def - (x)
+    case x
+    when Numeric; return self.class.new!(@ajd - x, @of, @sg)
+    when Date;    return @ajd - x.ajd
+    when Delta
+      d = x.__send__(:delta)
+      return (self << d.imag) - d.real
+    end
+    raise TypeError, 'expected numeric'
+  end
+
+end
+
+$VERBOSE = vsave

@@ -189,6 +189,54 @@ class TestSprintf < Test::Unit::TestCase
     assert_equal("36893488147419111424",
                  sprintf("%20.0f", 36893488147419107329.0))
     assert_equal(" Inf", sprintf("% 0e", 1.0/0.0), "moved from btest/knownbug")
+    assert_equal("       -0.", sprintf("%#10.0f", -0.5), "[ruby-dev:42552]")
+    assert_equal("0x1p+2",   sprintf('%.0a', Float('0x1.fp+1')),   "[ruby-dev:42551]")
+    assert_equal("-0x1.0p+2", sprintf('%.1a', Float('-0x1.ffp+1')), "[ruby-dev:42551]")
+  end
+
+  def test_float_hex
+    assert_equal("-0x0p+0", sprintf("%a", -0.0))
+    assert_equal("0x0p+0", sprintf("%a", 0.0))
+    assert_equal("0x1p-1", sprintf("%a", 0.5))
+    assert_equal("0x1p+0", sprintf("%a", 1.0))
+    assert_equal("0x1p+1", sprintf("%a", 2.0))
+    assert_equal("0x1p+10", sprintf("%a", 1024))
+    assert_equal("0x1.23456p+789", sprintf("%a", 3.704450999893983e+237))
+    assert_equal("0x1p-1074", sprintf("%a", 4.9e-324))
+    assert_equal("Inf", sprintf("%e", Float::INFINITY))
+    assert_equal("Inf", sprintf("%E", Float::INFINITY))
+    assert_equal("NaN", sprintf("%e", Float::NAN))
+    assert_equal("NaN", sprintf("%E", Float::NAN))
+
+    assert_equal("   -0x1p+0", sprintf("%10a", -1))
+    assert_equal(" -0x1.8p+0", sprintf("%10a", -1.5))
+    assert_equal(" -0x1.4p+0", sprintf("%10a", -1.25))
+    assert_equal(" -0x1.2p+0", sprintf("%10a", -1.125))
+    assert_equal(" -0x1.1p+0", sprintf("%10a", -1.0625))
+    assert_equal("-0x1.08p+0", sprintf("%10a", -1.03125))
+
+    bug3962 = '[ruby-core:32841]'
+    assert_equal("-0x0001p+0", sprintf("%010a", -1), bug3962)
+    assert_equal("-0x01.8p+0", sprintf("%010a", -1.5), bug3962)
+    assert_equal("-0x01.4p+0", sprintf("%010a", -1.25), bug3962)
+    assert_equal("-0x01.2p+0", sprintf("%010a", -1.125), bug3962)
+    assert_equal("-0x01.1p+0", sprintf("%010a", -1.0625), bug3962)
+    assert_equal("-0x1.08p+0", sprintf("%010a", -1.03125), bug3962)
+
+    bug3964 = '[ruby-core:32848]'
+    assert_equal("0x000000000000000p+0", sprintf("%020a",  0), bug3964)
+    assert_equal("0x000000000000001p+0", sprintf("%020a", 1), bug3964)
+    assert_equal("-0x00000000000001p+0", sprintf("%020a", -1), bug3964)
+    assert_equal("0x00000000000000.p+0", sprintf("%#020a",  0), bug3964)
+
+    bug3965 = '[ruby-dev:42431]'
+    assert_equal("0x1.p+0", sprintf("%#.0a",  1), bug3965)
+    assert_equal("0x00000000000000.p+0", sprintf("%#020a",  0), bug3965)
+    assert_equal("0x0000.0000000000p+0", sprintf("%#020.10a",  0), bug3965)
+
+    bug3979 = '[ruby-dev:42453]'
+    assert_equal("          0x0.000p+0", sprintf("%20.3a",  0), bug3979)
+    assert_equal("          0x1.000p+0", sprintf("%20.3a",  1), bug3979)
   end
 
   BSIZ = 120
@@ -263,7 +311,8 @@ class TestSprintf < Test::Unit::TestCase
   end
 
   def test_rb_sprintf
-    assert(T012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789.new.inspect =~ /^#<TestSprintf::T012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789:0x[0-9a-f]+>$/)
+    assert_match(/^#<TestSprintf::T012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789:0x[0-9a-f]+>$/,
+                 T012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789.new.inspect)
   end
 
   def test_negative_hex
@@ -278,5 +327,8 @@ class TestSprintf < Test::Unit::TestCase
     assert_equal("value", sprintf("%<key>s", :key => "value"))
     assert_raise(ArgumentError) {sprintf("%1$<key2>s", :key => "value")}
     assert_raise(ArgumentError) {sprintf("%<key><key2>s", :key => "value")}
+    assert_equal("value", sprintf("%{key}", :key => "value"))
+    assert_raise(ArgumentError) {sprintf("%1${key2}", :key => "value")}
+    assert_equal("value{key2}", sprintf("%{key}{key2}", :key => "value"))
   end
 end

@@ -19,7 +19,7 @@
 #
 # === Doesn't depend on strftime
 #
-# This library doesn't use +strftime+.  Especially #rfc2822 doesn't depend
+# This library doesn't use +Time#strftime+.  Especially #rfc2822 doesn't depend
 # on +strftime+ because:
 #
 # * %a and %b are locale sensitive
@@ -35,8 +35,12 @@
 #   %z is required to generate zone in date-time of RFC 2822
 #   but it is not portable.
 #
+# Note that +Time#strftime+ doesn't use +strftime()+ function in libc since Ruby 1.9.
+# This means +Time#strftime+ is locale-insensitive since Ruby 1.9.
+# The above statements are not valid now.
+#
 
-require 'date/format'
+require 'date'
 
 #
 # Implements the extensions to the Time class that are described in the
@@ -252,6 +256,10 @@ class Time
     #
     # A failure for Time.parse should be checked, though.
     #
+    # time library should be required to use this method as follows.
+    #
+    #     require 'time'
+    #
     def parse(date, now=self.now)
       comp = !block_given?
       d = Date._parse(date, comp)
@@ -273,9 +281,17 @@ class Time
     def strptime(date, format, now=self.now)
       d = Date._strptime(date, format)
       raise ArgumentError, "invalid strptime format - `#{format}'" unless d
-      year = d[:year]
-      year = yield(year) if year && block_given?
-      make_time(year, d[:mon], d[:mday], d[:hour], d[:min], d[:sec], d[:sec_fraction], d[:zone], now)
+      if seconds = d[:seconds]
+        if offset = d[:offset]
+          Time.at(seconds).localtime(offset)
+        else
+          Time.at(seconds)
+        end
+      else
+        year = d[:year]
+        year = yield(year) if year && block_given?
+        make_time(year, d[:mon], d[:mday], d[:hour], d[:min], d[:sec], d[:sec_fraction], d[:zone], now)
+      end
     end
 
     MonthValue = {
@@ -292,6 +308,10 @@ class Time
     # or Time class cannot represent specified date.
     #
     # See #rfc2822 for more information on this format.
+    #
+    # time library should be required to use this method as follows.
+    #
+    #     require 'time'
     #
     def rfc2822(date)
       if /\A\s*
@@ -342,6 +362,10 @@ class Time
     #
     # See #httpdate for more information on this format.
     #
+    # time library should be required to use this method as follows.
+    #
+    #     require 'time'
+    #
     def httpdate(date)
       if /\A\s*
           (?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),\x20
@@ -389,6 +413,10 @@ class Time
     #
     # See #xmlschema for more information on this format.
     #
+    # time library should be required to use this method as follows.
+    #
+    #     require 'time'
+    #
     def xmlschema(date)
       if /\A\s*
           (-?\d+)-(\d\d)-(\d\d)
@@ -431,10 +459,14 @@ class Time
   #
   # If +self+ is a UTC time, -0000 is used as zone.
   #
+  # time library should be required to use this method as follows.
+  #
+  #     require 'time'
+  #
   def rfc2822
-    sprintf('%s, %02d %s %04d %02d:%02d:%02d ',
+    sprintf('%s, %02d %s %0*d %02d:%02d:%02d ',
       RFC2822_DAY_NAME[wday],
-      day, RFC2822_MONTH_NAME[mon-1], year,
+      day, RFC2822_MONTH_NAME[mon-1], year < 0 ? 5 : 4, year,
       hour, min, sec) +
     if utc?
       '-0000'
@@ -462,11 +494,15 @@ class Time
   #
   # Note that the result is always UTC (GMT).
   #
+  # time library should be required to use this method as follows.
+  #
+  #     require 'time'
+  #
   def httpdate
     t = dup.utc
-    sprintf('%s, %02d %s %04d %02d:%02d:%02d GMT',
+    sprintf('%s, %02d %s %0*d %02d:%02d:%02d GMT',
       RFC2822_DAY_NAME[t.wday],
-      t.day, RFC2822_MONTH_NAME[t.mon-1], t.year,
+      t.day, RFC2822_MONTH_NAME[t.mon-1], t.year < 0 ? 5 : 4, t.year,
       t.hour, t.min, t.sec)
   end
 
@@ -484,10 +520,14 @@ class Time
   # +fractional_seconds+ specifies a number of digits of fractional seconds.
   # Its default value is 0.
   #
+  # time library should be required to use this method as follows.
+  #
+  #     require 'time'
+  #
   def xmlschema(fraction_digits=0)
-    sprintf('%04d-%02d-%02dT%02d:%02d:%02d',
-      year, mon, day, hour, min, sec) +
-    if fraction_digits == 0
+    sprintf('%0*d-%02d-%02dT%02d:%02d:%02d',
+      year < 0 ? 5 : 4, year, mon, day, hour, min, sec) +
+    if fraction_digits <= 0
       ''
     else
       '.' + sprintf('%0*d', fraction_digits, (subsec * 10**fraction_digits).floor)
