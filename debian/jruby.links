@@ -1,10 +1,13 @@
-#usr/share/jruby/bin/gem                usr/bin/gem
-#usr/share/jruby/bin/rdoc               usr/bin/rdoc
-#usr/share/jruby/bin/ri                 usr/bin/ri
-#usr/share/jruby/bin/testrb             usr/bin/testrb
+usr/share/jruby/bin/gem                usr/bin/jruby-gem
+usr/share/jruby/bin/rdoc               usr/bin/jruby-rdoc
+usr/share/jruby/bin/ri                 usr/bin/jruby-ri
+usr/share/jruby/bin/testrb             usr/bin/jruby-testrb
+
 usr/share/java/jruby-core.jar          usr/share/java/jruby.jar
 usr/share/java/jruby-core.jar          usr/share/jruby/lib/jruby.jar
+
 usr/share/javascript/jquery/jquery.js  usr/share/jruby/lib/ruby/2.0/rdoc/generator/template/darkfish/js/jquery.js
+
 usr/share/jruby/bin/ast                usr/bin/ast
 usr/share/jruby/bin/jgem               usr/bin/jgem
 usr/share/jruby/bin/jirb               usr/bin/jirb
