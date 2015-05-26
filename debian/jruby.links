@@ -1,6 +1,7 @@
 #usr/share/jruby/bin/gem                usr/bin/gem
 #usr/share/jruby/bin/rdoc               usr/bin/rdoc
 #usr/share/jruby/bin/ri                 usr/bin/ri
+#usr/share/jruby/bin/testrb             usr/bin/testrb
 usr/share/java/jruby-core.jar          usr/share/java/jruby.jar
 usr/share/java/jruby-core.jar          usr/share/jruby/lib/jruby.jar
 usr/share/javascript/jquery/jquery.js  usr/share/jruby/lib/ruby/2.0/rdoc/generator/template/darkfish/js/jquery.js
@@ -10,4 +11,3 @@ usr/share/jruby/bin/jirb               usr/bin/jirb
 usr/share/jruby/bin/jirb_swing         usr/bin/jirb_swing
 usr/share/jruby/bin/jruby              usr/bin/jruby
 usr/share/jruby/bin/jrubyc             usr/bin/jrubyc
-usr/share/jruby/bin/testrb             usr/bin/testrb
