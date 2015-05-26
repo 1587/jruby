@@ -1,37 +1,40 @@
 #!/usr/bin/make -f
 
-include /usr/share/cdbs/1/rules/debhelper.mk
-include /usr/share/cdbs/1/class/maven.mk
-include $(CURDIR)/debian/maven3.mk
+include /usr/share/dpkg/default.mk
 
 #JAVA_HOME := /usr/lib/jvm/default-java
-# upstream code directly from git repo builds with
-# openjdk-7-jdk, I have to find out how/why
+# upstream code directly from git repo builds with openjdk-7-jdk
+# I have to find out how/why
 JAVA_HOME := /usr/lib/jvm/java-8-openjdk-$(DEB_BUILD_ARCH)
 
-pre-build::
-	mkdir -p lib/jni
+include $(CURDIR)/debian/maven3.mk
 
-common-install-prehook-indep::
+%:
+	dh $@
+
+override_dh_auto_clean:
+	-$(DEB_MAVEN_INVOKE) clean
+	dh_clean
+	mh_unpatchpoms -pjruby
+	mh_clean
+	rm -f lib/jruby.jar bin/jruby
+	rm -rf -- "$(DEB_MAVEN_REPO)"
+
+override_dh_auto_configure:
+	/usr/share/maven-debian-helper/copy-repo.sh "$(CURDIR)/debian"
+	mh_patchpoms -pjruby --debian-build --keep-pom-version \
+	  --maven-repo="$(DEB_MAVEN_REPO)" --build-no-docs
+
+override_dh_auto_build:
+	mkdir -p lib/jni
+	$(DEB_MAVEN_INVOKE) package
+
+override_dh_auto_install:
 	mkdir -p target/package
-	tar zxf ./maven/jruby-dist/target/jruby-dist-$(DEB_UPSTREAM_VERSION)-bin.tar.gz -C target/package --strip-components=1
+	tar zxf ./maven/jruby-dist/target/jruby-dist-$(DEB_VERSION_UPSTREAM)-bin.tar.gz \
+	  -C target/package --strip-components=1
 	cd target/package/bin && mv jruby.sh jruby
 	cd target/package/bin && chmod 0755 *
 	rm target/package/lib/ruby/2.0/rdoc/generator/template/darkfish/js/jquery.js
-
-install/jruby::
-	rm -rf debian/jruby/usr/share/maven-repo/*
-	rm debian/jruby/usr/share/java/*
 	mh_installpom -pjruby --no-parent core/pom.xml
 	mh_installjar -pjruby --java-lib  core/pom.xml target/package/lib/jruby.jar
-
-clean::
-	-rm -rf                     \
-	bin/jruby                  \
-	core/target/               \
-	lib/jruby.jar              \
-	target/                    \
-	maven/jruby-dist/target/   \
-	maven/jruby-stdlib/target/ \
-	maven/target/              \
-	core/src/main/java/org/jruby/runtime/Constants.java

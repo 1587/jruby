@@ -1,3 +1,7 @@
+# replace this with a saner integration between maven3 and debhelper
+DEB_BUILDDIR = .
+JAVACMD = $(JAVA_HOME)/bin/java
+DEB_MAVEN_REPO := $(CURDIR)/debian/maven-repo
 MAVEN_HOME = /usr/share/maven
 DEB_MAVEN_ARGS := -Pdist
 DEB_CLASSPATH = $(MAVEN_HOME)/boot/plexus-classworlds-2.x.jar
@@ -7,13 +11,3 @@ DEB_MAVEN_INVOKE = cd $(DEB_BUILDDIR) && $(JAVACMD) -classpath $(DEB_CLASSPATH) 
                  -s/etc/maven2/settings-debian.xml \
                  -Dmaven.repo.local=$(DEB_MAVEN_REPO) \
                  $(if $(DEB_MAVEN_ARGS_$(cdbs_curpkg)),$(DEB_MAVEN_ARGS_$(cdbs_curpkg)),$(DEB_MAVEN_ARGS))
-
-maven-sanity-check:
-	@if ! test -x "$(JAVACMD)"; then \
-		echo "You must specify a valid JAVA_HOME or JAVACMD!"; \
-		exit 1; \
-	fi
-	@if ! test -r "$(MAVEN_HOME)/boot/plexus-classworlds-2.x.jar"; then \
-		echo "You must specify a valid MAVEN_HOME directory!"; \
-		exit 1; \
-	fi
