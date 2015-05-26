@@ -2,37 +2,19 @@
 
 include /usr/share/cdbs/1/rules/debhelper.mk
 include /usr/share/cdbs/1/class/maven.mk
+include $(CURDIR)/debian/maven3.mk
 
 #JAVA_HOME := /usr/lib/jvm/default-java
 # upstream code directly from git repo builds with
 # openjdk-7-jdk, I have to find out how/why
 JAVA_HOME := /usr/lib/jvm/java-8-openjdk-$(DEB_BUILD_ARCH)
-MAVEN_HOME = /usr/share/maven
-DEB_MAVEN_ARGS := -Pdist
-DEB_CLASSPATH = $(MAVEN_HOME)/boot/plexus-classworlds-2.x.jar
-DEB_MAVEN_INVOKE = cd $(DEB_BUILDDIR) && $(JAVACMD) -classpath $(DEB_CLASSPATH) \
-		 $(JAVA_OPTS) -Dclassworlds.conf=$(CURDIR)/debian/m2.conf \
-		 org.codehaus.plexus.classworlds.launcher.Launcher \
-		 -s/etc/maven2/settings-debian.xml \
-		 -Dmaven.repo.local=$(DEB_MAVEN_REPO) \
-		 $(if $(DEB_MAVEN_ARGS_$(cdbs_curpkg)),$(DEB_MAVEN_ARGS_$(cdbs_curpkg)),$(DEB_MAVEN_ARGS))
-
-maven-sanity-check:
-	@if ! test -x "$(JAVACMD)"; then \
-		echo "You must specify a valid JAVA_HOME or JAVACMD!"; \
-		exit 1; \
-	fi
-	@if ! test -r "$(MAVEN_HOME)/boot/plexus-classworlds-2.x.jar"; then \
-		echo "You must specify a valid MAVEN_HOME directory!"; \
-		exit 1; \
-	fi
 
 pre-build::
 	mkdir -p lib/jni
 
 common-install-prehook-indep::
 	mkdir -p target/package
-	tar zxf ./maven/jruby-dist/target/jruby-dist-1.7.19-bin.tar.gz -C target/package --strip-components=1
+	tar zxf ./maven/jruby-dist/target/jruby-dist-$(DEB_UPSTREAM_VERSION)-bin.tar.gz -C target/package --strip-components=1
 	cd target/package/bin && mv jruby.sh jruby
 	cd target/package/bin && chmod 0755 *
 	rm target/package/lib/ruby/2.0/rdoc/generator/template/darkfish/js/jquery.js
