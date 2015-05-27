@@ -2,7 +2,8 @@ Source: jruby
 Section: ruby
 Priority: optional
 Maintainer: Debian Java Maintainers <pkg-java-maintainers@lists.alioth.debian.org>
-Uploaders: Miguel Landaeta <nomadium@debian.org>
+Uploaders: Miguel Landaeta <nomadium@debian.org>,
+           Tim Potter <tpot@hp.com>
 Build-Depends: ant-optional,
                bnd,
                debhelper (>= 9~),

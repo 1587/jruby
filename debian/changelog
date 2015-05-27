@@ -22,6 +22,7 @@ jruby (1.7.19-1) UNRELEASED; urgency=medium
   * Update Uploaders list:
     - Remove Sebastien Delafond. Thanks for your work on this package!
     - Remove Torsten Werner. Thanks for your work on this package!
+    - Add Tim Potter. Welcome aboard!
   * Update d/watch file.
   * Update Build-Depends:
     - Replace dependency on openjdk-7-jdk with openjdk-8-jdk.
@@ -45,7 +46,7 @@ jruby (1.7.19-1) UNRELEASED; urgency=medium
     minified copy. This is to avoid lintian warnings, during build time
     a link symbolic to libjs-jquery is deployed.
 
- -- Miguel Landaeta <nomadium@debian.org>  Tue, 26 May 2015 15:33:54 -0300
+ -- Miguel Landaeta <nomadium@debian.org>  Wed, 27 May 2015 12:41:39 -0300
 
 jruby (1.5.6-10) unstable; urgency=medium
 
