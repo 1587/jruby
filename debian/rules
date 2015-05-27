@@ -39,5 +39,7 @@ override_dh_auto_install:
 	cd target/package/bin && mv jruby.sh jruby
 	cd target/package/bin && chmod 0755 *
 	rm target/package/lib/ruby/2.0/rdoc/generator/template/darkfish/js/jquery.js
+	mkdir -p target/package/lib/ruby/gems/shared/
+	cd target/package/lib/ruby/gems/shared/ && mkdir -p cache gems specifications
 	mh_installpom -pjruby --no-parent core/pom.xml
 	mh_installjar -pjruby --java-lib  core/pom.xml target/package/lib/jruby.jar
