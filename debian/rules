@@ -18,6 +18,9 @@ override_dh_auto_clean:
 	mh_unpatchpoms -pjruby
 	mh_clean
 	rm -f lib/jruby.jar bin/jruby
+	for subp in stdlib dist; do \
+		rm -rf ./maven/jruby-$$subp/target ; \
+	done
 	rm -rf -- "$(DEB_MAVEN_REPO)"
 
 override_dh_auto_configure:

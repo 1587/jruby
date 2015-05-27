@@ -1,2 +1,3 @@
 0001-Fix-shebang-lines.patch
 0002-Fix-warning-jruby-script.patch
+0003-Add-usr-lib-ruby-vendor-ruby-to-load-path.patch
