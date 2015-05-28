@@ -36,7 +36,7 @@ override_dh_auto_install:
 	mkdir -p target/package
 	tar zxf ./maven/jruby-dist/target/jruby-dist-$(DEB_VERSION_UPSTREAM)-bin.tar.gz \
 	  -C target/package --strip-components=1
-	cd target/package/bin && mv jruby.sh jruby
+	cd target/package/bin && mv jruby.bash jruby
 	cd target/package/bin && chmod 0755 *
 	rm target/package/lib/ruby/2.0/rdoc/generator/template/darkfish/js/jquery.js
 	mkdir -p target/package/lib/ruby/gems/shared/

@@ -47,7 +47,7 @@ jruby (1.7.19-1) UNRELEASED; urgency=medium
     minified copy. This is to avoid lintian warnings, during build time
     a link symbolic to libjs-jquery is deployed.
 
- -- Miguel Landaeta <nomadium@debian.org>  Thu, 28 May 2015 19:24:22 -0300
+ -- Miguel Landaeta <nomadium@debian.org>  Thu, 28 May 2015 20:11:15 -0300
 
 jruby (1.5.6-10) unstable; urgency=medium
 
