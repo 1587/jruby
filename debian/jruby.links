@@ -7,6 +7,8 @@ usr/share/java/jruby-core.jar          usr/share/java/jruby.jar
 usr/share/java/jruby-core.jar          usr/share/jruby/lib/jruby.jar
 
 usr/share/javascript/jquery/jquery.js  usr/share/jruby/lib/ruby/2.0/rdoc/generator/template/darkfish/js/jquery.js
+usr/share/jruby/lib/ruby/2.0/rdoc.rb   usr/share/jruby/lib/ruby/shared/rdoc.rb
+usr/share/jruby/lib/ruby/2.0/rdoc      usr/share/jruby/lib/ruby/shared/rdoc
 
 usr/share/jruby/bin/ast                usr/bin/ast
 usr/share/jruby/bin/jgem               usr/bin/jgem
