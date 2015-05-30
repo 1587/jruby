@@ -61,6 +61,7 @@ Package: jruby
 Architecture: all
 Depends: default-jre | java6-runtime, libjffi-jni, libjansi-java, ${misc:Depends}
 Recommends: ri
+Suggests: nailgun
 Description: 100% pure-Java implementation of Ruby
  JRuby is a high performance, stable, fully threaded Java implementation
  of the Ruby programming language.

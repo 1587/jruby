@@ -17,6 +17,8 @@ usr/share/jruby/bin/jirb_swing         usr/bin/jirb_swing
 usr/share/jruby/bin/jruby              usr/bin/jruby
 usr/share/jruby/bin/jrubyc             usr/bin/jrubyc
 
+usr/bin/ng-nailgun                     usr/share/jruby/tool/nailgun/ng
+
 usr/lib/i386-linux-gnu/jni/libjffi-1.2.so     usr/share/jruby/lib/jni/i386-Linux/libjffi-1.2.so
 usr/lib/x86_64-linux-gnu/jni/libjffi-1.2.so   usr/share/jruby/lib/jni/x86_64-Linux/libjffi-1.2.so
 usr/lib/arm-linux-gnueabi/jni/libjffi-1.2.so  usr/share/jruby/lib/jni/arm-Linux/libjffi-1.2.so
