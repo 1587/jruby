@@ -5,6 +5,7 @@ jruby (1.7.19-1) UNRELEASED; urgency=medium
   * Switch build system to Maven, upstream doesn't maintain Ant one anymore:
     - Add B-D on: maven, maven-{debian,repo}-helper and several maven plugins.
     - Replace cdbs with debhelper.
+  * Enable full testing during build time.
   * Remove outdated packaging files:
     - d/dirs, d/links, d/README.Debian, d/NEWS.Debian and a couple of
       lintian overrides.
