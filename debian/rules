@@ -59,3 +59,6 @@ ifeq (,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 	#./bin/jruby -S ./bin/rake test:mri19
 	#./bin/jruby -S ./bin/rake test:extended
 endif
+
+get-orig-source:
+	uscan --verbose --download-current-version
