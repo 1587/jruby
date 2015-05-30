@@ -1,3 +1,8 @@
+From: Miguel Landaeta <nomadium@debian.org>
+Date: Sat, 30 May 2015 12:57:27 -0300
+Subject: Disable definitions depending on jruby-openssl since is not packaged yet
+Forwarded: no
+
 diff --git a/spec/ruby/core/marshal/fixtures/marshal_data.rb b/spec/ruby/core/marshal/fixtures/marshal_data.rb
 index c665e1d..3533d80 100644
 --- a/spec/ruby/core/marshal/fixtures/marshal_data.rb

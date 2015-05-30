@@ -1,3 +1,8 @@
+From: Miguel Landaeta <nomadium@debian.org>
+Date: Sat, 30 May 2015 12:57:27 -0300
+Subject: Use debian versions for test maven plugins configuration
+Forwarded: no
+
 diff --git a/test/pom.xml b/test/pom.xml
 index 64cdc98..7ee87db 100644
 --- a/test/pom.xml
