@@ -1,0 +1,31 @@
+diff --git a/test/pom.xml b/test/pom.xml
+index 64cdc98..7ee87db 100644
+--- a/test/pom.xml
++++ b/test/pom.xml
+@@ -179,7 +179,7 @@
+                 <artifactItem>
+                   <groupId>junit</groupId>
+                   <artifactId>junit</artifactId>
+-                  <version>4.11</version>
++                  <version>4.x</version>
+                   <type>jar</type>
+                   <overWrite>false</overWrite>
+                   <outputDirectory>target</outputDirectory>
+@@ -188,7 +188,7 @@
+                 <artifactItem>
+                   <groupId>com.googlecode.jarjar</groupId>
+                   <artifactId>jarjar</artifactId>
+-                  <version>1.1</version>
++                  <version>debian</version>
+                   <type>jar</type>
+                   <overWrite>false</overWrite>
+                   <outputDirectory>target</outputDirectory>
+@@ -197,7 +197,7 @@
+                 <artifactItem>
+                   <groupId>bsf</groupId>
+                   <artifactId>bsf</artifactId>
+-                  <version>2.4.0</version>
++                  <version></version>
+                   <type>jar</type>
+                   <overWrite>false</overWrite>
+                   <outputDirectory>target</outputDirectory>

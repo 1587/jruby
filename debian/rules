@@ -6,6 +6,7 @@ include /usr/share/dpkg/default.mk
 # upstream code directly from git repo builds with openjdk-7-jdk
 # I have to find out how/why
 JAVA_HOME := /usr/lib/jvm/java-8-openjdk-$(DEB_BUILD_ARCH)
+export LC_ALL=en_US.UTF-8
 
 include $(CURDIR)/debian/maven3.mk
 
@@ -13,7 +14,7 @@ include $(CURDIR)/debian/maven3.mk
 	dh $@
 
 override_dh_auto_clean:
-	-$(DEB_MAVEN_INVOKE) clean
+	-$(DEB_MAVEN_INVOKE) -Pdist clean
 	dh_clean
 	mh_unpatchpoms -pjruby
 	mh_clean
@@ -21,6 +22,8 @@ override_dh_auto_clean:
 	for subp in stdlib dist; do \
 		rm -rf ./maven/jruby-$$subp/target ; \
 	done
+	rm -rf ./test/target/
+	rm -rf -- ./rubyspec_temp/
 	rm -rf -- "$(DEB_MAVEN_REPO)"
 
 override_dh_auto_configure:
@@ -30,7 +33,7 @@ override_dh_auto_configure:
 
 override_dh_auto_build:
 	mkdir -p lib/jni
-	$(DEB_MAVEN_INVOKE) package
+	$(DEB_MAVEN_INVOKE) -Pdist package
 
 override_dh_auto_install:
 	mkdir -p target/package
@@ -43,3 +46,12 @@ override_dh_auto_install:
 	cd target/package/lib/ruby/gems/shared/ && mkdir -p cache gems specifications
 	mh_installpom -pjruby --no-parent core/pom.xml
 	mh_installjar -pjruby --java-lib  core/pom.xml target/package/lib/jruby.jar
+
+override_dh_auto_test:
+ifeq (,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+	$(DEB_MAVEN_INVOKE) -Ptest test
+	./bin/jruby spec/mspec/bin/mspec ci
+	# enable it when jruby-openssl and minitest-excludes are available in the archive
+	#./bin/jruby -S ./bin/rake test:mri19
+	#./bin/jruby -S ./bin/rake test:extended
+endif

@@ -1,0 +1,54 @@
+From: Miguel Landaeta <nomadium@debian.org>
+Date: Thu, 28 May 2015 21:14:25 -0300
+Subject: Disable rake and rspec load through gems
+Forwarded: no
+
+diff --git a/rakelib/rspec.rake b/rakelib/rspec.rake
+index dfdf655..fddd1ca 100644
+--- a/rakelib/rspec.rake
++++ b/rakelib/rspec.rake
+@@ -15,8 +15,9 @@
+ 
+ namespace :spec do
+   # Put Rake on the load path for JI specs without requiring rubygems
+-  rake_location = File.join(Gem.loaded_specs['rake'].full_gem_path, "lib")
+-  gem 'rspec'
++  #rake_location = File.join(Gem.loaded_specs['rake'].full_gem_path, "lib")
++  #gem 'rspec'
++  rake_location = './lib/ruby/1.9/rake.rb'
+   require 'rspec/core/rake_task'
+ 
+   compile_flags = {
+diff --git a/rakelib/test.rake b/rakelib/test.rake
+index 6765a3b..9890c6a 100644
+--- a/rakelib/test.rake
++++ b/rakelib/test.rake
+@@ -113,7 +113,8 @@ namespace :test do
+     t.ruby_opts << '-I test/externals/ruby1.9'
+     t.ruby_opts << '-I test/externals/ruby1.9/ruby'
+     t.ruby_opts << '-r ./test/ruby19_env.rb'
+-    t.ruby_opts << '-r minitest/excludes'
++    # minitest-excludes gem must be packaged first!
++    #t.ruby_opts << '-r minitest/excludes'
+   end
+   
+   permute_tests(:mri, compile_flags) do |t|
+--- a/bin/rake
++++ b/bin/rake
+@@ -19,5 +19,14 @@
+   end
+ end
+ 
+-gem 'rake', version
+-load Gem.bin_path('rake', 'rake', version)
++begin
++  gem 'rake', version
++  load Gem.bin_path('rake', 'rake', version)
++rescue NameError => e # --disable-gems
++  raise unless e.name == :gem
++rescue Gem::LoadError, LoadError
++end
++
++require 'rake'
++
++Rake.application.run

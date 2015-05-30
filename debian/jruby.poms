@@ -4,3 +4,4 @@ lib/pom.xml
 maven/jruby-stdlib/pom.xml
 ext/readline/pom.xml
 maven/jruby-dist/pom.xml
+test/pom.xml

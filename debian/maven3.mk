@@ -3,7 +3,6 @@ DEB_BUILDDIR = .
 JAVACMD = $(JAVA_HOME)/bin/java
 DEB_MAVEN_REPO := $(CURDIR)/debian/maven-repo
 MAVEN_HOME = /usr/share/maven
-DEB_MAVEN_ARGS := -Pdist
 DEB_CLASSPATH = $(MAVEN_HOME)/boot/plexus-classworlds-2.x.jar
 DEB_MAVEN_INVOKE = cd $(DEB_BUILDDIR) && $(JAVACMD) -classpath $(DEB_CLASSPATH) \
                  $(JAVA_OPTS) -Dclassworlds.conf=$(CURDIR)/debian/m2.conf \
