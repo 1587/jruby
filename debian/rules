@@ -46,6 +46,9 @@ override_dh_auto_install:
 	cd target/package/lib/ruby/gems/shared/ && mkdir -p cache gems specifications
 	mh_installpom -pjruby --no-parent core/pom.xml
 	mh_installjar -pjruby --java-lib  core/pom.xml target/package/lib/jruby.jar
+	for platform in i386-Linux x86_64-Linux arm-Linux; do \
+		mkdir -p target/package/lib/jni/$$platform ; \
+	done
 
 override_dh_auto_test:
 ifeq (,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))

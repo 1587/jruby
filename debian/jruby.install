@@ -9,3 +9,4 @@ target/package/bin/rdoc        usr/share/jruby/bin
 target/package/bin/ri          usr/share/jruby/bin
 target/package/bin/testrb      usr/share/jruby/bin
 target/package/lib/ruby        usr/share/jruby/lib
+target/package/lib/jni         usr/share/jruby/lib
