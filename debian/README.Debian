@@ -1,0 +1,16 @@
+jruby for Debian
+----------------
+
+Since ruby package already provides gem, rdoc, ri and testrb binaries
+in /usr/bin and I haven't coordinate yet with Debian Ruby team about
+whether is worthwhile to manage those binaries through alternatives,
+this package is providing those binaries under jruby namespace.
+
+In the meantime, they will be available at the following paths:
+
+* /usr/bin/jruby-gem
+* /usr/bin/jruby-rdoc
+* /usr/bin/jruby-ri
+* /usr/bin/jruby-testrb
+
+ -- Miguel Landaeta <nomadium@debian.org>  Sun, 31 May 2015 19:45:28 -0300
