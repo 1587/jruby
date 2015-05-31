@@ -12,7 +12,7 @@
  * rights and limitations under the License.
  *
  * Copyright (C) 2006 Kresten Krab Thorup <krab@gnu.org>
- * 
+ *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
  * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
@@ -30,6 +30,7 @@ package org.jruby.javasupport.proxy;
 
 import org.jruby.Ruby;
 import org.jruby.RubyArray;
+import org.jruby.RubyBoolean;
 import org.jruby.RubyClass;
 import org.jruby.RubyFixnum;
 import org.jruby.RubyObject;
@@ -38,6 +39,7 @@ import org.jruby.anno.JRubyClass;
 import org.jruby.anno.JRubyMethod;
 import org.jruby.javasupport.JavaClass;
 import org.jruby.javasupport.JavaObject;
+import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 
 @JRubyClass(name="Java::JavaProxyClass")
@@ -47,60 +49,74 @@ public class JavaProxyReflectionObject extends RubyObject {
         super(runtime, metaClass, false);
     }
 
-    protected static void registerRubyMethods(Ruby runtime, RubyClass result) {
-        result.defineAnnotatedMethods(JavaProxyReflectionObject.class);
-
-        result.getMetaClass().defineAlias("__j_allocate","allocate");
+    protected static void registerRubyMethods(Ruby runtime, RubyClass klass) {
+        klass.defineAnnotatedMethods(JavaProxyReflectionObject.class);
+        klass.getMetaClass().defineAlias("__j_allocate", "allocate");
     }
 
+    @Deprecated
+    public IRubyObject op_equal(IRubyObject other) {
+        return op_eqq(getRuntime().getCurrentContext(), other);
+    }
+
+    @Override
+    @JRubyMethod(name = {"==", "eql?"})
+    public RubyBoolean op_eqq(final ThreadContext context, IRubyObject obj) {
+        if ( ! ( obj instanceof JavaProxyReflectionObject ) ) {
+            final Object wrappedObj = obj.dataGetStruct();
+            if ( ! ( wrappedObj instanceof JavaObject ) ) {
+                return context.runtime.getFalse();
+            }
+            obj = (IRubyObject) wrappedObj;
+        }
+        return context.runtime.newBoolean( this.equals(obj) );
+    }
+
+    @Deprecated
+    public IRubyObject same(IRubyObject other) {
+        return op_equal(getRuntime().getCurrentContext(), other);
+    }
+
+    @Override
+    @JRubyMethod(name = "equal?")
+    public RubyBoolean op_equal(final ThreadContext context, IRubyObject obj) {
+        if ( this == obj ) return context.runtime.getTrue();
+
+        if ( ! ( obj instanceof JavaProxyReflectionObject ) ) {
+            final Object wrappedObj = obj.dataGetStruct();
+            if ( ! ( wrappedObj instanceof JavaObject ) ) {
+                return context.runtime.getFalse();
+            }
+            obj = (IRubyObject) wrappedObj;
+        }
+        return context.runtime.newBoolean(this == obj);
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        return this == other;
+    }
+
+    @Override
     @JRubyMethod
     public RubyFixnum hash() {
         return getRuntime().newFixnum(hashCode());
     }
 
+    @Override
+    public int hashCode() {
+        return 11 * getJavaClass().hashCode();
+    }
+
+    @Override
     @JRubyMethod
     public IRubyObject to_s() {
         return getRuntime().newString(toString());
     }
 
-    @JRubyMethod(name = {"==", "eql?"})
-    public IRubyObject op_equal(IRubyObject other) {
-        if (!(other instanceof JavaProxyReflectionObject)) {
-            Object otherObj = other.dataGetStruct();
-            if (!(otherObj instanceof JavaObject)) {
-                return getRuntime().getFalse();
-            }
-            other = (IRubyObject)otherObj;
-        }
-
-        boolean isEqual = equals(other);
-        return isEqual ? getRuntime().getTrue() : getRuntime().getFalse();
-    }
-    
-    public int hashCode() {
-        return getClass().hashCode();
-    }
-
+    @Override
     public String toString() {
         return getClass().getName();
-    }
-
-    public boolean equals(Object other) {
-        return this == other;
-    }
-    
-    @JRubyMethod(name = "equal?")
-    public IRubyObject same(IRubyObject other) {
-        if (!(other instanceof JavaObject)) {
-            Object otherObj = other.dataGetStruct();
-            if (!(otherObj instanceof JavaObject)) {
-                return getRuntime().getFalse();
-            }
-            other = (IRubyObject)otherObj;
-        }
-
-        boolean isSame = this == other;
-        return isSame ? getRuntime().getTrue() : getRuntime().getFalse();
     }
 
     @JRubyMethod
@@ -109,7 +125,7 @@ public class JavaProxyReflectionObject extends RubyObject {
     }
 
     @JRubyMethod
-    public IRubyObject java_class() {
+    public JavaClass java_class() {
         return JavaClass.get(getRuntime(), getJavaClass());
     }
 
@@ -137,20 +153,26 @@ public class JavaProxyReflectionObject extends RubyObject {
     // utility methods
     //
 
-    protected RubyArray buildRubyArray(IRubyObject[] constructors) {
-        RubyArray result = getRuntime().newArray(constructors.length);
-        for (int i = 0; i < constructors.length; i++) {
-            result.append(constructors[i]);
+    @Deprecated
+    protected RubyArray buildRubyArray(IRubyObject[] elements) {
+        RubyArray result = getRuntime().newArray(elements.length);
+        for (int i = 0; i < elements.length; i++) {
+            result.append(elements[i]);
         }
         return result;
     }
 
-    protected RubyArray buildRubyArray(Class[] classes) {
-        RubyArray result = getRuntime().newArray(classes.length);
-        for (int i = 0; i < classes.length; i++) {
-            result.append(JavaClass.get(getRuntime(), classes[i]));
-        }
-        return result;
+    @Deprecated
+    protected RubyArray buildRubyArray(final Class<?>[] classes) {
+        return JavaClass.toRubyArray(getRuntime(), classes);
+    }
+
+    final RubyArray toRubyArray(final IRubyObject[] elements) {
+        return RubyArray.newArrayNoCopy(getRuntime(), elements);
+    }
+
+    final RubyArray toRubyArray(final Class<?>[] classes) {
+        return JavaClass.toRubyArray(getRuntime(), classes);
     }
 
 }

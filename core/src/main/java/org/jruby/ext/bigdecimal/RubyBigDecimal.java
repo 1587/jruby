@@ -562,6 +562,8 @@ public class RubyBigDecimal extends RubyNumeric {
                     return new RubyBigDecimal(runtime, (RubyClass)recv, new BigDecimal(((RubyFixnum)args[0]).getLongValue(), context));
                 } else if (args[0] instanceof RubyBignum) {
                     return new RubyBigDecimal(runtime, (RubyClass)recv, new BigDecimal(((RubyBignum)args[0]).getBigIntegerValue(), context));
+                } else if (!runtime.is1_8()) {
+                    context = MathContext.UNLIMITED;
                 }
                 // fall through to String coercion below
             }
@@ -1091,10 +1093,16 @@ public class RubyBigDecimal extends RubyNumeric {
     }
     
     private IRubyObject op_quo19_20(ThreadContext context, IRubyObject other) {
-        RubyObject preciseOther = getVpValue19(context, other, true);
+        RubyBigDecimal preciseOther = getVpValue19(context, other, true);
         // regular division with some default precision
-        // TODO: proper algorithm to set the precision
-        return op_div(context, preciseOther, getRuntime().newFixnum(200));
+        // proper algorithm to set the precision
+        // the precision is multiple of 4
+        // and the precision is larger than len * 2
+        int len = value.precision() + preciseOther.value.precision();
+        int pow = len / 4;
+        int precision = (pow + 1) * 4 * 2;
+
+        return op_div(context, preciseOther, getRuntime().newFixnum(precision));
     }
     
     private IRubyObject convertDivResult(ThreadContext context, IRubyObject other, IRubyObject result) {
@@ -1188,10 +1196,9 @@ public class RubyBigDecimal extends RubyNumeric {
             // MRI behavior: "If digits is 0, the result is the same as the / operator."
             return op_quo(context, other);
         } else {
-            // TODO: better algorithm to set precision needed
-            int prec = Math.max(200, scale);
+            MathContext mathContext = new MathContext(scale, getRoundingMode(context.runtime));
             return new RubyBigDecimal(getRuntime(),
-                    value.divide(val.value, new MathContext(prec, RoundingMode.HALF_UP))).setResult(scale);
+                    value.divide(val.value, mathContext)).setResult(scale);
         }
     }
     
