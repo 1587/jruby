@@ -1,4 +1,4 @@
-jruby (1.7.19-1) UNRELEASED; urgency=medium
+jruby (1.7.19-1) experimental; urgency=medium
 
   * New upstream release. (Closes: #636554, #773131, #750749).
   * Add /usr/lib/ruby/vendor_ruby to the default $LOAD_PATH. (Closes: #663342).
