@@ -5,10 +5,9 @@
   <parent>
     <groupId>org.jruby</groupId>
     <artifactId>jruby-artifacts</artifactId>
-    <version>1.7.19</version>
+    <version>1.7.20.1</version>
   </parent>
   <artifactId>jruby</artifactId>
-  <packaging>bundle</packaging>
   <name>JRuby Main Maven Artifact</name>
   <properties>
     <jruby.home>${basedir}/../..</jruby.home>

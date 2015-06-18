@@ -149,6 +149,7 @@ import java.io.FileDescriptor;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.net.BindException;
 import java.net.MalformedURLException;
@@ -1255,6 +1256,20 @@ public final class Ruby {
         
         if (!RubyInstanceConfig.DEBUG_PARSER && reflectionWorks) {
             loadService.require("jruby");
+        }
+
+        // attempt to enable unlimited-strength crypto on OpenJDK
+        try {
+            Class jceSecurity = Class.forName("javax.crypto.JceSecurity");
+            Field isRestricted = jceSecurity.getDeclaredField("isRestricted");
+            isRestricted.setAccessible(true);
+            isRestricted.set(null, false);
+            isRestricted.setAccessible(false);
+        } catch (Exception e) {
+            if (isDebug()) {
+                System.err.println("unable to enable unlimited-strength crypto");
+                e.printStackTrace();
+            }
         }
 
         // out of base boot mode
@@ -3036,17 +3051,25 @@ public final class Ruby {
     
     public synchronized void removeEventHook(EventHook hook) {
         EventHook[] hooks = eventHooks;
+
         if (hooks.length == 0) return;
-        EventHook[] newHooks = new EventHook[hooks.length - 1];
-        boolean found = false;
-        for (int i = 0, j = 0; i < hooks.length; i++) {
-            if (!found && hooks[i] == hook && !found) { // exclude first found
-                found = true;
-                continue;
+
+        int pivot = -1;
+        for (int i = 0; i < hooks.length; i++) {
+            if (hooks[i] == hook) {
+                pivot = i;
+                break;
             }
-            newHooks[j] = hooks[i];
-            j++;
         }
+
+        if (pivot == -1) return; // No such hook found.
+
+        EventHook[] newHooks = new EventHook[hooks.length - 1];
+        // copy before and after pivot into the new array but don't bother
+        // to arraycopy if pivot is first/last element of the old list.
+        if (pivot != 0) System.arraycopy(hooks, 0, newHooks, 0, pivot);
+        if (pivot != hooks.length-1) System.arraycopy(hooks, pivot + 1, newHooks, pivot, hooks.length - (pivot + 1));
+
         eventHooks = newHooks;
         hasEventHooks = newHooks.length > 0;
     }
@@ -4931,7 +4954,7 @@ public final class Ruby {
     private EnumMap<DefinedMessage, RubyString> definedMessages = new EnumMap<DefinedMessage, RubyString>(DefinedMessage.class);
     private EnumMap<RubyThread.Status, RubyString> threadStatuses = new EnumMap<RubyThread.Status, RubyString>(RubyThread.Status.class);
 
-    private interface ObjectSpacer {
+    public interface ObjectSpacer {
         public void addToObjectSpace(Ruby runtime, boolean useObjectSpace, IRubyObject object);
     }
 

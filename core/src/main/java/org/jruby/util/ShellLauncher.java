@@ -689,7 +689,7 @@ public class ShellLauncher {
     }
 
     public static Process run(Ruby runtime, IRubyObject string) throws IOException {
-        return run(runtime, new IRubyObject[] {string}, false);
+        return run(runtime, new IRubyObject[]{string}, false);
     }
 
     public static POpenProcess popen(Ruby runtime, IRubyObject string, ModeFlags modes) throws IOException {
@@ -698,6 +698,10 @@ public class ShellLauncher {
 
     public static POpenProcess popen(Ruby runtime, IRubyObject[] strings, Map env, ModeFlags modes) throws IOException {
         return new POpenProcess(popenShared(runtime, strings, env), runtime, modes);
+    }
+
+    public static POpenProcess popen(Ruby runtime, IRubyObject string, Map env, ModeFlags modes) throws IOException {
+        return new POpenProcess(popenShared(runtime, new IRubyObject[] {string}, env, true), runtime, modes);
     }
     
     @Deprecated
@@ -748,10 +752,10 @@ public class ShellLauncher {
             }
 
             String[] args = parseCommandLine(runtime.getCurrentContext(), runtime, strings);
-            boolean useShell = false;
+            LaunchConfig lc = new LaunchConfig(runtime, strings, false);
+            boolean useShell = Platform.IS_WINDOWS ? lc.shouldRunInShell() : false;
             if (addShell) for (String arg : args) useShell |= shouldUseShell(arg);
-            
-            // CON: popen is a case where I think we should just always shell out.
+
             if (strings.length == 1) {
                 if (useShell) {
                     // single string command, pass to sh to expand wildcards

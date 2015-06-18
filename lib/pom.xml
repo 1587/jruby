@@ -5,7 +5,7 @@
   <parent>
     <groupId>org.jruby</groupId>
     <artifactId>jruby-parent</artifactId>
-    <version>1.7.19</version>
+    <version>1.7.20.1</version>
   </parent>
   <artifactId>jruby-lib</artifactId>
   <packaging>pom</packaging>
@@ -21,12 +21,12 @@
     <dependency>
       <groupId>org.jruby</groupId>
       <artifactId>jruby-core</artifactId>
-      <version>1.7.19</version>
+      <version>1.7.20.1</version>
     </dependency>
     <dependency>
       <groupId>rubygems</groupId>
       <artifactId>jruby-openssl</artifactId>
-      <version>0.9.5</version>
+      <version>0.9.7</version>
       <type>gem</type>
     </dependency>
     <dependency>
@@ -49,32 +49,8 @@
     </dependency>
     <dependency>
       <groupId>rubygems</groupId>
-      <artifactId>krypt</artifactId>
-      <version>0.0.2</version>
-      <type>gem</type>
-    </dependency>
-    <dependency>
-      <groupId>rubygems</groupId>
-      <artifactId>krypt-core</artifactId>
-      <version>0.0.2</version>
-      <type>gem</type>
-    </dependency>
-    <dependency>
-      <groupId>rubygems</groupId>
-      <artifactId>krypt-provider-jdk</artifactId>
-      <version>0.0.2</version>
-      <type>gem</type>
-    </dependency>
-    <dependency>
-      <groupId>rubygems</groupId>
-      <artifactId>ffi</artifactId>
-      <version>1.9.3</version>
-      <type>gem</type>
-    </dependency>
-    <dependency>
-      <groupId>rubygems</groupId>
       <artifactId>jar-dependencies</artifactId>
-      <version>0.1.2</version>
+      <version>0.1.13</version>
       <type>gem</type>
     </dependency>
     <dependency>
