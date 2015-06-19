@@ -1,3 +1,14 @@
+jruby (1.7.20.1-1) experimental; urgency=medium
+
+  * New upstream release.
+    This release updates Rubygems included copy to 2.4.8 in order to address
+    CVE-2015-1855, to resolve some problems with wildcard matching of
+    hostnames.
+  * Add new patch:
+    - 0009-Disable-bigdecimal-divmod-spec-failing-test.patch.
+
+ -- Miguel Landaeta <nomadium@debian.org>  Thu, 18 Jun 2015 21:34:53 -0300
+
 jruby (1.7.19-1) experimental; urgency=medium
 
   * New upstream release. (Closes: #636554, #773131, #750749).
