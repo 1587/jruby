@@ -59,9 +59,20 @@ Vcs-Browser: http://anonscm.debian.org/gitweb/?p=pkg-java/jruby.git
 
 Package: jruby
 Architecture: all
-Depends: default-jre | java6-runtime, libjffi-jni, libjansi-java, ${misc:Depends}
+Depends: default-jre | java6-runtime,
+         libheadius-options-java,
+         libinvokebinder-java,
+         libjansi-java,
+         libjcodings-java,
+         libjffi-jni,
+         libjnr-enxio-java,
+         libjnr-netdb-java (>= 1.1.4~),
+         libjnr-unixsocket-java,
+         libyaml-snake-java,
+         nailgun (>= 0.9.1~),
+         libyecht-java (>= 1.0~),
+         ${misc:Depends}
 Recommends: ri
-Suggests: nailgun
 Description: 100% pure-Java implementation of Ruby
  JRuby is a high performance, stable, fully threaded Java implementation
  of the Ruby programming language.
