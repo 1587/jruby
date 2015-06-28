@@ -7,6 +7,7 @@ Uploaders: Miguel Landaeta <nomadium@debian.org>,
 Build-Depends: ant-optional,
                bnd,
                debhelper (>= 9~),
+               jruby-openssl,
                junit4,
                libasm4-java,
                libbsf-java,
@@ -86,7 +87,7 @@ Depends: default-jre | java6-runtime,
          nailgun (>= 0.9.1~),
          libyecht-java (>= 1.0~),
          ${misc:Depends}
-Recommends: ri
+Recommends: ri, jruby-openssl
 Description: 100% pure-Java implementation of Ruby
  JRuby is a high performance, stable, fully threaded Java implementation
  of the Ruby programming language.
