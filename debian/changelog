@@ -1,3 +1,9 @@
+jruby (1.7.20.1-3) UNRELEASED; urgency=medium
+
+  * Add missing dependencies for jruby binary package. (Closes: #771694).
+
+ -- Miguel Landaeta <nomadium@debian.org>  Sun, 28 Jun 2015 16:51:24 -0300
+
 jruby (1.7.20.1-2) unstable; urgency=medium
 
   * Upload to unstable.
