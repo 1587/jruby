@@ -87,6 +87,7 @@ Depends: default-jre | java6-runtime,
          libyecht-java (>= 1.0~),
          ${misc:Depends}
 Recommends: ri
+Provides: ruby-interpreter
 Description: 100% pure-Java implementation of Ruby
  JRuby is a high performance, stable, fully threaded Java implementation
  of the Ruby programming language.
