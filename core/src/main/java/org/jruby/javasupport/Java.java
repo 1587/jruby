@@ -1148,10 +1148,12 @@ public class Java implements Library {
             }
             final RubyProc proc = (RubyProc) self;
             final IRubyObject[] newArgs;
-            if ( args.length == 1 ) newArgs = IRubyObject.NULL_ARRAY;
-            else {
-                newArgs = new IRubyObject[ args.length - 1 ];
-                System.arraycopy(args, 1, newArgs, 0, newArgs.length);
+            switch( args.length ) {
+                case 1 :  newArgs = IRubyObject.NULL_ARRAY; break;
+                case 2 :  newArgs = new IRubyObject[] { args[1] }; break;
+                case 3 :  newArgs = new IRubyObject[] { args[1], args[2] }; break;
+                default : newArgs = new IRubyObject[ args.length - 1 ];
+                    System.arraycopy(args, 1, newArgs, 0, newArgs.length);
             }
             return proc.call(context, newArgs);
         }

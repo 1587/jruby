@@ -21,17 +21,14 @@ class ImportedGem
     end
   end
 end
-require 'rexml/document'
-require 'rexml/xpath'
 
-# the versions are declared in ../pom.xml
 default_gems =
   [
    ImportedGem.new( 'jruby-openssl', '0.9.7', true ),
    ImportedGem.new( 'rake', 'rake.version', true ),
    ImportedGem.new( 'rdoc', 'rdoc.version', true ),
    ImportedGem.new( 'json', 'json.version', true, false ),
-   ImportedGem.new( 'jar-dependencies', '0.1.13', true )
+   ImportedGem.new( 'jar-dependencies', '0.1.15', true )
   ]
 
 project 'JRuby Lib Setup' do
@@ -86,7 +83,7 @@ project 'JRuby Lib Setup' do
   # this is not an artifact for maven central
   plugin :deploy, :skip => true
 
-  gem 'ruby-maven', '3.1.1.0.8', :scope => :provided
+  gem 'ruby-maven', '3.3.3', :scope => :provided
 
   execute :install_gems, :package do |ctx|
     require 'fileutils'
@@ -132,8 +129,8 @@ project 'JRuby Lib Setup' do
       ghome = a.scope == 'compile' ? gem_home : jruby_gems
       if Dir[ File.join( ghome, 'cache', File.basename( a.file.to_pathname ).sub( /.gem/, '*.gem' ) ) ].empty?
         puts a.file.to_pathname
-        # do not set bin_dir since its create absolute symbolic links
         installer = Gem::Installer.new( a.file.to_pathname,
+                                        :wrappers => true,
                                         :ignore_dependencies => true,
                                         :install_dir => ghome )
         installer.install

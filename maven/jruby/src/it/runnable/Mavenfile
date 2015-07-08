@@ -11,13 +11,13 @@ gem 'bundler', '1.7.7'
 
 pom 'org.jruby:jruby', '${jruby.version}'
 
-jar 'de.saumya.mojo:jruby-mains', '0.1.0'
+jar 'de.saumya.mojo:jruby-mains', '0.2.0'
 
 build do
   directory 'pkg'
 end
 
-files = [ 'config.ru', '*file', '*file.lock', '.jbundler/classpath.rb',
+files = [ '.rspec', 'config.ru', '*file', '*file.lock', '.jbundler/classpath.rb',
           'lib/**', 'app/**', 'config/**', 'vendor/**', 'spec/**' ]
 jruby_plugin!( :gem,
                # need a jruby-complete from maven central here
@@ -26,6 +26,11 @@ jruby_plugin!( :gem,
                :includeRubygemsInResources => true ) do
   execute_goals( 'generate-resources', 'process-resources', :includeBinStubs => true, :includeRubyResources => files )
 end
+
+plugin :jar, '2.4', :outputDirectory => '.', :finalName => 'runnable' do
+  execute_goal :jar, :phase => :'prepare-package'
+end
+plugin :clean, '2.4', :filesets => [ { :directory => '.', :includes => ['runnable.jar', '*/**/*.jar'] } ]
 
 if File.file?('Jarfile.lock')
   phase 'generate-resources' do
@@ -63,7 +68,6 @@ phase :package do
   plugin( 'org.codehaus.mojo:exec-maven-plugin:1.2',
           :executable => 'java',
           :environmentVariables => {
-            'PATH' => '${basedir}',
             'HOME' => '${basedir}',
             'GEM_PATH' => '${basedir}',
             'GEM_HOME' => '${basedir}'
@@ -72,9 +76,12 @@ phase :package do
     execute_goal( :exec, :id => 'rake -T',
                   :arguments => [ '-jar', 'runnable.jar', '-S', 'rake', '-T' ] )
     
+    execute_goal( :exec, :id => 'rake spec',
+                  :arguments => [ '-jar', 'runnable.jar', '-S', 'rake', 'spec' ] )
+
     execute_goal( :exec, :id => 'rspec',
                   :arguments => [ '-jar', 'runnable.jar', '-S', 'rspec' ] )
-    
+
   end
 end
  
