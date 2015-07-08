@@ -48,6 +48,24 @@ class TestFile < Test::Unit::TestCase
     assert_equal("/", File.basename("/"))
   end
 
+  def test_basename_uri_like_paths
+    assert_equal('uri:classloader:/', File.basename('uri:classloader:/'))
+    assert_equal('uri:classloader://', File.basename('uri:classloader://'))
+    assert_equal('uri:file:/', File.basename('uri:file:/'))
+    assert_equal('uri:file://', File.basename('uri:file://'))
+    assert_equal('classpath:/', File.basename('classpath:/'))
+    assert_equal('classpath://', File.basename('classpath://'))
+    assert_equal('file:/', File.basename('file:/'))
+    assert_equal('file://', File.basename('file://'))
+    assert_equal('jar:file:/my.jar!/', File.basename('jar:file:/my.jar!/'))
+    assert_equal('jar:file://my.jar!/', File.basename('jar:file://my.jar!/'))
+    assert_equal('jar:/my.jar!/', File.basename('jar:/my.jar!/'))
+    assert_equal('jar://my.jar!/', File.basename('jar://my.jar!/'))
+    assert_equal('file:/my.jar!/', File.basename('file:/my.jar!/'))
+    assert_equal('file://my.jar!/', File.basename('file://my.jar!/'))
+    assert_equal('my.jar!/', File.basename('my.jar!/'))
+  end
+
   # Added to add more flexibility on windows.  Depending on subsystem (msys,
   # cygwin, cmd) environment sometimes we have mixed case drive letters.  Since
   # windows is still case insensitive, downcasing seems a simple solution.
@@ -244,6 +262,62 @@ class TestFile < Test::Unit::TestCase
       assert_equal "file:/bar", File.expand_path("file:/foo/../bar")
       assert_equal "file:/foo/bar/baz", File.expand_path("baz", "file:/foo/bar")
       assert_equal "file:/foo/bar", File.expand_path("file:/foo/bar", "file:/baz/quux")
+      assert_equal "file:/foo/bar", File.expand_path("../../foo/bar", "file:/baz/quux")
+      assert_equal "file:/foo/bar", File.expand_path("../../../foo/bar", "file:/baz/quux")
+    end
+    
+    def test_expand_path_with_jar_prefix
+      jruby_specific_test
+      assert_equal "file:/my.jar!/foo/bar", File.expand_path("file:/my.jar!/foo/bar")
+      assert_equal "file:/my.jar!/bar", File.expand_path("file:/my.jar!/foo/../bar")
+      assert_equal "file:/my.jar!/foo/bar/baz", File.expand_path("baz", "file:/my.jar!/foo/bar")
+      assert_equal "file:/my.jar!/foo/bar", File.expand_path("file:/my.jar!/foo/bar", "file:/my.jar!/baz/quux")
+      assert_equal "file:/my.jar!/foo/bar", File.expand_path("../../foo/bar", "file:/my.jar!/baz/quux")
+      #assert_equal "file:/my.jar!/foo/bar", File.expand_path("../../../foo/bar", "file:/my.jar!/baz/quux")
+    end
+    
+    def test_expand_path_with_jar_file_prefix
+      jruby_specific_test
+      assert_equal "jar:file:/my.jar!/foo/bar", File.expand_path("jar:file:/my.jar!/foo/bar")
+      assert_equal "jar:file:/my.jar!/bar", File.expand_path("jar:file:/my.jar!/foo/../bar")
+      assert_equal "jar:file:/my.jar!/foo/bar/baz", File.expand_path("baz", "jar:file:/my.jar!/foo/bar")
+      assert_equal "jar:file:/my.jar!/foo/bar", File.expand_path("jar:file:/my.jar!/foo/bar", "file:/my.jar!/baz/quux")
+      assert_equal "jar:file:/my.jar!/foo/bar", File.expand_path("../../foo/bar", "jar:file:/my.jar!/baz/quux")
+      #assert_equal "jar:file:/my.jar!/foo/bar", File.expand_path("../../../foo/bar", "jar:file:/my.jar!/baz/quux")
+    end
+
+    def test_expand_path_with_uri_file_prefix
+      jruby_specific_test
+      assert_equal "uri:file:/foo/bar", File.expand_path("uri:file:/foo/bar")
+      #assert_equal "uri:file:/bar", File.expand_path("uri:file:/foo/../bar")
+      # TODO why uri:file:// ?
+      assert_equal "uri:file://foo/bar/baz", File.expand_path("baz", "uri:file:/foo/bar")
+      assert_equal "uri:file:/foo/bar", File.expand_path("uri:file:/foo/bar", "uri:file:/baz/quux")
+      # TODO why uri:file:// ?
+      assert_equal "uri:file://foo/bar", File.expand_path("../../foo/bar", "uri:file:/baz/quux")
+      assert_equal "uri:file:/foo/bar", File.expand_path("../../../foo/bar", "uri:file:/baz/quux")
+    end
+
+    def test_expand_path_with_uri_classloader_prefix
+      jruby_specific_test
+      assert_equal "uri:classloader:/foo/bar", File.expand_path("uri:classloader:/foo/bar")
+      #assert_equal "uri:classloader:/bar", File.expand_path("uri:classloader:/foo/../bar")
+      # TODO why uri:classloader:// ?
+      assert_equal "uri:classloader://foo/bar/baz", File.expand_path("baz", "uri:classloader:/foo/bar")
+      assert_equal "uri:classloader:/foo/bar", File.expand_path("uri:classloader:/foo/bar", "uri:classloader:/baz/quux")
+      # TODO why uri:classloader:// ?
+      assert_equal "uri:classloader://foo/bar", File.expand_path("../../foo/bar", "uri:classloader:/baz/quux")
+      assert_equal "uri:classloader:/foo/bar", File.expand_path("../../../foo/bar", "uri:classloader:/baz/quux")
+    end
+
+    def test_expand_path_with_classpath_prefix
+      jruby_specific_test
+      assert_equal "classpath:/foo/bar", File.expand_path("classpath:/foo/bar")
+      #assert_equal "classpath:/bar", File.expand_path("classpath:/foo/../bar")
+      assert_equal "classpath:/foo/bar/baz", File.expand_path("baz", "classpath:/foo/bar")
+      assert_equal "classpath:/foo/bar", File.expand_path("classpath:/foo/bar", "classpath:/baz/quux")
+      assert_equal "classpath:/foo/bar", File.expand_path("../../foo/bar", "classpath:/baz/quux")
+      assert_equal "classpath:/foo/bar", File.expand_path("../../../foo/bar", "classpath:/baz/quux")
     end
 
     def test_expand_path_with_file_url_relative_path
@@ -279,6 +353,15 @@ class TestFile < Test::Unit::TestCase
       FileUtils.rm_rf("test_mkdir_with_file_uri_works_as_expected")
     end
 
+    # GH-2972
+    def test_mkdir_with_file_uri_and_absolute_path_works_as_expected
+      # the extra slashes were the problem
+      FileUtils.mkdir("file://#{Dir.pwd}/test_mkdir_with_file_uri_works_as_expected")
+      assert File.directory?("#{Dir.pwd}/test_mkdir_with_file_uri_works_as_expected")
+    ensure
+      FileUtils.rm_rf("#{Dir.pwd}/test_mkdir_with_file_uri_works_as_expected")
+    end
+
     def test_expand_path_corner_case
       # this would fail on MRI 1.8.6 (MRI returns "/foo").
       assert_equal("//foo", File.expand_path("../foo", "//bar"))
@@ -297,6 +380,33 @@ class TestFile < Test::Unit::TestCase
     assert_equal("/a", File.dirname("/a/b"))
     assert_equal("/a", File.dirname("/a/b/"))
     assert_equal("/", File.dirname("/"))
+  end
+
+  def test_dirname_file_protocol
+    assert_equal("file:/a", File.dirname("file:/a/b"))
+    assert_equal("file:/", File.dirname("file:/a"))
+    assert_equal("file:/", File.dirname("file:/"))
+    assert_equal("uri:file:/a", File.dirname("uri:file:/a/b"))
+    assert_equal("uri:file:/", File.dirname("uri:file:/a"))
+    assert_equal("uri:file:/", File.dirname("uri:file:/"))
+  end
+
+  def test_dirname_uri_classloader_protocol
+    assert_equal("uri:classloader:/a", File.dirname("uri:classloader:/a/b"))
+    assert_equal("uri:classloader:/", File.dirname("uri:classloader:/a"))
+    assert_equal("uri:classloader:/", File.dirname("uri:classloader:/"))
+  end
+
+  def test_dirname_jar_protocol
+    assert_equal("/my.jar!/a", File.dirname("/my.jar!/a/b"))
+    assert_equal("/my.jar!", File.dirname("/my.jar!/a"))
+    assert_equal("/my.jar!", File.dirname("/my.jar!/"))
+    assert_equal("file:/my.jar!/a", File.dirname("file:/my.jar!/a/b"))
+    assert_equal("file:/my.jar!", File.dirname("file:/my.jar!/a"))
+    assert_equal("file:/my.jar!", File.dirname("file:/my.jar!/"))
+    assert_equal("jar:file:/my.jar!/a", File.dirname("jar:file:/my.jar!/a/b"))
+    assert_equal("jar:file:/my.jar!", File.dirname("jar:file:/my.jar!/a"))
+    assert_equal("jar:file:/my.jar!", File.dirname("jar:file:/my.jar!/"))
   end
 
   def test_extname
@@ -875,6 +985,26 @@ class TestFile < Test::Unit::TestCase
 
       assert !File.file?(filename)
       assert !File.exist?(filename)
+    end
+  end
+
+  def test_file_with_absolute_path_and_uri_path_as_cwd
+    filename = File.expand_path( 'test_absolute_path_and_uri_path_as_cwd' )
+
+    Dir.chdir('uri:classloader:/') do
+      begin
+        f = File.new(filename, File::CREAT)
+        assert_equal(nil, f.read(1))
+
+        assert File.file?(filename)
+        assert File.exist?(filename)
+      ensure
+        f.close
+        File.delete(filename)
+
+        assert !File.file?(filename)
+        assert !File.exist?(filename)
+      end
     end
   end
 

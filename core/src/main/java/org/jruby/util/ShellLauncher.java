@@ -1365,8 +1365,16 @@ public class ShellLauncher {
                     log(runtime, "Launching directly (no shell)");
                     cfg.verifyExecutableForDirect();
                 }
-
-                aProcess = buildProcess(runtime, cfg.getExecArgs(), getCurrentEnv(runtime), pwd);
+                String[] args = cfg.execArgs;
+                // only if we inside a jar and spawning org.jruby.Main we
+                // change to the current directory inside the jar
+                if (runtime.getCurrentDirectory().startsWith("uri:classloader:") &&
+                        args[args.length - 1].contains("org.jruby.Main")) {
+                    pwd = new File(System.getProperty("user.dir"));
+                    args[args.length - 1] = args[args.length - 1].replace("org.jruby.Main",
+                            "org.jruby.Main -C " + runtime.getCurrentDirectory());
+                }
+                aProcess = buildProcess(runtime, args, getCurrentEnv(runtime), pwd);
             }
         } catch (SecurityException se) {
             throw runtime.newSecurityError(se.getLocalizedMessage());
@@ -1619,7 +1627,7 @@ public class ShellLauncher {
         return RbConfigLibrary.jrubyShell();
     }
 
-    private static boolean shouldUseShell(String command) {
+    public static boolean shouldUseShell(String command) {
         boolean useShell = false;
         for (char c : command.toCharArray()) {
             if (c != ' ' && !Character.isLetter(c) && "*?{}[]<>()~&|\\$;'`\"\n".indexOf(c) != -1) {

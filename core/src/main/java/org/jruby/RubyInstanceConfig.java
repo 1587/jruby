@@ -29,22 +29,26 @@
 package org.jruby;
 
 import jnr.posix.util.Platform;
+
 import org.jruby.ast.executable.Script;
 import org.jruby.compiler.ASTCompiler;
 import org.jruby.compiler.ASTCompiler19;
-import org.jruby.exceptions.MainExitException;
 import org.jruby.embed.util.SystemPropertyCatcher;
+import org.jruby.exceptions.MainExitException;
 import org.jruby.runtime.Constants;
 import org.jruby.runtime.backtrace.TraceType;
 import org.jruby.runtime.load.LoadService;
 import org.jruby.runtime.load.LoadService19;
 import org.jruby.runtime.profile.builtin.ProfileOutput;
 import org.jruby.util.ClassCache;
+import org.jruby.util.ClasspathLauncher;
+import org.jruby.util.FileResource;
 import org.jruby.util.InputStreamMarkCursor;
 import org.jruby.util.JRubyFile;
 import org.jruby.util.KCode;
 import org.jruby.util.NormalizedFile;
 import org.jruby.util.SafePropertyAccessor;
+import org.jruby.util.URLResource;
 import org.jruby.util.cli.ArgumentProcessor;
 import org.jruby.util.cli.Options;
 import org.jruby.util.cli.OutputStrings;
@@ -55,13 +59,13 @@ import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.math.BigDecimal;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -138,12 +142,13 @@ public class RubyInstanceConfig {
         // default ClassCache using jitMax as a soft upper bound
         classCache = new ClassCache<Script>(loader, jitMax);
         threadDumpSignal = Options.THREAD_DUMP_SIGNAL.load();
-        
+
+        environment = new HashMap<String,String>();
         try {
-            environment = System.getenv();
+            environment.putAll(System.getenv());
         } catch (SecurityException se) {
-            environment = new HashMap();
         }
+        setupEnvironment(getJRubyHome());
     }
     
     public RubyInstanceConfig(RubyInstanceConfig parentConfig) {
@@ -168,11 +173,12 @@ public class RubyInstanceConfig {
 
         classCache = new ClassCache<Script>(loader, jitMax);
 
+        environment = new HashMap<String, String>();
         try {
-            environment = System.getenv();
+            environment.putAll(System.getenv());
         } catch (SecurityException se) {
-            environment = new HashMap();
         }
+        setupEnvironment(getJRubyHome());
     }
     
     public RubyInstanceConfig(final InputStream in, final PrintStream out, final PrintStream err) {
@@ -407,38 +413,33 @@ public class RubyInstanceConfig {
                 }
                 return getInput();
             } else {
-                String script = getScriptFileName();
-                InputStream stream = null;
-                if (script.startsWith("file:") && script.indexOf(".jar!/") != -1) {
-                    stream = new URL("jar:" + script).openStream();
-                } else if (script.startsWith("classpath:")) {
-                    stream = Ruby.getClassLoader().getResourceAsStream(script.substring("classpath:".length()));
-                } else {
-                    File file = JRubyFile.create(getCurrentDirectory(), getScriptFileName());
-                    if (isXFlag()) {
-                        // search for a shebang line and
-                        // return the script between shebang and __END__ or CTRL-Z (0x1A)
-                        return findScript(file);
+                final String script = getScriptFileName();
+                FileResource resource = JRubyFile.createRestrictedResource(getCurrentDirectory(), getScriptFileName());
+                if (resource != null && resource.exists()) {
+                    if (resource.isFile() || resource.isSymLink()) {
+                        if (isXFlag()) {
+                            // search for a shebang line and
+                            // return the script between shebang and __END__ or CTRL-Z (0x1A)
+                            return findScript(resource.inputStream());
+                        }
+                        return new BufferedInputStream(resource.inputStream(), 8192);
                     }
-                    stream = new FileInputStream(file);
+                    else {
+                        throw new FileNotFoundException(script + " (Not a file)");
+                    }
                 }
-
-                return new BufferedInputStream(stream, 8192);
+                else {
+                    throw new FileNotFoundException(script + " (No such file or directory)");
+                }
             }
         } catch (IOException e) {
-            // We haven't found any file directly on the file system,
-            // now check for files inside the JARs.
-            InputStream is = getJarScriptSource(scriptFileName);
-            if (is != null) {
-                return new BufferedInputStream(is, 8129);
-            }
             throw new MainExitException(1, "Error opening script file: " + e.getMessage());
         }
     }
 
-    private static InputStream findScript(File file) throws IOException {
-        StringBuffer buf = new StringBuffer();
-        BufferedReader br = new BufferedReader(new FileReader(file));
+    private static InputStream findScript(InputStream is) throws IOException {
+        StringBuilder buf = new StringBuilder();
+        BufferedReader br = new BufferedReader(new InputStreamReader(is));
         String currentLine = br.readLine();
         while (currentLine != null && !isRubyShebangLine(currentLine)) {
             currentLine = br.readLine();
@@ -450,32 +451,11 @@ public class RubyInstanceConfig {
         do {
             currentLine = br.readLine();
             if (currentLine != null) {
-            buf.append(currentLine);
-            buf.append("\n");
+                buf.append(currentLine);
+                buf.append("\n");
             }
         } while (!(currentLine == null || currentLine.contains("__END__") || currentLine.contains("\026")));
         return new BufferedInputStream(new ByteArrayInputStream(buf.toString().getBytes()), 8192);
-    }
-
-    private static InputStream getJarScriptSource(String scriptFileName) {
-        boolean looksLikeJarURL = scriptFileName.startsWith("file:") && scriptFileName.indexOf("!/") != -1;
-        if (!looksLikeJarURL) {
-            return null;
-        }
-
-        String before = scriptFileName.substring("file:".length(), scriptFileName.indexOf("!/"));
-        String after =  scriptFileName.substring(scriptFileName.indexOf("!/") + 2);
-
-        try {
-            JarFile jFile = new JarFile(before);
-            JarEntry entry = jFile.getJarEntry(after);
-
-            if (entry != null && !entry.isDirectory()) {
-                return jFile.getInputStream(entry);
-            }
-        } catch (IOException ignored) {
-        }
-        return null;
     }
 
     public String displayedFileName() {
@@ -533,6 +513,7 @@ public class RubyInstanceConfig {
 
     public void setJRubyHome(String home) {
         jrubyHome = verifyHome(home, error);
+        setupEnvironment(jrubyHome);
     }
 
     public CompileMode getCompileMode() {
@@ -719,8 +700,19 @@ public class RubyInstanceConfig {
     }
 
     public void setEnvironment(Map newEnvironment) {
-        if (newEnvironment == null) newEnvironment = new HashMap();
-        environment = newEnvironment;
+        environment = new HashMap<String, String>();
+        if (newEnvironment != null) {
+            environment.putAll(newEnvironment);
+        }
+        setupEnvironment(getJRubyHome());
+    }
+
+    private void setupEnvironment(String jrubyHome) {
+        if (!new File(jrubyHome).exists() && !environment.containsKey("RUBY")) {
+            // the assumption that if JRubyHome is not a regular file that jruby
+            // got launched in an embedded fashion
+            environment.put("RUBY", ClasspathLauncher.jrubyCommand(defaultClassLoader()) );
+        }
     }
 
     public Map getEnvironment() {
@@ -1435,6 +1427,18 @@ public class RubyInstanceConfig {
         this.profilingService = service;
     }
 
+    public static ClassLoader defaultClassLoader() {
+        ClassLoader loader = RubyInstanceConfig.class.getClassLoader();
+
+        // loader can be null for example when jruby comes from the boot-classLoader
+
+        if (loader == null) {
+            loader = Thread.currentThread().getContextClassLoader();
+        }
+
+        return loader;
+    }
+
     ////////////////////////////////////////////////////////////////////////////
     // Configuration fields.
     ////////////////////////////////////////////////////////////////////////////
@@ -1460,7 +1464,7 @@ public class RubyInstanceConfig {
     private String currentDirectory;
 
     /** Environment variables; defaults to System.getenv() in constructor */
-    private Map environment;
+    private Map<String, String> environment;
     private String[] argv = {};
 
     private final boolean jitLogging;

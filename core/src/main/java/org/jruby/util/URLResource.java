@@ -18,14 +18,12 @@ import jnr.posix.FileStat;
 
 import org.jruby.Ruby;
 import org.jruby.util.io.ChannelDescriptor;
-import org.jruby.Ruby;
-import org.jruby.exceptions.RaiseException;
 import org.jruby.util.io.ModeFlags;
 
 public class URLResource extends AbstractFileResource {
 
     public static String URI = "uri:";
-    public static String CLASSLOADER = "classloader:/";
+    public static String CLASSLOADER = "classloader:";
     public static String URI_CLASSLOADER = URI + CLASSLOADER;
 
     private final String uri;
@@ -150,10 +148,8 @@ public class URLResource extends AbstractFileResource {
         return new ChannelDescriptor(inputStream(), flags);
     }
 
-    public static FileResource createClassloaderURI(Ruby runtime, String pathname) {
-        // retrieve the classloader from the runtime if available otherwise mimic how the runtime got its classloader and
-        // take this
-        ClassLoader cl = runtime != null ? runtime.getJRubyClassLoader() : URLResource.class.getClassLoader();
+    public static FileResource create(ClassLoader cl, String pathname) {
+        // fall back on thread context classloader
         if (cl == null ) {
             cl = Thread.currentThread().getContextClassLoader();
         }
@@ -165,10 +161,17 @@ public class URLResource extends AbstractFileResource {
         }
         URL url = cl.getResource(pathname);
         String[] files = listClassLoaderFiles(cl, pathname);
-        return new URLResource(URI_CLASSLOADER + pathname,
+        return new URLResource(URI_CLASSLOADER + "/" + pathname,
                                cl,
                                url == null ? null : pathname,
                                files);
+    }
+
+    public static FileResource createClassloaderURI(Ruby runtime, String pathname) {
+        // retrieve the classloader from the runtime if available otherwise mimic how the runtime got its classloader and
+        // take this
+        ClassLoader cl = runtime != null ? runtime.getJRubyClassLoader() : URLResource.class.getClassLoader();
+        return create(cl, pathname);
     }
 
     public static FileResource create(Ruby runtime, String pathname)
@@ -176,7 +179,8 @@ public class URLResource extends AbstractFileResource {
         if (!pathname.startsWith(URI)) {
             return null;
         }
-        pathname = pathname.substring(URI.length());
+        // GH-2005 needs the replace
+        pathname = pathname.substring(URI.length()).replace("\\", "/");
         if (pathname.startsWith(CLASSLOADER)) {
             return createClassloaderURI(runtime, pathname.substring(CLASSLOADER.length()));
         }
@@ -306,8 +310,8 @@ public class URLResource extends AbstractFileResource {
 
     public static URL getResourceURL(Ruby runtime, String location)
     {
-        if (location.startsWith(URI + CLASSLOADER)){
-            return runtime.getJRubyClassLoader().getResource(location.substring(URI_CLASSLOADER.length()));
+        if (location.startsWith(URI_CLASSLOADER)){
+            return runtime.getJRubyClassLoader().getResource(location.substring(URI_CLASSLOADER.length() + 1));
         }
         try
         {

@@ -5,7 +5,7 @@
   <parent>
     <groupId>org.jruby</groupId>
     <artifactId>jruby-parent</artifactId>
-    <version>1.7.20.1</version>
+    <version>1.7.21</version>
   </parent>
   <artifactId>jruby-lib</artifactId>
   <packaging>pom</packaging>
@@ -21,7 +21,7 @@
     <dependency>
       <groupId>org.jruby</groupId>
       <artifactId>jruby-core</artifactId>
-      <version>1.7.20.1</version>
+      <version>1.7.21</version>
     </dependency>
     <dependency>
       <groupId>rubygems</groupId>
@@ -50,13 +50,13 @@
     <dependency>
       <groupId>rubygems</groupId>
       <artifactId>jar-dependencies</artifactId>
-      <version>0.1.13</version>
+      <version>0.1.15</version>
       <type>gem</type>
     </dependency>
     <dependency>
       <groupId>rubygems</groupId>
       <artifactId>ruby-maven</artifactId>
-      <version>3.1.1.0.8</version>
+      <version>3.3.3</version>
       <type>gem</type>
       <scope>provided</scope>
     </dependency>
