@@ -53,11 +53,22 @@ override_dh_auto_install:
 
 override_dh_auto_test:
 ifeq (,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+	# setup links to jruby-openssl library, so tests relying on that can work
+	for file in /usr/share/jruby/lib/ruby/shared/*ssl* \
+	/usr/share/jruby/lib/ruby/shared/*org*; do \
+		ln -s $$file ./lib/ruby/shared ; \
+	done
+
 	$(DEB_MAVEN_INVOKE) -Ptest test
 	./bin/jruby spec/mspec/bin/mspec ci
-	# enable it when jruby-openssl and minitest-excludes are available in the archive
+	# enable it when minitest-excludes is available in the archive
 	#./bin/jruby -S ./bin/rake test:mri19
 	#./bin/jruby -S ./bin/rake test:extended
+
+	# remove links to jruby-openssl library
+	for file in ./lib/ruby/shared/*ssl* ./lib/ruby/shared/*org*; do \
+		unlink $$file ; \
+	done
 endif
 
 get-orig-source:

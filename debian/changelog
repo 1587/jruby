@@ -1,6 +1,9 @@
-jruby (1.7.21-2) UNRELEASED; urgency=medium
+jruby (1.7.21-2) UNRELEASED; urgency=high
 
   * Fix FTBFS due to Maven 3.3.x changes.
+  * Provide full cryptographic support:
+    - Add Recommends on jruby-openssl. (Closes: #743746).
+    - Add Build-Depends on jruby-openssl for unit tests during build-time.
 
  -- Miguel Landaeta <nomadium@debian.org>  Tue, 14 Jul 2015 20:20:23 -0300
 
