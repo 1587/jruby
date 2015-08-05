@@ -4,8 +4,9 @@ jruby (1.7.21-3) UNRELEASED; urgency=medium
     - Added a lintian override for codeless-jar warning.
   * Install jruby-noasm Maven artifact.
   * Install correct jruby-core Maven artifact.
+  * Install jruby-core-noasm Maven artifact.
 
- -- Miguel Landaeta <nomadium@debian.org>  Tue, 04 Aug 2015 22:54:21 -0300
+ -- Miguel Landaeta <nomadium@debian.org>  Wed, 05 Aug 2015 20:33:49 -0300
 
 jruby (1.7.21-2) unstable; urgency=high
 

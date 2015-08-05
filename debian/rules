@@ -35,7 +35,10 @@ override_dh_auto_build:
 	mkdir -p lib/jni
 	$(DEB_MAVEN_INVOKE) -Pdist package
 
-override_dh_auto_install:
+# this got ugly fast
+# there must be a better way to do this
+override_dh_prep:
+	dh_prep
 	mkdir -p target/package
 	tar zxf ./maven/jruby-dist/target/jruby-dist-$(DEB_VERSION_UPSTREAM)-bin.tar.gz \
 	  -C target/package --strip-components=1
@@ -44,15 +47,27 @@ override_dh_auto_install:
 	rm target/package/lib/ruby/2.0/rdoc/generator/template/darkfish/js/jquery.js
 	mkdir -p target/package/lib/ruby/gems/shared/
 	cd target/package/lib/ruby/gems/shared/ && mkdir -p cache gems specifications
+	rm -rf target/package/tool/nailgun/*
+	for platform in i386-Linux x86_64-Linux arm-Linux; do \
+		mkdir -p target/package/lib/jni/$$platform ; \
+	done
+
+override_dh_auto_install:
 	mh_installpom -pjruby --no-parent core/pom.xml
 	mh_installjar -pjruby --java-lib  core/pom.xml core/target/jruby-core-$(DEB_VERSION_UPSTREAM).jar
 	mh_installpom -pjruby --no-parent maven/jruby-noasm/pom.xml
 	mh_installpom -pjruby --no-parent maven/jruby-stdlib/pom.xml
 	mh_installjar -pjruby maven/jruby-stdlib/pom.xml maven/jruby-stdlib/target/jruby-stdlib-$(DEB_VERSION_UPSTREAM).jar
-	rm -rf target/package/tool/nailgun/*
-	for platform in i386-Linux x86_64-Linux arm-Linux; do \
-		mkdir -p target/package/lib/jni/$$platform ; \
-	done
+
+override_dh_install:
+	dh_install
+	dh_install core/target/jruby-core-$(DEB_VERSION_UPSTREAM)-noasm.jar \
+		usr/share/maven-repo/org/jruby/jruby-core/$(DEB_VERSION_UPSTREAM)
+
+override_dh_link:
+	dh_link
+	dh_link usr/share/maven-repo/org/jruby/jruby-core/$(DEB_VERSION_UPSTREAM)/jruby-core-$(DEB_VERSION_UPSTREAM)-noasm.jar \
+		usr/share/maven-repo/org/jruby/jruby-core/debian/jruby-core-debian-noasm.jar
 
 override_dh_auto_test:
 ifeq (,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
