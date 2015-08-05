@@ -2,6 +2,7 @@ pom.xml --no-parent
 core/pom.xml
 lib/pom.xml
 maven/jruby-stdlib/pom.xml
+maven/jruby-noasm/pom.xml
 ext/readline/pom.xml
 maven/jruby-dist/pom.xml
 test/pom.xml

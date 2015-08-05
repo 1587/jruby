@@ -1,0 +1,4 @@
+# this is not a codeless jar, it's just a jar with ruby files
+# (ruby stdlib copy used by jruby, bundled as jar)
+# to-do: maybe file a bug and/or send a patch to lintian
+jruby binary: codeless-jar usr/share/maven-repo/org/jruby/jruby-stdlib/*/jruby-stdlib-*.jar
