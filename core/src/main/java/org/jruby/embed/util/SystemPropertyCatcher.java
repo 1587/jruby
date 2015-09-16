@@ -66,18 +66,12 @@ public class SystemPropertyCatcher {
     public static LocalContextScope getScope(LocalContextScope defaultScope) {
         LocalContextScope scope = defaultScope;
         String s = SafePropertyAccessor.getProperty(PropertyName.LOCALCONTEXT_SCOPE.toString());
-        if (s == null) {
-            return scope;
-        }
-        if ("singlethread".equalsIgnoreCase(s)) {
-            return LocalContextScope.SINGLETHREAD;
-        } else if ("singleton".equalsIgnoreCase(s)) {
-            return LocalContextScope.SINGLETON;
-        } else if ("threadsafe".equalsIgnoreCase(s)) {
-            return LocalContextScope.THREADSAFE;
-        } else if ("concurrent".equalsIgnoreCase(s)) {
-            return LocalContextScope.CONCURRENT;
-        }
+        if (s == null) return scope;
+
+        if ("singlethread".equalsIgnoreCase(s)) return LocalContextScope.SINGLETHREAD;
+        if ("singleton".equalsIgnoreCase(s)) return LocalContextScope.SINGLETON;
+        if ("threadsafe".equalsIgnoreCase(s)) return LocalContextScope.THREADSAFE;
+        if ("concurrent".equalsIgnoreCase(s)) return LocalContextScope.CONCURRENT;
         return scope;
     }
 
@@ -91,18 +85,12 @@ public class SystemPropertyCatcher {
     public static LocalVariableBehavior getBehavior(LocalVariableBehavior defaultBehavior) {
         LocalVariableBehavior behavior = defaultBehavior;
         String s = SafePropertyAccessor.getProperty(PropertyName.LOCALVARIABLE_BEHAVIOR.toString());
-        if (s == null) {
-            return behavior;
-        }
-        if ("global".equalsIgnoreCase(s)) {
-            return LocalVariableBehavior.GLOBAL;
-        } else if ("persistent".equalsIgnoreCase(s)) {
-            return LocalVariableBehavior.PERSISTENT;
-        } else if ("transient".equalsIgnoreCase(s)) {
-            return LocalVariableBehavior.TRANSIENT;
-        } else if ("bsf".equalsIgnoreCase(s)) {
-            return LocalVariableBehavior.BSF;
-        }
+        if (s == null) return behavior;
+
+        if ("global".equalsIgnoreCase(s)) return LocalVariableBehavior.GLOBAL;
+        if ("persistent".equalsIgnoreCase(s)) return LocalVariableBehavior.PERSISTENT;
+        if ("transient".equalsIgnoreCase(s)) return LocalVariableBehavior.TRANSIENT;
+        if ("bsf".equalsIgnoreCase(s)) return LocalVariableBehavior.BSF;
         return behavior;
     }
 
@@ -116,30 +104,30 @@ public class SystemPropertyCatcher {
     public static boolean isLazy(boolean defaultLaziness) {
         boolean lazy = defaultLaziness;
         String s = SafePropertyAccessor.getProperty(PropertyName.LAZINESS.toString());
-        if (s == null) {
-            return lazy;
-        }
+        if (s == null) return lazy;
         return Boolean.parseBoolean(s);
     }
-    
+
     /**
      * Sets classloader based on System property. This is only used from
      * JRubyEgnineFactory.
-     * 
+     *
      * @param container ScriptingContainer to be set classloader
      */
-    
+
     public static void setClassLoader(ScriptingContainer container) {
-        String s = SafePropertyAccessor.getProperty(PropertyName.CLASSLOADER.toString());
-        
+        String loader = SafePropertyAccessor.getProperty(PropertyName.CLASSLOADER.toString());
+
         // current should be removed later
-        if (s == null || "container".equals(s) || "current".equals(s)) { // default
+        if (loader == null || "container".equals(loader) || "current".equals(loader)) { // default
             container.setClassLoader(container.getClass().getClassLoader());
             return;
-        } else if ("context".equals(s)) {
+        }
+        if ("context".equals(loader)) {
             container.setClassLoader(Thread.currentThread().getContextClassLoader());
             return;
-        } else if ("none".equals(s)) {
+        }
+        if ("none".equals(loader)) {
             return;
         }
         // if incorrect value is set, no classloader will set by ScriptingContainer.
@@ -155,19 +143,28 @@ public class SystemPropertyCatcher {
     public static void setConfiguration(ScriptingContainer container) {
         LocalContextProvider provider = container.getProvider();
         RubyInstanceConfig config = provider.getRubyInstanceConfig();
-        String s = SafePropertyAccessor.getProperty(PropertyName.COMPILEMODE.toString());
-        if (s != null) {
-            if ("jit".equalsIgnoreCase(s)) {
+        String mode = SafePropertyAccessor.getProperty(PropertyName.COMPILEMODE.toString());
+        if (mode != null) {
+            if ("jit".equalsIgnoreCase(mode)) {
                 config.setCompileMode(CompileMode.JIT);
-            } else if ("force".equalsIgnoreCase(s)) {
+            }
+            else if ("force".equalsIgnoreCase(mode)) {
                 config.setCompileMode(CompileMode.FORCE);
-            } else {
+            }
+            else {
                 config.setCompileMode(CompileMode.OFF);
             }
         }
-        s = SafePropertyAccessor.getProperty(PropertyName.COMPATVERSION.toString());
-        if (s != null) {
-            if (isRuby19(s)) {
+        String compat = SafePropertyAccessor.getProperty(PropertyName.COMPATVERSION.toString());
+        if (compat != null) {
+            compat = compat.toLowerCase();
+            if ( matches(compat, "j?(ruby)?1[\\._]?8") ) {
+                config.setCompatVersion(CompatVersion.RUBY1_8);
+            }
+            else if ( matches(compat, "j?(ruby)?2[\\._]?0") ) {
+                config.setCompatVersion(CompatVersion.RUBY2_0);
+            }
+            else if ( matches(compat, "j?(ruby)?1[\\._]?9") ) {
                 config.setCompatVersion(CompatVersion.RUBY1_9);
             }
         }
@@ -199,13 +196,14 @@ public class SystemPropertyCatcher {
         String jrubyhome;
         if ((jrubyhome = SafePropertyAccessor.getenv("JRUBY_HOME")) != null) {
             return jrubyhome;
-        } else if ((jrubyhome = SafePropertyAccessor.getProperty("jruby.home")) != null) {
-            return jrubyhome;
-        } else if ((jrubyhome = findFromJar(instance)) != null) {
-            return jrubyhome;
-        } else {
-            return null;
         }
+        if ((jrubyhome = SafePropertyAccessor.getProperty("jruby.home")) != null) {
+            return jrubyhome;
+        }
+        if ((jrubyhome = findFromJar(instance)) != null) {
+            return jrubyhome;
+        }
+        return null;
     }
 
     public static String findFromJar(Object instance) {
@@ -218,7 +216,7 @@ public class SystemPropertyCatcher {
             if (resource == null) return null;
         }
 
-        String location = null;
+        String location;
         if (resource.getProtocol().equals("jar")) {
             location = getPath(resource);
             if (!location.startsWith("file:")) {
@@ -278,15 +276,14 @@ public class SystemPropertyCatcher {
      * @return true is the given name is correct to choose Ruby 1.9 version. Otherwise,
      *         returns false.
      */
+    @Deprecated
     public static boolean isRuby19(String name) {
-        String n = name.toLowerCase();
-        Pattern p = Pattern.compile("j?ruby1[\\._]?9");
-        Matcher m = p.matcher(n);
-        if (m.matches()) {
-            return true;
-        } else {
-            return false;
-        }
+        return matches(name.toLowerCase(), "j?ruby1[\\._]?9");
+    }
+
+    private static boolean matches(final String name, final String pattern) {
+        Matcher matcher = Pattern.compile(pattern).matcher( name );
+        return matcher.matches();
     }
 
     /**

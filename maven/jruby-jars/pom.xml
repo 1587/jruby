@@ -5,7 +5,7 @@
   <parent>
     <groupId>org.jruby</groupId>
     <artifactId>jruby-artifacts</artifactId>
-    <version>1.7.21</version>
+    <version>1.7.22</version>
   </parent>
   <groupId>rubygems</groupId>
   <artifactId>jruby-jars</artifactId>
@@ -55,7 +55,7 @@ freezing to) a specific jruby-complete jar version.</description>
   <repositories>
     <repository>
       <id>rubygems-releases</id>
-      <url>http://rubygems-proxy.torquebox.org/releases</url>
+      <url>https://otto.takari.io/content/repositories/rubygems/maven/releases</url>
     </repository>
   </repositories>
   <build>
@@ -67,7 +67,7 @@ freezing to) a specific jruby-complete jar version.</description>
       </extension>
     </extensions>
     <directory>${basedir}/pkg</directory>
-    <finalName>${project.artifactId}-1.7.21.dev</finalName>
+    <finalName>${project.artifactId}-1.7.22</finalName>
     <plugins>
       <plugin>
         <groupId>de.saumya.mojo</groupId>
@@ -114,7 +114,7 @@ freezing to) a specific jruby-complete jar version.</description>
         <artifactId>maven-invoker-plugin</artifactId>
         <configuration>
           <properties>
-            <ruby.version>1.7.21.dev</ruby.version>
+            <ruby.version>1.7.22</ruby.version>
             <gem.home>${project.build.directory}/rubygems</gem.home>
             <gem.path>${project.build.directory}/rubygems</gem.path>
           </properties>

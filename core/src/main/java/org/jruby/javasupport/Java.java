@@ -59,12 +59,10 @@ import org.jruby.RubyBasicObject;
 import org.jruby.RubyClass;
 import org.jruby.RubyClassPathVariable;
 import org.jruby.RubyInstanceConfig;
-import org.jruby.RubyMethod;
 import org.jruby.RubyModule;
 import org.jruby.RubyObject;
 import org.jruby.RubyProc;
 import org.jruby.RubyString;
-import org.jruby.RubyUnboundMethod;
 import org.jruby.javasupport.binding.Initializer;
 import org.jruby.javasupport.proxy.JavaProxyClass;
 import org.jruby.javasupport.proxy.JavaProxyConstructor;
@@ -72,7 +70,6 @@ import org.jruby.runtime.Helpers;
 import org.jruby.runtime.Arity;
 import org.jruby.runtime.Block;
 import org.jruby.runtime.ThreadContext;
-import static org.jruby.runtime.Visibility.*;
 import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.runtime.load.Library;
 import org.jruby.anno.JRubyMethod;
@@ -87,9 +84,6 @@ import org.jruby.java.addons.KernelJavaAddons;
 import org.jruby.java.addons.StringJavaAddons;
 import org.jruby.java.codegen.RealClassGenerator;
 import org.jruby.java.dispatch.CallableSelector;
-import org.jruby.java.invokers.InstanceMethodInvoker;
-import org.jruby.java.invokers.MethodInvoker;
-import org.jruby.java.invokers.StaticMethodInvoker;
 import org.jruby.java.proxies.ArrayJavaProxy;
 import org.jruby.java.proxies.ArrayJavaProxyCreator;
 import org.jruby.java.proxies.ConcreteJavaProxy;
@@ -105,12 +99,14 @@ import org.jruby.util.ByteList;
 import org.jruby.util.ClassCache.OneShotClassLoader;
 import org.jruby.util.ClassDefiningClassLoader;
 import org.jruby.util.ClassProvider;
-import org.jruby.util.CodegenUtils;
 import org.jruby.util.IdUtil;
+import org.jruby.util.SafePropertyAccessor;
 import org.jruby.util.cli.Options;
 import org.jruby.util.collections.IntHashMap;
+
 import static org.jruby.java.dispatch.CallableSelector.newCallableCache;
 import static org.jruby.java.invokers.RubyToJavaInvoker.convertArguments;
+import static org.jruby.runtime.Visibility.*;
 
 @JRubyModule(name = "Java")
 public class Java implements Library {
@@ -497,18 +493,8 @@ public class Java implements Library {
         if (clazz.isArray()) {
             createProxyClass(runtime, proxy, clazz, true);
 
-            // FIXME: Organizationally this might be nicer in a specialized class
             if ( clazz.getComponentType() == byte.class ) {
-                final Encoding ascii8bit = runtime.getEncodingService().getAscii8bitEncoding();
-
-                // All bytes can be considered raw strings and forced to particular codings if not 8bitascii
-                proxy.addMethod("to_s", new JavaMethodZero(proxy, PUBLIC) {
-                    @Override
-                    public IRubyObject call(ThreadContext context, IRubyObject self, RubyModule clazz, String name) {
-                        ByteList bytes = new ByteList((byte[]) ((ArrayJavaProxy) self).getObject(), ascii8bit);
-                        return RubyString.newStringLight(context.runtime, bytes);
-                    }
-                });
+                proxy.defineAnnotatedMethods( ByteArrayProxyMethods.class ); // to_s
             }
         }
         else if ( clazz.isPrimitive() ) {
@@ -550,7 +536,7 @@ public class Java implements Library {
     }
 
     private static RubyClass createProxyClass(final Ruby runtime,
-                                              final RubyClass proxyClass, final Class<?> javaClass, boolean invokeInherited) {
+        final RubyClass proxyClass, final Class<?> javaClass, boolean invokeInherited) {
 
         final RubyClass superClass = proxyClass.getSuperClass();
 
@@ -564,7 +550,7 @@ public class Java implements Library {
         else {
             proxyClass.setAllocator( superClass.getAllocator() );
         }
-        proxyClass.defineAnnotatedMethods( JavaProxyClassMethods.class );
+        proxyClass.defineAnnotatedMethods( JavaProxy.ClassMethods.class );
 
         if ( invokeInherited ) proxyClass.inherit(superClass);
 
@@ -573,156 +559,20 @@ public class Java implements Library {
         return proxyClass;
     }
 
-    public static class JavaProxyClassMethods {
-        @JRubyMethod(meta = true)
-        public static IRubyObject java_method(ThreadContext context, IRubyObject proxyClass, IRubyObject rubyName) {
-            String name = rubyName.asJavaString();
+    @Deprecated
+    public static class JavaProxyClassMethods extends JavaProxy.ClassMethods {}
 
-            return getRubyMethod(context, proxyClass, name);
+    public static class ByteArrayProxyMethods {
+
+        @JRubyMethod
+        public static IRubyObject to_s(ThreadContext context, IRubyObject self) {
+            final Encoding ascii8bit = context.runtime.getEncodingService().getAscii8bitEncoding();
+
+            // All bytes can be considered raw strings and forced to particular codings if not 8bitascii
+            ByteList bytes = new ByteList((byte[]) ((ArrayJavaProxy) self).getObject(), ascii8bit);
+            return RubyString.newStringLight(context.runtime, bytes);
         }
 
-        @JRubyMethod(meta = true)
-        public static IRubyObject java_method(ThreadContext context, IRubyObject proxyClass, IRubyObject rubyName, IRubyObject argTypes) {
-            String name = rubyName.asJavaString();
-            RubyArray argTypesAry = argTypes.convertToArray();
-            Class[] argTypesClasses = (Class[])argTypesAry.toArray(new Class[argTypesAry.size()]);
-
-            return getRubyMethod(context, proxyClass, name, argTypesClasses);
-        }
-
-        @JRubyMethod(meta = true)
-        public static IRubyObject java_send(ThreadContext context, IRubyObject recv, IRubyObject rubyName) {
-            String name = rubyName.asJavaString();
-            final Ruby runtime = context.runtime;
-
-            JavaMethod method = new JavaMethod(runtime, getMethodFromClass(context, recv, name));
-            return method.invokeStaticDirect();
-        }
-
-        @JRubyMethod(meta = true)
-        public static IRubyObject java_send(ThreadContext context, IRubyObject recv, IRubyObject rubyName, IRubyObject argTypes) {
-            String name = rubyName.asJavaString();
-            RubyArray argTypesAry = argTypes.convertToArray();
-            final Ruby runtime = context.runtime;
-
-            if (argTypesAry.size() != 0) {
-                Class[] argTypesClasses = (Class[]) argTypesAry.toArray(new Class[argTypesAry.size()]);
-                throw JavaMethod.newArgSizeMismatchError(runtime, argTypesClasses);
-            }
-
-            JavaMethod method = new JavaMethod(runtime, getMethodFromClass(context, recv, name));
-            return method.invokeStaticDirect();
-        }
-
-        @JRubyMethod(meta = true)
-        public static IRubyObject java_send(ThreadContext context, IRubyObject recv, IRubyObject rubyName, IRubyObject argTypes, IRubyObject arg0) {
-            String name = rubyName.asJavaString();
-            RubyArray argTypesAry = argTypes.convertToArray();
-            final Ruby runtime = context.runtime;
-
-            if (argTypesAry.size() != 1) {
-                throw JavaMethod.newArgSizeMismatchError(runtime, (Class) argTypesAry.eltInternal(0).toJava(Class.class));
-            }
-
-            Class argTypeClass = (Class) argTypesAry.eltInternal(0).toJava(Class.class);
-
-            JavaMethod method = new JavaMethod(runtime, getMethodFromClass(context, recv, name, argTypeClass));
-            return method.invokeStaticDirect(arg0.toJava(argTypeClass));
-        }
-
-        @JRubyMethod(required = 4, rest = true, meta = true)
-        public static IRubyObject java_send(ThreadContext context, IRubyObject recv, IRubyObject[] args) {
-            final Ruby runtime = context.runtime;
-
-            String name = args[0].asJavaString();
-            RubyArray argTypesAry = args[1].convertToArray();
-            int argsLen = args.length - 2;
-
-            if (argTypesAry.size() != argsLen) {
-                throw JavaMethod.newArgSizeMismatchError(runtime, (Class[]) argTypesAry.toArray(new Class[argTypesAry.size()]));
-            }
-
-            Class[] argTypesClasses = (Class[]) argTypesAry.toArray(new Class[argsLen]);
-
-            Object[] argsAry = new Object[argsLen];
-            for (int i = 0; i < argsLen; i++) {
-                argsAry[i] = args[i + 2].toJava(argTypesClasses[i]);
-            }
-
-            JavaMethod method = new JavaMethod(runtime, getMethodFromClass(context, recv, name, argTypesClasses));
-            return method.invokeStaticDirect(argsAry);
-        }
-
-        @JRubyMethod(meta = true, visibility = PRIVATE)
-        public static IRubyObject java_alias(ThreadContext context, IRubyObject clazz, IRubyObject newName, IRubyObject rubyName) {
-            return java_alias(context, clazz, newName, rubyName, context.runtime.newEmptyArray());
-        }
-
-        @JRubyMethod(meta = true, visibility = PRIVATE)
-        public static IRubyObject java_alias(ThreadContext context, IRubyObject clazz, IRubyObject newName, IRubyObject rubyName, IRubyObject argTypes) {
-            final Ruby runtime = context.runtime;
-            if ( ! ( clazz instanceof RubyClass ) ) {
-                throw runtime.newTypeError(clazz, runtime.getModule());
-            }
-            final RubyClass proxyClass = (RubyClass) clazz;
-
-            String name = rubyName.asJavaString();
-            String newNameStr = newName.asJavaString();
-            RubyArray argTypesAry = argTypes.convertToArray();
-            Class<?>[] argTypesClasses = (Class[]) argTypesAry.toArray(new Class[argTypesAry.size()]);
-
-            final Method method = getMethodFromClass(context, clazz, name, argTypesClasses);
-            final MethodInvoker invoker;
-
-            if ( Modifier.isStatic( method.getModifiers() ) ) {
-                invoker = new StaticMethodInvoker(proxyClass.getMetaClass(), method);
-                // add alias to meta
-                proxyClass.getSingletonClass().addMethod(newNameStr, invoker);
-            }
-            else {
-                invoker = new InstanceMethodInvoker(proxyClass, method);
-                proxyClass.addMethod(newNameStr, invoker);
-            }
-
-            return context.nil;
-        }
-    }
-
-    private static IRubyObject getRubyMethod(ThreadContext context, IRubyObject clazz, String name, Class... argTypesClasses) {
-        final Ruby runtime = context.runtime;
-        if ( ! ( clazz instanceof RubyModule ) ) {
-            throw runtime.newTypeError(clazz, runtime.getModule());
-        }
-        final RubyModule proxyClass = (RubyModule) clazz;
-
-        final Method method = getMethodFromClass(context, clazz, name, argTypesClasses);
-        final String prettyName = name + CodegenUtils.prettyParams(argTypesClasses);
-
-        if ( Modifier.isStatic( method.getModifiers() ) ) {
-            MethodInvoker invoker = new StaticMethodInvoker(proxyClass, method);
-            return RubyMethod.newMethod(proxyClass, prettyName, proxyClass, name, invoker, clazz);
-        }
-
-        MethodInvoker invoker = new InstanceMethodInvoker(proxyClass, method);
-        return RubyUnboundMethod.newUnboundMethod(proxyClass, prettyName, proxyClass, name, invoker);
-    }
-
-    private static Method getMethodFromClass(final ThreadContext context, final IRubyObject proxyClass,
-        final String name, final Class... argTypes) {
-        final Class<?> clazz = JavaClass.getJavaClass(context, (RubyModule) proxyClass);
-        try {
-            return clazz.getMethod(name, argTypes);
-        }
-        catch (NoSuchMethodException nsme) {
-            String prettyName = name + CodegenUtils.prettyParams(argTypes);
-            String errorName = clazz.getName() + '.' + prettyName;
-            throw context.runtime.newNameError("Java method not found: " + errorName, name);
-        }
-    }
-
-    public static Method getMethodFromClass(final Ruby runtime, final IRubyObject proxyClass,
-        final String name, final Class... argTypes) {
-        return getMethodFromClass(runtime.getCurrentContext(), proxyClass, name, argTypes);
     }
 
     public static IRubyObject concrete_proxy_inherited(final IRubyObject clazz, final IRubyObject subclazz) {
@@ -1474,4 +1324,62 @@ public class Java implements Library {
                                               final RubyClass baseType, final JavaClass javaClass, boolean invokeInherited) {
         return createProxyClass(runtime, RubyClass.newClass(runtime, baseType), javaClass, invokeInherited);
     }
+
+    /**
+     * @param iface
+     * @return the sole un-implemented method for a functional-style interface or null
+     * @note This method is internal and might be subject to change, do not assume its part of JRuby's API!
+     */
+    public static Method getFunctionalInterfaceMethod(final Class<?> iface) {
+        assert iface.isInterface();
+        Method single = null;
+        for ( final Method method : iface.getMethods() ) {
+            final int mod = method.getModifiers();
+            if ( Modifier.isStatic(mod) ) continue;
+            if ( Modifier.isAbstract(mod) ) {
+                try { // check if it's equals, hashCode etc. :
+                    Object.class.getMethod(method.getName(), method.getParameterTypes());
+                    continue; // abstract but implemented by java.lang.Object
+                }
+                catch (NoSuchMethodException e) { /* fall-thorough */ }
+                catch (SecurityException e) {
+                    // NOTE: we could try check for FunctionalInterface on Java 8
+                }
+            }
+            else continue; // not-abstract ... default method
+            if ( single == null ) single = method;
+            else return null; // not a functional iface
+        }
+        return single;
+    }
+
+    static final boolean JAVA8;
+    static {
+        boolean java8 = false;
+        final String version = SafePropertyAccessor.getProperty("java.version", "0.0");
+        if ( version.length() > 2 ) {
+            int v = Character.getNumericValue( version.charAt(0) );
+            if ( v > 8 ) java8 = true; // 9.0
+            else if ( v == 1 ) {
+                v = Character.getNumericValue( version.charAt(2) ); // 1.8
+                if ( v < 10 && v >= 8 ) java8 = true;
+            }
+            // seems as no Java 10 support ... yet :)
+        }
+        JAVA8 = java8;
+    }
+
+    // TODO if about to compile against Java 8 this does not need to be reflective
+    static boolean isDefaultMethod(final Method method) {
+        if ( JAVA8 ) {
+            try {
+                return (Boolean) Method.class.getMethod("isDefault").invoke(method);
+            }
+            catch (NoSuchMethodException ex) { throw new RuntimeException(ex); }
+            catch (IllegalAccessException ex) { throw new RuntimeException(ex); }
+            catch (Exception ex) { /* noop */ }
+        }
+        return false;
+    }
+
 }

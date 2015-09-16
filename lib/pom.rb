@@ -24,7 +24,7 @@ end
 
 default_gems =
   [
-   ImportedGem.new( 'jruby-openssl', '0.9.7', true ),
+   ImportedGem.new( 'jruby-openssl', '0.9.10', true ),
    ImportedGem.new( 'rake', 'rake.version', true ),
    ImportedGem.new( 'rdoc', 'rdoc.version', true ),
    ImportedGem.new( 'json', 'json.version', true, false ),
@@ -66,7 +66,7 @@ project 'JRuby Lib Setup' do
   # just depends on jruby-core so we are sure the jruby.jar is in place
   jar "org.jruby:jruby-core:#{version}"
 
-  repository( :url => 'http://rubygems-proxy.torquebox.org/releases',
+  repository( :url => 'https://otto.takari.io/content/repositories/rubygems/maven/releases',
               :id => 'rubygems-releases' )
 
   plugin( :clean,

@@ -1,6 +1,7 @@
 package org.jruby.java.dispatch;
 
 import java.lang.reflect.Member;
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
@@ -13,6 +14,7 @@ import org.jruby.RubyBoolean;
 import org.jruby.RubyFixnum;
 import org.jruby.RubyFloat;
 import org.jruby.RubyInteger;
+import org.jruby.RubyProc;
 import org.jruby.RubyString;
 import org.jruby.javasupport.JavaCallable;
 import org.jruby.javasupport.JavaClass;
@@ -22,6 +24,7 @@ import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.util.collections.IntHashMap;
 import static org.jruby.util.CodegenUtils.getBoxType;
 import static org.jruby.util.CodegenUtils.prettyParams;
+import static org.jruby.javasupport.Java.getFunctionalInterfaceMethod;
 
 /**
  * Method selection logic for calling from Ruby to Java.
@@ -163,15 +166,30 @@ public class CallableSelector {
                 Class<?>[] msTypes = mostSpecific.getParameterTypes();
                 boolean ambiguous = false;
 
+                final IRubyObject lastArg = args.length > 0 ? args[ args.length - 1 ] : null;
+                int mostSpecificArity = Integer.MIN_VALUE;
+
+                final int procArity;
+                if ( lastArg instanceof RubyProc ) {
+                    final Method implMethod; final int last = msTypes.length - 1;
+                    if ( last >= 0 && msTypes[last].isInterface() && ( implMethod = getFunctionalInterfaceMethod(msTypes[last]) ) != null ) {
+                        mostSpecificArity = implMethod.getParameterTypes().length;
+                    }
+                    procArity = ((RubyProc) lastArg).getBlock().arity().getValue();
+                }
+                else {
+                    procArity = Integer.MIN_VALUE;
+                }
+
                 OUTER: for ( int c = 1; c < size; c++ ) {
                     final T candidate = candidates.get(c);
                     final Class<?>[] cTypes = candidate.getParameterTypes();
 
+                    // TODO still need to handle var-args better Class<?> lastType;
                     for ( int i = 0; i < msTypes.length; i++ ) {
                         final Class<?> msType = msTypes[i], cType = cTypes[i];
                         if ( msType != cType && msType.isAssignableFrom(cType) ) {
-                            mostSpecific = candidate;
-                            msTypes = cTypes;
+                            mostSpecific = candidate; msTypes = cTypes;
                             ambiguous = false; continue OUTER;
                         }
                     }
@@ -188,8 +206,59 @@ public class CallableSelector {
                             ambiguous = true;
                         }
                     }
+
+                    // special handling if we're dealing with Proc#impl :
+                    if ( procArity != Integer.MIN_VALUE ) { // lastArg instanceof RubyProc
+                        // cases such as (both ifaces - differ in arg count) :
+                        // java.io.File#listFiles(java.io.FileFilter) ... accept(File)
+                        // java.io.File#listFiles(java.io.FilenameFilter) ... accept(File, String)
+                        final Method implMethod; final int last = cTypes.length - 1;
+                        if ( last >= 0 && cTypes[last].isInterface() && ( implMethod = getFunctionalInterfaceMethod(cTypes[last]) ) != null ) {
+                            // we're sure to have an interface in the end - match arg count :
+                            // NOTE: implMethod.getParameterCount() on Java 8 would do ...
+                            final int methodArity = implMethod.getParameterTypes().length;
+                            if ( methodArity == procArity ) {
+                                if ( mostSpecificArity == methodArity ) ambiguous = true; // 2 with same arity
+                                // TODO we could try to match parameter types with arg types
+                                else {
+                                    mostSpecific = candidate; msTypes = cTypes;
+                                    mostSpecificArity = procArity; ambiguous = false;
+                                }
+                                continue; /* OUTER */ // we want to check all
+                            }
+                            else if ( mostSpecificArity != procArity ) {
+                                if ( methodArity < procArity ) { // not ideal but still usable
+                                    if ( mostSpecificArity == methodArity ) ambiguous = true; // 2 with same arity
+                                    else if ( mostSpecificArity < methodArity ) { // candidate is "better" match
+                                        mostSpecific = candidate; msTypes = cTypes;
+                                        mostSpecificArity = methodArity; ambiguous = false;
+                                    }
+                                    continue; /* OUTER */
+                                }
+                                else if ( procArity < 0 && methodArity >= -(procArity + 1) ) { // *splat that fits
+                                    if ( mostSpecificArity == methodArity ) ambiguous = true; // 2 with same arity
+                                    else {
+                                        final int msa = mostSpecificArity + procArity;
+                                        final int ma = methodArity + procArity;
+                                        if ( ( msa < 0 && ma < 0 && msa < ma ) ||
+                                             ( msa >= 0 && ma >= 0 && msa > ma ) ||
+                                             ( msa > ma ) ) {
+                                            mostSpecific = candidate; msTypes = cTypes;
+                                            mostSpecificArity = methodArity; // ambiguous = false;
+                                        }
+                                        ambiguous = false;
+                                    }
+                                    continue; /* OUTER */
+                                }
+                            }
+                            else { // we're not a match and if there's something else matched than it's not really ambiguous
+                                ambiguous = false; /* continue; /* OUTER */
+                            }
+                        }
+                    }
+
                     // somehow we can still decide e.g. if we got a RubyFixnum
-                    // then (int) constructor shoudl be preffered over (float)
+                    // then (int) constructor should be preferred over (float)
                     if ( ambiguous ) {
                         int msPref = 0, cPref = 0;
                         for ( int i = 0; i < msTypes.length; i++ ) {
@@ -212,21 +281,27 @@ public class CallableSelector {
 
         // fall back on old ways
         if (method == null) {
-            method = findCallable(methods, Exact, args);
+            method = findMatchingCallableForArgsFallback(runtime, methods, args);
+        }
+
+        return method;
+    }
+
+    private static <T extends ParameterTypes> T findMatchingCallableForArgsFallback(final Ruby runtime,
+        final T[] methods, final IRubyObject... args) {
+        T method = findCallable(methods, Exact, args);
+        if (method == null) {
+            method = findCallable(methods, AssignableAndPrimitivable, args);
             if (method == null) {
-                method = findCallable(methods, AssignableAndPrimitivable, args);
+                method = findCallable(methods, AssignableOrDuckable, args);
                 if (method == null) {
                     method = findCallable(methods, AssignableOrDuckable, args);
                     if (method == null) {
-                        method = findCallable(methods, AssignableOrDuckable, args);
-                        if (method == null) {
-                            method = findCallable(methods, AssignableAndPrimitivableWithVarargs, args);
-                        }
+                        method = findCallable(methods, AssignableAndPrimitivableWithVarargs, args);
                     }
                 }
             }
         }
-
         return method;
     }
 
@@ -259,24 +334,61 @@ public class CallableSelector {
         ParameterTypes[] incoming = callables.clone();
 
         for ( int i = 0; i < args.length; i++ ) {
-            retained.clear();
-            for ( final Matcher matcher : NON_EXACT_MATCH_SEQUENCE ) {
+            retained.clear(); // non-exact match sequence :
+            // PRIMITIVABLE :
+            for ( int c = 0; c < incoming.length; c++ ) {
+                ParameterTypes callable = incoming[c];
+                if ( callable == null ) continue; // removed (matched)
+
+                Class[] types = callable.getParameterTypes();
+
+                if ( PRIMITIVABLE.match( types[i], args[i] ) ) {
+                    retained.add((T) callable);
+                    incoming[c] = null; // retaining - remove
+                }
+            }
+            // ASSIGNABLE :
+            for ( int c = 0; c < incoming.length; c++ ) {
+                ParameterTypes callable = incoming[c];
+                if ( callable == null ) continue; // removed (matched)
+
+                Class[] types = callable.getParameterTypes();
+
+                if ( ASSIGNABLE.match( types[i], args[i] ) ) {
+                    retained.add((T) callable);
+                    incoming[c] = null; // retaining - remove
+                }
+            }
+            if ( retained.isEmpty() ) {
+                // DUCKABLE :
                 for ( int c = 0; c < incoming.length; c++ ) {
                     ParameterTypes callable = incoming[c];
                     if ( callable == null ) continue; // removed (matched)
 
                     Class[] types = callable.getParameterTypes();
 
-                    if ( matcher.match( types[i], args[i] ) ) {
+                    if ( DUCKABLE.match( types[i], args[i] ) ) {
                         retained.add((T) callable);
-                        incoming[c] = null; // retaining - remove
+                        //incoming[c] = null; // retaining - remove
                     }
                 }
             }
             incoming = retained.toArray( new ParameterTypes[retained.size()] );
         }
 
-        return retained;
+        // final step rule out argument length mismatch :
+        int j = 0; for ( int i = 0; i < retained.size(); i++ ) {
+            T callable = retained.get(i);
+            if ( callable.isVarArgs() ) {
+                if ( callable.getArity() > args.length - 1 ) continue;
+            }
+            else {
+                if ( callable.getArity() != args.length ) continue;
+            }
+            retained.set(j++, callable);
+        }
+
+        return j < retained.size() ? retained.subList(0, j) : retained;
     }
 
     private static int calcExactnessScore(final ParameterTypes callable, final IRubyObject[] args) {
@@ -366,9 +478,6 @@ public class CallableSelector {
         }
         @Override public String toString() { return "DUCKABLE"; } // for debugging
     };
-
-    //private static final Matcher[] MATCH_SEQUENCE = new Matcher[] { EXACT, PRIMITIVABLE, ASSIGNABLE, DUCKABLE };
-    private static final Matcher[] NON_EXACT_MATCH_SEQUENCE = new Matcher[] { PRIMITIVABLE, ASSIGNABLE, DUCKABLE };
 
     private static boolean exactMatch(ParameterTypes paramTypes, IRubyObject... args) {
         Class[] types = paramTypes.getParameterTypes();
@@ -551,35 +660,45 @@ public class CallableSelector {
     }
 
     private static int argsHashCode(IRubyObject a0) {
-        return 31 + javaClassHashCode(a0);
+        return 31 + javaClassOrProcHashCode(a0);
     }
 
     private static int argsHashCode(IRubyObject a0, IRubyObject a1) {
-        return 31 * argsHashCode(a0) + javaClassHashCode(a1);
+        return 17 * ( 31 + javaClassHashCode(a0) ) +
+                javaClassOrProcHashCode(a1);
     }
 
     private static int argsHashCode(IRubyObject a0, IRubyObject a1, IRubyObject a2) {
-        return 31 * argsHashCode(a0, a1) + javaClassHashCode(a2);
+        return 17 * ( 17 * ( 31 + javaClassHashCode(a0) ) + javaClassHashCode(a1) ) +
+                javaClassOrProcHashCode(a2);
     }
 
     private static int argsHashCode(IRubyObject a0, IRubyObject a1, IRubyObject a2, IRubyObject a3) {
-        return 31 * argsHashCode(a0, a1, a2) + javaClassHashCode(a3);
+        return 17 * ( 17 * ( 17 * ( 31 + javaClassHashCode(a0) ) + javaClassHashCode(a1) ) + javaClassHashCode(a2) ) +
+                javaClassOrProcHashCode(a3);
     }
 
-    private static int argsHashCode(IRubyObject[] args) {
-        if ( args == null ) return 0;
+    private static int argsHashCode(final IRubyObject[] args) {
+        final int last = args.length - 1;
+        if ( last == -1 ) return 0;
 
-        int result = 1;
-
-        for ( int i = 0; i < args.length; i++ ) {
-            result = 31 * result + javaClassHashCode(args[i]);
+        int result = 31;
+        for ( int i = 0; i < last; i++ ) {
+            result = 17 * ( result + javaClassHashCode( args[i] ) );
         }
 
-        return result;
+        return result + javaClassOrProcHashCode( args[last] );
     }
 
     private static int javaClassHashCode(final IRubyObject arg) {
-        return arg == null ? 0 : arg.getJavaClass().hashCode();
+        // if ( arg == null ) return 0;
+        return arg.getJavaClass().hashCode();
+    }
+
+    private static int javaClassOrProcHashCode(final IRubyObject arg) {
+        // if ( arg == null ) return 0;
+        final Class<?> javaClass = arg.getJavaClass();
+        return javaClass == RubyProc.class ? arg.hashCode() : javaClass.hashCode();
     }
 
     private static Class<?> getJavaClass(final IRubyObject arg) {

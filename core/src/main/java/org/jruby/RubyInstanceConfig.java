@@ -58,9 +58,7 @@ import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -75,8 +73,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
 import java.util.regex.Pattern;
 
 /**
@@ -355,7 +351,7 @@ public class RubyInstanceConfig {
         // RegularFileResource absolutePath will canonicalize resources so that will change c: paths to C:.
         // We will cannonicalize on windows so that jruby.home is also C:.
         // assume all those uri-like pathnames are already in absolute form
-        if (Platform.IS_WINDOWS && !newJRubyHome.startsWith("jar:") && !newJRubyHome.startsWith("file:") && !newJRubyHome.startsWith("classpath:") && !newJRubyHome.startsWith("uri:")) {
+        if (Platform.IS_WINDOWS && !RubyFile.PROTOCOL_PATTERN.matcher(newJRubyHome).matches()) {
             File file = new File(newJRubyHome);
 
             try {
@@ -708,7 +704,7 @@ public class RubyInstanceConfig {
     }
 
     private void setupEnvironment(String jrubyHome) {
-        if (!new File(jrubyHome).exists() && !environment.containsKey("RUBY")) {
+        if (RubyFile.PROTOCOL_PATTERN.matcher(jrubyHome).matches() && !environment.containsKey("RUBY")) {
             // the assumption that if JRubyHome is not a regular file that jruby
             // got launched in an embedded fashion
             environment.put("RUBY", ClasspathLauncher.jrubyCommand(defaultClassLoader()) );
@@ -1814,8 +1810,6 @@ public class RubyInstanceConfig {
 
     public static final boolean JIT_CACHE_ENABLED = Options.JIT_CACHE.load();
 
-    public static final String JIT_CODE_CACHE = Options.JIT_CODECACHE.load();
-
     public static final boolean REFLECTED_HANDLES = Options.REFLECTED_HANDLES.load();
 
     public static final boolean NO_UNWRAP_PROCESS_STREAMS = Options.PROCESS_NOUNWRAP.load();
@@ -2030,4 +2024,6 @@ public class RubyInstanceConfig {
     @Deprecated public static final boolean INVOKEDYNAMIC_CONSTANTS = invokedynamicCache && Options.INVOKEDYNAMIC_CACHE_CONSTANTS.load();
     @Deprecated public static final boolean INVOKEDYNAMIC_LITERALS = invokedynamicCache&& Options.INVOKEDYNAMIC_CACHE_LITERALS.load();
     @Deprecated public static final boolean INVOKEDYNAMIC_IVARS = invokedynamicCache&& Options.INVOKEDYNAMIC_CACHE_IVARS.load();
+
+    @Deprecated public static final String JIT_CODE_CACHE = "";
 }
