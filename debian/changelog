@@ -1,5 +1,6 @@
-jruby (1.7.21-3) UNRELEASED; urgency=medium
+jruby (1.7.22-1) unstable; urgency=medium
 
+  * New upstream release.
   * Install jruby-stdlib Maven artifact. (Closes: #792906).
     - Added a lintian override for codeless-jar warning.
   * Install jruby-noasm Maven artifact.
@@ -9,7 +10,7 @@ jruby (1.7.21-3) UNRELEASED; urgency=medium
   * Add B-D on libmaven-install-plugin-java.
   * Add versioned B-D on maven (>= 3.3~).
 
- -- Miguel Landaeta <nomadium@debian.org>  Mon, 14 Sep 2015 19:55:26 -0300
+ -- Miguel Landaeta <nomadium@debian.org>  Wed, 16 Sep 2015 21:19:33 -0300
 
 jruby (1.7.21-2) unstable; urgency=high
 
