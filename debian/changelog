@@ -5,8 +5,11 @@ jruby (1.7.21-3) UNRELEASED; urgency=medium
   * Install jruby-noasm Maven artifact.
   * Install correct jruby-core Maven artifact.
   * Install jruby-core-noasm Maven artifact.
+  * Install jruby-complete Maven artifact.
+  * Add B-D on libmaven-install-plugin-java.
+  * Add versioned B-D on maven (>= 3.3~).
 
- -- Miguel Landaeta <nomadium@debian.org>  Wed, 05 Aug 2015 20:33:49 -0300
+ -- Miguel Landaeta <nomadium@debian.org>  Mon, 14 Sep 2015 19:55:26 -0300
 
 jruby (1.7.21-2) unstable; urgency=high
 

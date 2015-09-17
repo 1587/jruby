@@ -19,20 +19,40 @@ override_dh_auto_clean:
 	mh_unpatchpoms -pjruby
 	mh_clean
 	rm -f lib/jruby.jar bin/jruby
-	for subp in stdlib dist; do \
+	for subp in stdlib dist complete; do \
 		rm -rf ./maven/jruby-$$subp/target ; \
 	done
 	rm -rf ./test/target/
 	rm -rf -- ./rubyspec_temp/
 	rm -rf -- "$(DEB_MAVEN_REPO)"
 
+	# this ugly hack is due to mh_unpatchpoms not restoring some POMs
+	# if you want to build jruby twice in a row, you need to restore
+	# everything correctly
+	-cd maven.bak && for pom in `find ./jruby-* -type f`; do \
+	  cp $$pom $(CURDIR)/maven/$$pom ; \
+	done
+	-cd maven.bak && cp ./test/pom.xml $(CURDIR)/test/pom.xml
+	rm -rf maven.bak
+
 override_dh_auto_configure:
+	# this ugly hack is due to mh_unpatchpoms not restoring some POMs
+	# if you want to build jruby twice in a row, you need to restore
+	# everything correctly
+	mkdir -p maven.bak
+	cd maven.bak && mkdir -p jruby-complete jruby-stdlib test
+	cp maven/jruby-complete/pom.xml maven.bak/jruby-complete
+	cp maven/jruby-stdlib/pom.xml maven.bak/jruby-stdlib
+	cp test/pom.xml maven.bak/test
+
 	/usr/share/maven-debian-helper/copy-repo.sh "$(CURDIR)/debian"
 	mh_patchpoms -pjruby --debian-build --keep-pom-version \
 	  --maven-repo="$(DEB_MAVEN_REPO)" --build-no-docs
 
 override_dh_auto_build:
 	mkdir -p lib/jni
+	mkdir -p $(CURDIR)/maven/jruby-complete/target/classes
+	$(DEB_MAVEN_INVOKE) -Pcomplete
 	$(DEB_MAVEN_INVOKE) -Pdist package
 
 # this got ugly fast
@@ -55,9 +75,11 @@ override_dh_prep:
 override_dh_auto_install:
 	mh_installpom -pjruby --no-parent core/pom.xml
 	mh_installjar -pjruby --java-lib  core/pom.xml core/target/jruby-core-$(DEB_VERSION_UPSTREAM).jar
-	mh_installpom -pjruby --no-parent maven/jruby-noasm/pom.xml
-	mh_installpom -pjruby --no-parent maven/jruby-stdlib/pom.xml
+	for subp in noasm stdlib complete; do \
+		mh_installpom -pjruby --no-parent maven/jruby-$$subp/pom.xml ; \
+	done
 	mh_installjar -pjruby maven/jruby-stdlib/pom.xml maven/jruby-stdlib/target/jruby-stdlib-$(DEB_VERSION_UPSTREAM).jar
+	mh_installjar -pjruby maven/jruby-complete/pom.xml maven/jruby-complete/target/jruby-complete-$(DEB_VERSION_UPSTREAM).jar
 
 override_dh_install:
 	dh_install

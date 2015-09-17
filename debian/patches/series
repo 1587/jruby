@@ -5,3 +5,4 @@
 #0007-Enable-mri19-test-suite.patch
 0008-Disable-some-failing-user-tests-in-pbuilder.patch
 0009-Disable-bigdecimal-divmod-spec-failing-test.patch
+0010-Disable-maven-invoker-plugin.patch

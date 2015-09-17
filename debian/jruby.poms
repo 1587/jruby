@@ -5,4 +5,5 @@ maven/jruby-stdlib/pom.xml
 maven/jruby-noasm/pom.xml
 ext/readline/pom.xml
 maven/jruby-dist/pom.xml
+maven/jruby-complete/pom.xml
 test/pom.xml
