@@ -29,6 +29,7 @@
  */
 package org.jruby.embed;
 
+import java.io.Closeable;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.io.Reader;
@@ -65,6 +66,7 @@ import org.jruby.runtime.Block;
 import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.runtime.profile.builtin.ProfileOutput;
 import org.jruby.util.ClassCache;
+import org.jruby.util.JRubyClassLoader;
 import org.jruby.util.KCode;
 import org.jruby.util.cli.OutputStrings;
 import org.jruby.util.cli.Options;
@@ -1896,8 +1898,13 @@ public class ScriptingContainer implements EmbedRubyInstanceConfigAdapter {
      * @since JRuby 1.5.0
      */
     public void terminate() {
-        if (getProvider().isRuntimeInitialized()) getProvider().getRuntime().tearDown(false);
-        getProvider().terminate();
+        LocalContextProvider provider = getProvider();
+        if (provider.isRuntimeInitialized()) {
+            provider.getRuntime().tearDown(false);
+            // NOTE: Ruby#tearDown does getJRubyClassLoader().tearDown()
+            provider.getRuntime().releaseClassLoader();
+        }
+        provider.terminate();
     }
 
     /**
@@ -1908,6 +1915,7 @@ public class ScriptingContainer implements EmbedRubyInstanceConfigAdapter {
      *
      * @since JRuby 1.6.0
      */
+    @Override
     public void finalize() throws Throwable {
         super.finalize();
         terminate();

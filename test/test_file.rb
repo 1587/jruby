@@ -325,6 +325,21 @@ class TestFile < Test::Unit::TestCase
       assert_equal "file:#{Dir.pwd}/foo/bar", File.expand_path("file:foo/bar")
     end
 
+    # GH-3150
+    def test_expand_path_with_pathname_and_uri_path
+      jruby_specific_test
+      assert_equal 'uri:classloader://foo', File.expand_path('foo', Pathname.new('uri:classloader:/'))
+    end
+
+    # GH-3176
+    def test_expand_path_with_relative_reference_and_inside_uri_classloader
+      jruby_specific_test
+      Dir.chdir( 'uri:classloader:/') do
+        assert_equal 'uri:classloader://something/foo', File.expand_path('foo', 'something')
+        assert_equal 'uri:classloader://foo', File.expand_path('foo', '.')
+      end
+    end
+
     # JRUBY-5219
     def test_expand_path_looks_like_url
       jruby_specific_test

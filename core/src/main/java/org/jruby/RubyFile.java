@@ -263,12 +263,13 @@ public class RubyFile extends RubyIO implements EncodingCapable {
         int lockMode = RubyNumeric.num2int(lockingConstant);
         
         Channel channel = descriptor.getChannel();
-        
+
         FileDescriptor fd = ChannelDescriptor.getDescriptorFromChannel(channel);
         int real_fd = JavaLibCHelper.getfdFromDescriptor(fd);
         
-        if (real_fd != -1) {
-            // we have a real fd...try native flocking
+        if (real_fd != -1 && !Platform.IS_SOLARIS) {
+            // we have a real fd and not on Solaris...try native flocking
+            // see jruby/jruby#3254 and jnr/jnr-posix#60
             try {
                 int result = runtime.getPosix().flock(real_fd, lockMode);
                 if (result < 0) {
@@ -667,7 +668,7 @@ public class RubyFile extends RubyIO implements EncodingCapable {
         return runtime.newString(dirname(context, jfilename)).infectBy(filename);
     }
 
-    private static Pattern PROTOCOL_PATTERN = Pattern.compile("^(uri|jar|file|classpath):([^:]*:)?//?.*");
+    static Pattern PROTOCOL_PATTERN = Pattern.compile("^(uri|jar|file|classpath):([^:]*:)?//?.*");
     public static String dirname(ThreadContext context, String jfilename) {
         String name = jfilename.replace('\\', '/');
         int minPathLength = 1;
@@ -829,7 +830,7 @@ public class RubyFile extends RubyIO implements EncodingCapable {
 
     @JRubyMethod(name = {"realdirpath"}, required = 1, optional = 1, meta = true, compat = RUBY1_9)
     public static IRubyObject realdirpath(ThreadContext context, IRubyObject recv, IRubyObject[] args) {
-        return expandPathInternal(context, recv, args, false, false);
+        return expandPathInternal(context, recv, args, false, true);
     }
 
     @JRubyMethod(name = {"realpath"}, required = 1, optional = 1, meta = true, compat = RUBY1_9)
@@ -1654,8 +1655,9 @@ public class RubyFile extends RubyIO implements EncodingCapable {
         // argument is relative.
         if (args.length == 2 && !args[1].isNil()) {
             // TODO maybe combine this with get_path method
-            if ((args[1] instanceof RubyString) && args[1].asJavaString().startsWith("uri:")) {
-                cwd = args[1].asJavaString();
+            String path = args[1].toString();
+            if (path.startsWith("uri:")) {
+                cwd = path;
             } else {
                 cwd = StringSupport.checkEmbeddedNulls(runtime, get_path(context, args[1])).getUnicodeValue();
     
@@ -1663,7 +1665,8 @@ public class RubyFile extends RubyIO implements EncodingCapable {
                 if (expandUser) {
                     cwd = expandUserPath(context, cwd, true);
                 }
-    
+
+                // TODO try to treat all uri-like paths alike
                 String[] cwdURIParts = splitURI(cwd);
                 if (uriParts == null && cwdURIParts != null) {
                     uriParts = cwdURIParts;
@@ -1680,7 +1683,8 @@ public class RubyFile extends RubyIO implements EncodingCapable {
                 // If the path isn't absolute, then prepend the current working
                 // directory to the path.
                 if (!startsWithSlashNotOnWindows && !startsWithDriveLetterOnWindows(cwd)) {
-                    cwd = new File(runtime.getCurrentDirectory(), cwd).getAbsolutePath();
+                    if ("".equals(cwd)) cwd = ".";
+                    cwd = JRubyFile.create(runtime.getCurrentDirectory(), cwd).getAbsolutePath();
                 }
             }
         } else {

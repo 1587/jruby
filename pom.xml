@@ -11,7 +11,7 @@
 
   <groupId>org.jruby</groupId>
   <artifactId>jruby-parent</artifactId>
-  <version>1.7.21</version>
+  <version>1.7.22</version>
   <packaging>pom</packaging>
 
   <name>JRuby</name>
@@ -105,19 +105,7 @@
     <mailingLists>
       <mailingList>
         <name>jruby</name>
-        <archive>http://markmail.org/search/list:org.codehaus.jruby.user</archive>
-      </mailingList>
-      <mailingList>
-         <name>jruby-dev</name>
-         <archive>http://markmail.org/search/list:org.codehaus.jruby.dev</archive>
-      </mailingList>
-      <mailingList>
-        <name>jruby-scm</name>
-        <archive>http://markmail.org/search/list:org.codehaus.jruby.scm</archive>
-      </mailingList>
-      <mailingList>
-        <name>jruby-announce</name>
-        <archive>http://markmail.org/search/list:org.codehaus.jruby.announce</archive>
+        <archive>http://blade.nagaokaut.ac.jp/ruby/jruby/index.shtml</archive>
       </mailingList>
     </mailingLists>
 

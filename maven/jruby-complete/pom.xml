@@ -5,7 +5,7 @@
   <parent>
     <groupId>org.jruby</groupId>
     <artifactId>jruby-artifacts</artifactId>
-    <version>1.7.21</version>
+    <version>1.7.22</version>
   </parent>
   <artifactId>jruby-complete</artifactId>
   <packaging>bundle</packaging>
@@ -58,7 +58,7 @@
   <pluginRepositories>
     <pluginRepository>
       <id>rubygems-releases</id>
-      <url>http://rubygems-proxy.torquebox.org/releases</url>
+      <url>https://otto.takari.io/content/repositories/rubygems/maven/releases</url>
     </pluginRepository>
   </pluginRepositories>
   <build>

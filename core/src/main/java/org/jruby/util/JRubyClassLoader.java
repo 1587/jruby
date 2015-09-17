@@ -58,12 +58,13 @@ public class JRubyClassLoader extends URLClassLoader implements ClassDefiningCla
     private static final Logger LOG = LoggerFactory.getLogger("JRubyClassLoader");
 
     private final static ProtectionDomain DEFAULT_DOMAIN;
-    
+
     static {
         ProtectionDomain defaultDomain = null;
         try {
             defaultDomain = JRubyClassLoader.class.getProtectionDomain();
-        } catch (SecurityException se) {
+        }
+        catch (SecurityException se) {
             // just use null since we can't acquire protection domain
         }
         DEFAULT_DOMAIN = defaultDomain;
@@ -142,13 +143,33 @@ public class JRubyClassLoader extends URLClassLoader implements ClassDefiningCla
             // A hack to allow unloading all JDBC Drivers loaded by this classloader.
             // See http://bugs.jruby.org/4226
             getJDBCDriverUnloader().run();
-        } catch (Exception e) {
-            if (debug) {
-                LOG.debug(e);
-            }
+        }
+        catch (Exception e) {
+            if (debug) LOG.debug(e);
         }
     }
 
+    /**
+     * Helper to close the JRuby class-loader.
+     * @param loader
+     * @note This is internal API, do not rely on it to exists!
+     */
+    public static void close(final JRubyClassLoader loader) {
+        if ( loader == null ) return;
+        // URLClassLoader#close only available since Java 7 :
+        try {
+            URLClassLoader.class.getMethod("close").invoke(loader);
+        }
+        catch (NoSuchMethodException ex) { /* noop on Java 6 */ }
+        catch (IllegalAccessException ex) {
+            LOG.info("unexpected illegal access: ", ex);
+        }
+        catch (Exception ex) {
+            LOG.debug(ex);
+        }
+    }
+
+    @Deprecated
     public synchronized Runnable getJDBCDriverUnloader() {
         if (unloader == null) {
             try {
@@ -162,9 +183,9 @@ public class JRubyClassLoader extends URLClassLoader implements ClassDefiningCla
 
                 Class unloaderClass = defineClass("org.jruby.util.JDBCDriverUnloader", baos.toByteArray());
                 unloader = (Runnable) unloaderClass.newInstance();
-            } catch (Exception e) {
-                throw new RuntimeException(e);
             }
+            catch (RuntimeException e) { throw e; }
+            catch (Exception e) { throw new RuntimeException(e); }
         }
         return unloader;
     }
@@ -210,6 +231,11 @@ public class JRubyClassLoader extends URLClassLoader implements ClassDefiningCla
                         }
 
                         byte[] data = output.toByteArray();
+                        int dotIndex = className.lastIndexOf(".");
+                        if (dotIndex != -1) {
+                            String packageName = className.substring(0, dotIndex);
+                            definePackageInternal(packageName);
+                        }
                         return defineClass(className, data, 0, data.length);
                     } finally {
                         close(input);
@@ -325,7 +351,20 @@ public class JRubyClassLoader extends URLClassLoader implements ClassDefiningCla
         if (resource != null) {
             try {
                 resource.close();
-            } catch (IOException ignore) {
+            }
+            catch (IOException ignore) { /* ignored */ }
+        }
+    }
+
+    private void definePackageInternal(final String name) {
+        if (getPackage(name) == null) {
+            try {
+                definePackage(name, null, null, null, null, null, null, null);
+            }
+            catch (IllegalArgumentException iae) {
+                if (getPackage(name) == null) {
+                    throw new AssertionError("Cannot find package " + name);
+                }
             }
         }
     }
