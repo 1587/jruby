@@ -9,6 +9,6 @@ DEB_MAVEN_INVOKE = cd $(DEB_BUILDDIR) && $(JAVACMD) -classpath $(DEB_CLASSPATH) 
                  -Dmaven.home=/usr/share/maven \
                  -Dmaven.multiModuleProjectDirectory=$(CURDIR) \
                  org.codehaus.plexus.classworlds.launcher.Launcher \
-                 -s/etc/maven2/settings-debian.xml \
+                 -s/etc/maven/settings-debian.xml \
                  -Dmaven.repo.local=$(DEB_MAVEN_REPO) \
                  $(if $(DEB_MAVEN_ARGS_$(cdbs_curpkg)),$(DEB_MAVEN_ARGS_$(cdbs_curpkg)),$(DEB_MAVEN_ARGS))
