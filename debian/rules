@@ -2,58 +2,25 @@
 
 include /usr/share/dpkg/default.mk
 
-#JAVA_HOME := /usr/lib/jvm/default-java
+#export JAVA_HOME=/usr/lib/jvm/default-java
 # upstream code directly from git repo builds with openjdk-7-jdk
-# I have to find out how/why
-JAVA_HOME := /usr/lib/jvm/java-8-openjdk-$(DEB_BUILD_ARCH)
+# I have to find out how/why or just wait for openjdk-8-jdk to be default
+export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-$(DEB_BUILD_ARCH)
 export LC_ALL=en_US.UTF-8
 
-include $(CURDIR)/debian/maven3.mk
-
 %:
-	dh $@
+	dh $@ --buildsystem=maven
 
 override_dh_auto_clean:
-	-$(DEB_MAVEN_INVOKE) -Pdist clean
-	dh_clean
-	mh_unpatchpoms -pjruby
-	mh_clean
+	dh_auto_clean
 	rm -f lib/jruby.jar bin/jruby
-	for subp in stdlib dist complete; do \
-		rm -rf ./maven/jruby-$$subp/target ; \
-	done
-	rm -rf ./test/target/
 	rm -rf -- ./rubyspec_temp/
-	rm -rf -- "$(DEB_MAVEN_REPO)"
-
-	# this ugly hack is due to mh_unpatchpoms not restoring some POMs
-	# if you want to build jruby twice in a row, you need to restore
-	# everything correctly
-	-cd maven.bak && for pom in `find ./jruby-* -type f`; do \
-	  cp $$pom $(CURDIR)/maven/$$pom ; \
-	done
-	-cd maven.bak && cp ./test/pom.xml $(CURDIR)/test/pom.xml
-	rm -rf maven.bak
-
-override_dh_auto_configure:
-	# this ugly hack is due to mh_unpatchpoms not restoring some POMs
-	# if you want to build jruby twice in a row, you need to restore
-	# everything correctly
-	mkdir -p maven.bak
-	cd maven.bak && mkdir -p jruby-complete jruby-stdlib test
-	cp maven/jruby-complete/pom.xml maven.bak/jruby-complete
-	cp maven/jruby-stdlib/pom.xml maven.bak/jruby-stdlib
-	cp test/pom.xml maven.bak/test
-
-	/usr/share/maven-debian-helper/copy-repo.sh "$(CURDIR)/debian"
-	mh_patchpoms -pjruby --debian-build --keep-pom-version \
-	  --maven-repo="$(DEB_MAVEN_REPO)" --build-no-docs
+	cd lib/ruby/shared/ && rm -rf *openssl* ./org
 
 override_dh_auto_build:
 	mkdir -p lib/jni
-	mkdir -p $(CURDIR)/maven/jruby-complete/target/classes
-	$(DEB_MAVEN_INVOKE) -Pcomplete
-	$(DEB_MAVEN_INVOKE) -Pdist package
+	dh_auto_build -- -Pcomplete
+	dh_auto_build -- -Pdist package
 
 # this got ugly fast
 # there must be a better way to do this
@@ -99,7 +66,7 @@ ifeq (,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 		ln -s $$file ./lib/ruby/shared ; \
 	done
 
-	$(DEB_MAVEN_INVOKE) -Ptest test
+	dh_auto_test -- -Ptest test
 	./bin/jruby spec/mspec/bin/mspec ci
 	# enable it when minitest-excludes is available in the archive
 	#./bin/jruby -S ./bin/rake test:mri19
