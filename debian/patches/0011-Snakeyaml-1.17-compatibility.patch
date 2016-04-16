@@ -1,0 +1,19 @@
+Description: Add compatibility with recent versions of snakeyaml
+Author: Miguel Landaeta <nomadium@debian.org>
+Bug: <url in upstream bugtracker>
+Bug-Debian: https://bugs.debian.org/821181
+Forwarded: no
+Last-Update: 2016-04-16
+
+--- jruby-1.7.25.orig/core/src/main/java/org/jruby/ext/psych/PsychParser.java
++++ jruby-1.7.25/core/src/main/java/org/jruby/ext/psych/PsychParser.java
+@@ -242,7 +242,8 @@ public class PsychParser extends RubyObj
+     private void handleDocumentStart(ThreadContext context, DocumentStartEvent dse, boolean tainted, IRubyObject handler) {
+         Ruby runtime = context.runtime;
+         DumperOptions.Version _version = dse.getVersion();
+-        Integer[] versionInts = _version == null ? null : _version.getArray();
++        // upstream keep using older versions of snakeyaml
++        Integer[] versionInts = _version == null ? null : new Integer[]{_version.major(), _version.minor()};
+         IRubyObject version = versionInts == null ?
+             RubyArray.newArray(runtime) :
+             RubyArray.newArray(runtime, runtime.newFixnum(versionInts[0]), runtime.newFixnum(versionInts[1]));
