@@ -83,7 +83,7 @@ describe "JRuby's compiler" do
   end
   
   it "compiles while loops with no body" do
-    compile_and_run("@foo = true; def flip; @foo = !@foo; end; while flip; end").should == nil
+    expect(compile_and_run("@foo = true; def flip; @foo = !@foo; end; while flip; end")).to eq nil
   end
   
   it "compiles boolean operators" do
@@ -354,9 +354,9 @@ describe "JRuby's compiler" do
     # non-local flow control with while loops
     expect(compile_and_run("a = 0; 1.times { a += 1; redo if a < 2 }; a")).to eq 2
     expect(compile_and_run("def foo(&b); while true; b.call; end; end; foo { break 3 }")).to eq 3
-    # this one doesn't work normally, so I wouldn't expect it to work here yet
-    #compile_and_run("a = 0; 1.times { a += 1; eval 'redo' if a < 2 }; a").should == 2
-    expect(compile_and_run("def foo(&b); while true; b.call; end; end; foo { eval 'break 3' }")).to  eq 3
+
+    # This works in 1.8.7 (breaks out of foo) and errors differently in 1.9.3 (SyntaxError) but we LJE for both
+    expect(lambda { compile_and_run("def foo(&b); while true; b.call; end; end; foo { eval 'break 3' }") }).to raise_error(LocalJumpError)
   end
   
   it "compiles block passing" do
@@ -540,8 +540,8 @@ ary
     EOS
 
     $~ = nil
-    obj.blank?.should == false
-    $~.should be_nil
+    expect(obj.blank?).to eq false
+    expect($~).to eq nil
   end if is19
   
   it "does a bunch of other stuff" do
@@ -671,8 +671,8 @@ ary
     end
 
     [NilClass, FalseClass].each {|c| c.__send__ :include, SelfCheck}
-    nil.self_check.should == false
-    false.self_check.should == false
+    expect(nil.self_check).to eq false
+    expect(false.self_check).to eq false
 
     # JRUBY-4757 and JRUBY-2621: can't compile large array/hash
     large_array = (1..10000).to_a.inspect

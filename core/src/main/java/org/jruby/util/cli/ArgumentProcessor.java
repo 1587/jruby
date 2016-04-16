@@ -47,16 +47,16 @@ import java.util.List;
 
 /**
  * Encapsulated logic for processing JRuby's command-line arguments.
- * 
+ *
  * This class holds the processing logic for JRuby's non-JVM command-line arguments.
  * All standard Ruby options are processed here, as well as nonstandard JRuby-
  * specific options.
- * 
+ *
  * Options passed directly to the JVM are processed separately, by either a launch
  * script or by a native executable.
  */
 public class ArgumentProcessor {
-    private final class Argument {
+    private static final class Argument {
         public final String originalValue;
         public final String dashedValue;
         public Argument(String value, boolean dashed) {
@@ -112,17 +112,18 @@ public class ArgumentProcessor {
     }
 
     private void processArgv() {
-        List<String> arglist = new ArrayList<String>();
+        ArrayList<String> arglist = new ArrayList<String>();
         for (; argumentIndex < arguments.size(); argumentIndex++) {
             String arg = arguments.get(argumentIndex).originalValue;
             if (config.isArgvGlobalsOn() && arg.startsWith("-")) {
                 arg = arg.substring(1);
-                if (arg.indexOf('=') > 0) {
-                    String[] keyvalue = arg.split("=", 2);
-
+                int split = arg.indexOf('=');
+                if (split > 0) {
+                    final String key = arg.substring(0, split);
+                    final String val = arg.substring(split + 1);
                     // argv globals getService their dashes replaced with underscores
-                    String globalName = keyvalue[0].replaceAll("-", "_");
-                    config.getOptionGlobals().put(globalName, keyvalue[1]);
+                    String globalName = key.replace('-', '_');
+                    config.getOptionGlobals().put(globalName, val);
                 } else {
                     config.getOptionGlobals().put(arg, null);
                 }
@@ -278,7 +279,7 @@ public class ArgumentProcessor {
                     break FOR;
                 case 'T':
                     {
-                        String temp = grabOptionalValue();
+                        grabOptionalValue();
                         break FOR;
                     }
                 case 'U':
@@ -405,18 +406,18 @@ public class ArgumentProcessor {
                         break FOR;
                     } else if (argument.startsWith("--profile")) {
                         characterIndex = argument.length();
-                        int dotIndex = argument.indexOf(".");
-                        
+                        int dotIndex = argument.indexOf('.');
+
                         if (dotIndex == -1) {
                             config.setProfilingMode(RubyInstanceConfig.ProfilingMode.FLAT);
-                            
+
                         } else {
                             String profilingMode = argument.substring(dotIndex + 1, argument.length());
-                            
+
                             if (profilingMode.equals("out")) {
                                 // output file for profiling results
                                 String outputFile = grabValue(getArgumentError("--profile.out requires an output file argument"));
-                                
+
                                 try {
                                     config.setProfileOutput(new ProfileOutput(new File(outputFile)));
                                 } catch (FileNotFoundException e) {
@@ -438,7 +439,7 @@ public class ArgumentProcessor {
                                 }
                             }
                         }
-                        
+
                         break FOR;
                     } else if (argument.equals("--1.9")) {
                         config.setCompatVersion(CompatVersion.RUBY1_9);
@@ -557,7 +558,7 @@ public class ArgumentProcessor {
         // JRubyFile.create.
         String result = resolve(config.getCurrentDirectory(), scriptName);
         if (result != null) return scriptName;// use relative filename
-                result = resolve(config.getJRubyHome() + "/bin", scriptName);
+        result = resolve(config.getJRubyHome() + "/bin", scriptName);
         if (result != null) return result;
         // since the current directory is also on the classpath we
         // want to find it on filesystem first
@@ -571,7 +572,7 @@ public class ArgumentProcessor {
             String path = maybePath.toString();
             String[] paths = path.split(System.getProperty("path.separator"));
             for (int i = 0; i < paths.length; i++) {
-                result = resolve(paths[i], scriptName);
+                result = resolve(new File(paths[i]).getAbsolutePath(), scriptName);
                 if (result != null) return result;
             }
         }
@@ -604,5 +605,5 @@ public class ArgumentProcessor {
         }
         return null;
     }
-    
+
 }

@@ -1,9 +1,12 @@
+windows = RbConfig::CONFIG['host_os'] =~ /mswin|mingw/
+
 exclude :test_accumulate_dst1, "needs investigation"
 exclude :test_accumulate_dst2, "needs investigation"
 exclude :test_after_output, "needs investigation"
 exclude :test_asciicompat_encoding_iso2022jp, "needs investigation"
 exclude :test_convert, "needs investigation"
 exclude :test_convpath, "needs investigation"
+exclude :test_econv_new_hash, "needs investigation" if windows
 exclude :test_errinfo_invalid_euc_jp, "needs investigation"
 exclude :test_errinfo_invalid_euc_jp2, "needs investigation"
 exclude :test_errinfo_invalid_partial_character, "needs investigation"
@@ -17,6 +20,7 @@ exclude :test_exc_incomplete, "needs investigation"
 exclude :test_exc_invalid, "needs investigation"
 exclude :test_exc_undef, "needs investigation"
 exclude :test_finish_incomplete_error, "needs investigation"
+exclude :test_get_replacement, "fails windows"
 exclude :test_invalid, "needs investigation"
 exclude :test_invalid2, "needs investigation"
 exclude :test_invalid3, "needs investigation"

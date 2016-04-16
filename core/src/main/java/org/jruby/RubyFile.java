@@ -176,6 +176,12 @@ public class RubyFile extends RubyIO implements EncodingCapable {
         // File::Constants module is included in IO.
         runtime.getIO().includeModule(constants);
 
+        if (Platform.IS_WINDOWS) {
+            // readlink is not available on Windows. See below and jruby/jruby#3287.
+            // TODO: MRI does not implement readlink on Windows, but perhaps we could?
+            fileClass.searchMethod("readlink").setNotImplemented(true);
+        }
+
         return fileClass;
     }
 
@@ -503,11 +509,12 @@ public class RubyFile extends RubyIO implements EncodingCapable {
         if(!openFile.isOpen()) {
             val.append(" (closed)");
         }
-        val.append(">");
+        val.append('>');
         return getRuntime().newString(val.toString());
     }
 
-    private static Pattern ROOT_PATTERN = Pattern.compile("^(uri|jar|file|classpath):([^:]*:)?//?$");
+    private static String URI_PREFIX_STRING = "^(uri|jar|file|classpath):([^:/]{2,}:([^:/]{2,}:)?)?";
+    private static Pattern ROOT_PATTERN = Pattern.compile(URI_PREFIX_STRING + "/?/?$");
 
     /* File class methods */
     @JRubyMethod(required = 1, optional = 1, meta = true)
@@ -519,7 +526,7 @@ public class RubyFile extends RubyIO implements EncodingCapable {
         String name = origString.toString();
 
         // uri-like paths without parent directory
-        if (name.endsWith("!/") || ROOT_PATTERN.matcher(name).matches()) {
+        if (name.endsWith(".jar!/") || ROOT_PATTERN.matcher(name).matches()) {
             return args[0];
         }
 
@@ -668,93 +675,66 @@ public class RubyFile extends RubyIO implements EncodingCapable {
         return runtime.newString(dirname(context, jfilename)).infectBy(filename);
     }
 
-    static Pattern PROTOCOL_PATTERN = Pattern.compile("^(uri|jar|file|classpath):([^:]*:)?//?.*");
-    public static String dirname(ThreadContext context, String jfilename) {
-        String name = jfilename.replace('\\', '/');
-        int minPathLength = 1;
-        boolean trimmedSlashes = false;
+    static Pattern PROTOCOL_PATTERN = Pattern.compile(URI_PREFIX_STRING + ".*");
 
-        boolean startsWithDriveLetterOnWindows = startsWithDriveLetterOnWindows(name);
+    // get dirname with uri scheme stripped off and then recombine that back to scheme.
+    private static String adjustURIDirname(ThreadContext context, String path, int start) {
+        String adjustedPath = dirname(context, path.substring(start));
+        if (adjustedPath.equals(".") || adjustedPath.equals("/")) adjustedPath = "";
+        return path.substring(0, start) + adjustedPath;
+    }
 
-        if (startsWithDriveLetterOnWindows) {
-            minPathLength = 3;
+    // will strip any trailing forward or backslashes except unless the string gets too short.
+    private static String stripTrailingSlashes(String path, int minPathLength) {
+        while (path.length() > minPathLength) { // lol
+            int lastIndex = path.length() - 1;
+            char c = path.charAt(lastIndex);
+            if (c != '/' && c != '\\') break;
+            path = path.substring(0, lastIndex);
         }
+        return path;
+    }
+    /**
+     * Return the dirname of the specified filename.  path is the original string.  On windows
+     * if this is a file path it will leave the delimiter the same.  If it represents a URI then it
+     * needs to become forward slashes.
+     *
+     * Internally we have two strings in this method: path and normalizedPath which is normalized
+     * to '/' so we only have to do indexes against a single format of file.
+     */
+    // FIXME: MRI returns '//' -> '//' and '\\\\' -> '\\\\' (bug?).  useless values seemingly?
+    public static String dirname(ThreadContext context, String path) {
+        String normalizedPath = path.replace('\\', '/');
+        boolean hasDriveLetter = startsWithDriveLetterOnWindows(normalizedPath);
 
-        // jar like paths
-        if (name.contains("!/")) {
-            int start = name.indexOf("!/") + 1;
-            String path = dirname(context, name.substring(start));
-            if (path.equals(".") || path.equals("/")) path = "";
-            return name.substring(0, start) + path;
-        }
-        // address all the url like paths first
-        if (PROTOCOL_PATTERN.matcher(name).matches()) {
-            int start = name.indexOf(":/") + 2;
-            String path = dirname(context, name.substring(start));
-            if (path.equals(".")) path = "";
-            return name.substring(0, start) + path;
-        }
+        // Dealing with URIs.  These are use normalized path because \ is never valid.
+        if (normalizedPath.contains(".jar!/")) return adjustURIDirname(context, normalizedPath, normalizedPath.indexOf("!/") + 1);
+        if (PROTOCOL_PATTERN.matcher(normalizedPath).matches()) return adjustURIDirname(context, normalizedPath,normalizedPath.indexOf(":/") + 2);
 
-        while (name.length() > minPathLength && name.charAt(name.length() - 1) == '/') {
-            trimmedSlashes = true;
-            name = name.substring(0, name.length() - 1);
-        }
+        if (hasDriveLetter && normalizedPath.length() == 2) return path + '.';  // 'C:' passed in
 
-        String result;
-        if (startsWithDriveLetterOnWindows && name.length() == 2) {
-            if (trimmedSlashes) {
-                // C:\ is returned unchanged
-                result = jfilename.substring(0, 3);
-            } else {
-                result = jfilename.substring(0, 2) + '.';
-            }
-        } else {
-            //TODO deal with UNC names
-            int index = name.lastIndexOf('/');
+        normalizedPath = stripTrailingSlashes(normalizedPath, hasDriveLetter ? 3 : 1); // '/foo[/\\]+' -> '/foo/'
 
-            if (index == -1) {
-                if (startsWithDriveLetterOnWindows) {
-                    return jfilename.substring(0, 2) + ".";
-                } else {
-                    return ".";
-                }
-            }
-            if (index == 0) {
-                return "/";
-            }
+        // stripped off one or more / from trailing slash normalization above...cope with it (C: handled earlier)
+        if (hasDriveLetter && normalizedPath.length() == 2) return path.substring(0, 3); // C:[/\\]+
 
-            if (startsWithDriveLetterOnWindows && index == 2) {
-                // Include additional path separator
-                // (so that dirname of "C:\file.txt" is  "C:\", not "C:")
-                index++;
+        int lastSlash = normalizedPath.lastIndexOf('/');
+        if (lastSlash == -1) return hasDriveLetter ? path.substring(0, 2) + '.' : ".";  // 'C:foo' or 'foo' (no slash)
+        if (lastSlash == 0) return path.substring(0, 1); // '/' or '\'
+        if (lastSlash == 2 && hasDriveLetter) return path.substring(0, 3); // 'C:[/\\]file'
+
+        if (Platform.IS_WINDOWS && normalizedPath.startsWith("//")) { // UNC path
+            if (lastSlash == 1) return path.substring(0, normalizedPath.length());  // '//foo'
+
+            if (!normalizedPath.substring(2, lastSlash - 2).contains("/")) { // '//foo/bar'
+                return path.substring(0, normalizedPath.length());
             }
 
-            if (jfilename.startsWith("\\\\")) {
-                index = jfilename.length();
-                String[] splitted = jfilename.split(Pattern.quote("\\"));
-                int last = splitted.length-1;
-                if (splitted[last].contains(".")) {
-                    index = jfilename.lastIndexOf("\\");
-                }
-                
-            }
-            
-            result = jfilename.substring(0, index);
-            
-        }
-        
-        char endChar;
-        // trim trailing slashes
-        while (result.length() > minPathLength) {
-            endChar = result.charAt(result.length() - 1);
-            if (endChar == '/' || endChar == '\\') {
-                result = result.substring(0, result.length() - 1);
-            } else {
-                break;
-            }
+            // deeper UNC path
         }
 
-        return result;
+        // we strip one last time for case '/foo///////bar.txt'
+        return stripTrailingSlashes(path.substring(0, lastSlash), hasDriveLetter ? 3 : 1);
     }
 
     /**
@@ -771,7 +751,7 @@ public class RubyFile extends RubyIO implements EncodingCapable {
         String filename = RubyString.stringValue(baseFilename).getUnicodeValue();
         String result = "";
 
-        int dotIndex = filename.lastIndexOf(".");
+        int dotIndex = filename.lastIndexOf('.');
         if (dotIndex > 0 && dotIndex != (filename.length() - 1)) {
             // Dot is not at beginning and not at end of filename. 
             result = filename.substring(dotIndex);
@@ -1044,6 +1024,13 @@ public class RubyFile extends RubyIO implements EncodingCapable {
     @JRubyMethod(required = 1, meta = true)
     public static IRubyObject readlink(ThreadContext context, IRubyObject recv, IRubyObject path) {
         Ruby runtime = context.runtime;
+
+        if (Platform.IS_WINDOWS) {
+            // readlink is not available on Windows. See above and jruby/jruby#3287.
+            // TODO: MRI does not implement readlink on Windows, but perhaps we could?
+            throw runtime.newNotImplementedError("readlink");
+        }
+
         JRubyFile link = file(path);
 
         try {
@@ -1318,7 +1305,7 @@ public class RubyFile extends RubyIO implements EncodingCapable {
         }
 
         ChannelDescriptor descriptor = sysopen(path, modes, perm);
-        openFile.setMainStream(fdopen(descriptor, modes));
+        openFile.setMainStream(reprocessStreamInCaseECOptsWantsCRLF(fdopen(descriptor, modes), modes));
     }
 
     protected void openInternal(String path, String modeString) {
@@ -1480,7 +1467,7 @@ public class RubyFile extends RubyIO implements EncodingCapable {
     }    
     
     public static ZipEntry getDirOrFileEntry(ZipFile zf, String path) throws IOException {
-        String dirPath = path + "/";
+        String dirPath = path + '/';
         ZipEntry entry = zf.getEntry(dirPath); // first try as directory
         if (entry == null) {
             if (dirPath.length() == 1) {
@@ -1555,7 +1542,7 @@ public class RubyFile extends RubyIO implements EncodingCapable {
             }
         } else if (startsWithDriveLetterOnWindows(path) && path.length() == 2) {
             // compensate for missing slash after drive letter on windows
-            path += "/";
+            path += '/';
         }
 
         return path;
@@ -1616,6 +1603,7 @@ public class RubyFile extends RubyIO implements EncodingCapable {
         return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
     }
 
+    private static Pattern PROTOCOL_PREFIX_PATTERN = Pattern.compile(URI_PREFIX_STRING);
     private static IRubyObject expandPathInternal(ThreadContext context, IRubyObject recv, IRubyObject[] args, boolean expandUser, boolean canonicalize) {
         Ruby runtime = context.runtime;
 
@@ -1627,8 +1615,43 @@ public class RubyFile extends RubyIO implements EncodingCapable {
             return runtime.newString("//./" + relativePath.substring(0, 3));
         }
 
-        if (relativePath.startsWith("uri:")) {
-            return runtime.newString(relativePath);
+        // treat uri-like and jar-like path as absolute
+        String preFix = "";
+        if (relativePath.startsWith("file:")) {
+            preFix = "file:";
+            relativePath = relativePath.substring(5);
+        }
+        String postFix = "";
+        Matcher protocol = PROTOCOL_PREFIX_PATTERN.matcher(relativePath);
+        if (relativePath.contains(".jar!/")) {
+            if (protocol.find()) {
+                preFix = protocol.group();
+                relativePath = relativePath.substring(protocol.end());
+            }
+            int index = relativePath.indexOf("!/");
+            postFix = relativePath.substring(index);
+            relativePath = relativePath.substring(0, index);
+        }
+        else if (protocol.find()) {
+            preFix = protocol.group();
+            int offset = protocol.end();
+            String extra = "";
+            if (relativePath.contains("file://")) {
+                if (relativePath.contains("file:///")) {
+                    offset += 2;
+                    extra = "//";
+                }
+                else {
+                    offset += 1;
+                    extra = "/";
+                }
+            }
+            relativePath = canonicalizePath(relativePath.substring(offset));
+            if (Platform.IS_WINDOWS && !preFix.contains("file:") && startsWithDriveLetterOnWindows(relativePath)) {
+                // this is basically for classpath:/ and uri:classloader:/
+                relativePath = relativePath.substring(2).replace("\\", "/");
+            }
+            return runtime.newString(preFix + extra + relativePath);
         }
 
         String[] uriParts = splitURI(relativePath);
@@ -1642,7 +1665,7 @@ public class RubyFile extends RubyIO implements EncodingCapable {
         if (uriParts != null) {
             //If the path was an absolute classpath path, return it as-is.
             if (uriParts[0].equals("classpath:")) {
-                return runtime.newString(relativePath);
+                return runtime.newString(preFix + relativePath + postFix);
             }
 
             relativePath = uriParts[1];
@@ -1735,7 +1758,6 @@ public class RubyFile extends RubyIO implements EncodingCapable {
         }
 
         JRubyFile path;
-
         if (relativePath.length() == 0) {
             path = JRubyFile.create(relativePath, cwd);
         } else {
@@ -1744,16 +1766,33 @@ public class RubyFile extends RubyIO implements EncodingCapable {
         }
 
         String realPath = padSlashes + canonicalize(path.getAbsolutePath());
+        if (realPath.startsWith("file:") && preFix.length() > 0) realPath = realPath.substring(5);
 
         if (canonicalize) {
             try {
-                realPath = new File(realPath).getCanonicalPath();
+                realPath = JRubyFile.normalizeSeps(new File(realPath).getCanonicalPath());
             } catch (IOException ioe) {
                 // Earlier canonicalization will have to do.
             }
         }
+        if (postFix.contains("..")) {
+            postFix = "!" + canonicalizePath(postFix.substring(1));
+            if (Platform.IS_WINDOWS && postFix.startsWith("!")) {
+                postFix = postFix.replace("\\", "/");
+                if (startsWithDriveLetterOnWindows(postFix.substring(1))) {
+                    postFix = "!" + postFix.substring(3);
+                }
+            }
+        }
+        return runtime.newString(preFix + realPath + postFix);
+    }
 
-        return runtime.newString(realPath);
+    private static String canonicalizePath(String path) {
+        try {
+            return new File(path).getCanonicalPath();
+        } catch (IOException ignore) {
+            return path;
+        }
     }
 
     public static String[] splitURI(String path) {
@@ -1886,14 +1925,10 @@ public class RubyFile extends RubyIO implements EncodingCapable {
 
     private static String canonicalize(String canonicalPath, String remaining) {
         if (remaining == null) {
-            if ("".equals(canonicalPath)) {
-                return "/";
-            } else {
-                // compensate for missing slash after drive letter on windows
-                if (startsWithDriveLetterOnWindows(canonicalPath)
-                        && canonicalPath.length() == 2) {
-                    canonicalPath += "/";
-                }
+            if ("".equals(canonicalPath)) return "/";
+            // compensate for missing slash after drive letter on windows
+            if (startsWithDriveLetterOnWindows(canonicalPath) && canonicalPath.length() == 2) {
+                canonicalPath += '/';
             }
             return canonicalPath;
         }
@@ -1912,7 +1947,7 @@ public class RubyFile extends RubyIO implements EncodingCapable {
             // no canonical path yet or length is zero, and we have a / followed by a dot...
             if (slash == -1) {
                 // we don't have another slash after this, so replace /. with /
-                if (canonicalPath != null && canonicalPath.length() == 0 && slash == -1) canonicalPath += "/";
+                if (canonicalPath != null && canonicalPath.length() == 0 && slash == -1) canonicalPath += '/';
             } else {
                 // we do have another slash; omit both / and . (JRUBY-1606)
             }
@@ -1931,7 +1966,7 @@ public class RubyFile extends RubyIO implements EncodingCapable {
         } else if (canonicalPath == null) {
             canonicalPath = child;
         } else {
-            canonicalPath += "/" + child;
+            canonicalPath += '/' + child;
         }
 
         return canonicalize(canonicalPath, remaining);

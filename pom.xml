@@ -11,7 +11,7 @@
 
   <groupId>org.jruby</groupId>
   <artifactId>jruby-parent</artifactId>
-  <version>1.7.22</version>
+  <version>1.7.25</version>
   <packaging>pom</packaging>
 
   <name>JRuby</name>
@@ -58,7 +58,6 @@
     <invoker.skip>true</invoker.skip>
     <project.build.sourceEncoding>utf-8</project.build.sourceEncoding>
     <jruby.plugins.version>1.0.7</jruby.plugins.version>
-    <rake.version>10.1.0</rake.version>
     <rspec.version>2.14.1</rspec.version>
     <rspec-core.version>2.14.2</rspec-core.version>
     <rspec-expectations.version>2.14.0</rspec-expectations.version>
@@ -67,12 +66,9 @@
     <jruby-launcher.version>1.0.19</jruby-launcher.version>
     <minitest.version>5.0.7</minitest.version>
     <minitest-excludes.version>1.0.2</minitest-excludes.version>
-    <rdoc.version>4.1.2</rdoc.version>
-    <json.version>1.8.0</json.version>
-    <krypt.version>0.0.2.rc1</krypt.version>
     <ant.version>1.9.2</ant.version>
-    <joda.time.version>2.5</joda.time.version>
-    <jffi.version>1.2.9</jffi.version>
+    <joda.time.version>2.8.2</joda.time.version>
+    <jffi.version>1.2.11</jffi.version>
     <asm.version>5.0.3</asm.version>
     <base.java.version>1.6</base.java.version>
     <base.javac.version>1.6</base.javac.version>
@@ -100,6 +96,14 @@
     <version.ruby2_0>2.0.0</version.ruby2_0>
     <version.ruby2_0.patchlevel>195</version.ruby2_0.patchlevel>
     <version.ruby2_0.revision>40734</version.ruby2_0.revision>
+    <!--
+        versions for default gems with bin executables
+        used in ./lib/pom.rb and ./maven/jruby-stdlib/pom.rb
+    -->
+    <rdoc.version>4.1.2</rdoc.version>
+    <rake.version>10.1.0</rake.version>
+    <jar-dependencies.version>0.2.6</jar-dependencies.version>
+
   </properties>
 
     <mailingLists>

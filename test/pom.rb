@@ -76,13 +76,13 @@ project 'JRuby Integration Tests' do
   jar( 'org.jruby:requireTest:1.0',
        :systemPath => '${project.basedir}/requireTest-1.0.jar',
        :scope => 'system' )
-  gem 'rubygems:jruby-launcher:${jruby-launcher.version}'
-  gem 'rubygems:rake:${rake.version}'
-  gem 'rubygems:rspec:${rspec.version}'
+  gem 'rspec', '${rspec.version}'
   gem 'rubygems:minitest:${minitest.version}'
   gem 'rubygems:minitest-excludes:${minitest-excludes.version}'
-  gem 'rubygems:json:${json.version}'
-  gem 'rubygems:rdoc:${rdoc.version}'
+
+  profile 'bootstrap' do
+    gem 'rubygems:jruby-launcher:${jruby-launcher.version}'
+  end
 
   plugin 'de.saumya.mojo:gem-maven-plugin:${jruby.plugins.version}' do
     execute_goals( 'initialize',

@@ -37,13 +37,6 @@
  ***** END LICENSE BLOCK *****/
 package org.jruby;
 
-import org.jruby.internal.runtime.methods.AttrWriterMethod;
-import org.jruby.internal.runtime.methods.AttrReaderMethod;
-
-import static org.jruby.anno.FrameField.VISIBILITY;
-import static org.jruby.runtime.Visibility.*;
-import static org.jruby.CompatVersion.*;
-
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -116,22 +109,7 @@ import org.jruby.util.collections.WeakHashSet;
 import org.jruby.util.log.Logger;
 import org.jruby.util.log.LoggerFactory;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
-import java.security.AccessControlException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
-
+import static org.jruby.CompatVersion.*;
 import static org.jruby.anno.FrameField.VISIBILITY;
 import static org.jruby.runtime.Visibility.*;
 
@@ -533,7 +511,8 @@ public class RubyModule extends RubyObject {
     private String calculateAnonymousName() {
         if (anonymousName == null) {
             // anonymous classes get the #<Class:0xdeadbeef> format
-            StringBuilder anonBase = new StringBuilder("#<" + metaClass.getRealClass().getName() + ":0x");
+            StringBuilder anonBase = new StringBuilder(24);
+            anonBase.append("#<").append(metaClass.getRealClass().getName()).append(":0x");
             anonBase.append(Integer.toHexString(System.identityHashCode(this))).append('>');
             anonymousName = anonBase.toString();
         }
@@ -938,8 +917,9 @@ public class RubyModule extends RubyObject {
 
         // We can safely reference methods here instead of doing getMethods() since if we
         // are adding we are not using a IncludedModuleWrapper.
-        synchronized(getMethodsForWrite()) {
-            DynamicMethod method = (DynamicMethod) getMethodsForWrite().remove(name);
+        Map<String, DynamicMethod> methodsForWrite = getMethodsForWrite();
+        synchronized (methodsForWrite) {
+            DynamicMethod method = (DynamicMethod) methodsForWrite.remove(name);
             if (method == null) {
                 throw runtime.newNameError("method '" + name + "' not defined in " + getName(), name);
             }
@@ -2685,10 +2665,6 @@ public class RubyModule extends RubyObject {
     @JRubyMethod(name = "const_set", required = 2)
     public IRubyObject const_set(IRubyObject symbol, IRubyObject value) {
         IRubyObject constant = setConstant(validateConstant(symbol.asJavaString()).intern(), value);
-
-        if (constant instanceof RubyModule) {
-            ((RubyModule)constant).calculateName();
-        }
         return constant;
     }
 
@@ -3157,23 +3133,29 @@ public class RubyModule extends RubyObject {
                 if (warn) {
                     getRuntime().getWarnings().warn(ID.CONSTANT_ALREADY_INITIALIZED, "already initialized constant " + name);
                 }
+                setParentForModule(name, value);
                 storeConstant(name, value);
             }
-        } else {
+        }
+        else {
+            setParentForModule(name, value);
             storeConstant(name, value);
         }
 
         invalidateConstantCache(name);
+        return value;
+    }
 
+    private void setParentForModule(final String name, final IRubyObject value) {
         // if adding a module under a constant name, set that module's basename to the constant name
-        if (value instanceof RubyModule) {
-            RubyModule module = (RubyModule)value;
+        if ( value instanceof RubyModule ) {
+            RubyModule module = (RubyModule) value;
             if (module != this && module.getBaseName() == null) {
                 module.setBaseName(name);
                 module.setParent(this);
             }
+            module.calculateName();
         }
-        return value;
     }
 
     @Deprecated
@@ -3732,6 +3714,7 @@ public class RubyModule extends RubyObject {
                 singletonClass = module.getSingletonClass();
                 // module/singleton methods are all defined public
                 DynamicMethod moduleMethod = dynamicMethod.dup();
+                moduleMethod.setImplementationClass(singletonClass);
                 moduleMethod.setVisibility(PUBLIC);
 
                 if (jrubyMethod.name().length == 0) {
@@ -3809,7 +3792,7 @@ public class RubyModule extends RubyObject {
      * 'Module#autoload' creates this object and stores it in autoloadMap.
      * This object can be shared with multiple threads so take care to change volatile and synchronized definitions.
      */
-    private class Autoload {
+    private static final class Autoload {
         // A ThreadContext which is executing autoload.
         private volatile ThreadContext ctx;
         // The lock for test-and-set the ctx.

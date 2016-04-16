@@ -10,30 +10,8 @@ project 'JRuby Dist' do
   packaging 'pom'
 
   properties( 'tesla.dump.pom' => 'pom.xml',
-              'tesla.dump.readOnly' => true,
-              'jruby.home' => '${basedir}/../..',
-              'main.basedir' => '${project.parent.parent.basedir}',
-              'ruby.maven.version' => '3.3.3',
-              'ruby.maven.libs.version' => '3.3.3' )
-
-  # pre-installed gems - not default gems !
-  gem 'ruby-maven', '${ruby.maven.version}', :scope => 'provided'
-
-  # add torquebox repo only when building from filesystem
-  # not when using the pom as "dependency" in some other projects
-  profile 'gem proxy' do
-
-    activation do
-      file( :exists => '../jruby' )
-    end
-
-    repository( :url => 'https://otto.takari.io/content/repositories/rubygems/maven/releases',
-                :id => 'rubygems-releases' )
-  end
-
-  jruby_plugin :gem do
-    execute_goal :initialize
-  end
+              'tesla.dump.readonly' => true,
+              'tesla.version' => '0.1.1' )
 
   phase 'prepare-package' do
     plugin :dependency do
@@ -60,34 +38,11 @@ project 'JRuby Dist' do
         end
       end
     end
-
-    execute :fix_permissions do |ctx|
-      gems = File.join( ctx.project.build.directory.to_pathname, 'rubygems-provided' )
-      ( Dir[ File.join( gems, '**/*' ) ] + Dir[ File.join( gems, '**/.*' ) ] ).each do |f|
-        File.chmod( 0644, f ) rescue nil if File.file?( f )
-      end
-      Dir[ File.join( gems, '**/maven-home/bin/mvn' ) ].each do |f|
-        File.chmod( 0755, f ) rescue nil if File.file?( f )
-      end
-    end
-
-    execute :dump_full_specs_of_ruby_maven do |ctx|
-      rubygems =  File.join( ctx.project.build.directory.to_pathname, 'rubygems-provided' )
-      gems =  File.join( rubygems, 'cache/*gem' )
-      default_specs = File.join( rubygems, 'specifications/default' )
-      FileUtils.mkdir_p( default_specs )
-      Dir[gems].each do |gem|
-        spec = Gem::Package.new( gem ).spec
-        File.open( File.join( default_specs, File.basename( gem ) + 'spec' ), 'w' ) do |f|
-          f.print( spec.to_ruby )
-        end
-      end
-    end
   end
 
   phase :package do
     plugin( :assembly, '2.4',
-            'finalName' => "#{model.artifact_id}-#{version.sub(/-SNAPSHOT/, '')}",
+            'finalName' => "#{model.artifact_id}-${project.version}",
             'tarLongFileMode' =>  'gnu',
             'descriptors' => [ 'src/main/assembly/jruby.xml' ] ) do
       execute_goals( 'single' )
