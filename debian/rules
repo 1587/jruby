@@ -2,10 +2,7 @@
 
 include /usr/share/dpkg/default.mk
 
-#export JAVA_HOME=/usr/lib/jvm/default-java
-# upstream code directly from git repo builds with openjdk-7-jdk
-# I have to find out how/why or just wait for openjdk-8-jdk to be default
-export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-$(DEB_BUILD_ARCH)
+export JAVA_HOME=/usr/lib/jvm/default-java
 export LC_ALL=en_US.UTF-8
 
 %:
