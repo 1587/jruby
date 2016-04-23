@@ -5,7 +5,7 @@
   <parent>
     <groupId>org.jruby</groupId>
     <artifactId>jruby-parent</artifactId>
-    <version>1.7.22</version>
+    <version>1.7.25</version>
   </parent>
   <artifactId>jruby-artifacts</artifactId>
   <packaging>pom</packaging>
@@ -67,7 +67,6 @@
         <module>jruby-complete</module>
         <module>jruby-dist</module>
         <module>jruby-jars</module>
-        <module>jruby-rake-plugin</module>
       </modules>
     </profile>
     <profile>

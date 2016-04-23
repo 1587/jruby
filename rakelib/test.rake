@@ -22,7 +22,7 @@ namespace :test do
   short_tests_19 = short_tests_18.map {|test| test + "19"}
   short_tests = short_tests_18 + short_tests_19
   long_tests_18 = short_tests_18 + ['spec:ji', 'spec:compiler', 'spec:ffi', 'spec:regression']
-  long_tests_19 = long_tests_18.map {|test| test + "19"}
+  long_tests_19 = long_tests_18.map {|test| test + "19"} + ['spec:profiler19']
   slow_tests = ['test:slow', 'test:objectspace']
   long_tests = ['test:tracing'] + long_tests_18 + long_tests_19 + slow_tests
   all_tests_18 = long_tests_18.map {|test| test + ':all'}
@@ -109,7 +109,8 @@ namespace :test do
     t.verbose = true
     t.test_files = files_in_file 'test/mri.1.9.index'
     ENV['EXCLUDE_DIR'] = 'test/externals/ruby1.9/excludes'
-    t.ruby_opts << '-J-ea' << '--1.9'
+    t.ruby_opts << '-J-Dfile.encoding=UTF-8' if RbConfig::CONFIG['host_os'] =~ /mswin|mingw/
+    t.ruby_opts << '-J-ea' << '--1.9' 
     t.ruby_opts << '-I test/externals/ruby1.9'
     t.ruby_opts << '-I test/externals/ruby1.9/ruby'
     t.ruby_opts << '-r ./test/ruby19_env.rb'

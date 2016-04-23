@@ -30,6 +30,7 @@
 package org.jruby.embed;
 
 import java.io.Closeable;
+import java.io.File;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.io.Reader;
@@ -38,6 +39,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import jnr.posix.util.Platform;
 import org.jruby.CompatVersion;
 import org.jruby.Profile;
 import org.jruby.Ruby;
@@ -587,10 +589,14 @@ public class ScriptingContainer implements EmbedRubyInstanceConfigAdapter {
      * @return a current directory.
      */
     public String getCurrentDirectory() {
+        String path;
         if (provider.isRuntimeInitialized()) {
-            return provider.getRuntime().getCurrentDirectory();
+            path = provider.getRuntime().getCurrentDirectory();
+        } else {
+            path = provider.getRubyInstanceConfig().getCurrentDirectory();
         }
-        return provider.getRubyInstanceConfig().getCurrentDirectory();
+
+        return new File(path).getPath();  // make as File to normalize separators to / or \\ as systems might expect.
     }
 
     /**
@@ -623,7 +629,8 @@ public class ScriptingContainer implements EmbedRubyInstanceConfigAdapter {
      * @return a JRuby home directory.
      */
     public String getHomeDirectory() {
-        return provider.getRubyInstanceConfig().getJRubyHome();
+        // make as File to normalize separators to / or \\ as systems might expect.
+        return new File(provider.getRubyInstanceConfig().getJRubyHome()).getPath();
     }
 
     /**
@@ -1743,7 +1750,7 @@ public class ScriptingContainer implements EmbedRubyInstanceConfigAdapter {
     public Reader getReader() {
         Map map = getAttributeMap();
         if (map.containsKey(AttributeName.READER)) {
-            return (Reader) getAttributeMap().get(AttributeName.READER);
+            return (Reader) map.get(AttributeName.READER);
         }
         return null;
     }
@@ -1808,7 +1815,7 @@ public class ScriptingContainer implements EmbedRubyInstanceConfigAdapter {
     public Writer getWriter() {
         Map map = getAttributeMap();
         if (map.containsKey(AttributeName.WRITER)) {
-            return (Writer) getAttributeMap().get(AttributeName.WRITER);
+            return (Writer) map.get(AttributeName.WRITER);
         }
         return null;
     }
@@ -1872,7 +1879,7 @@ public class ScriptingContainer implements EmbedRubyInstanceConfigAdapter {
     public Writer getErrorWriter() {
         Map map = getAttributeMap();
         if (map.containsKey(AttributeName.ERROR_WRITER)) {
-            return (Writer) getAttributeMap().get(AttributeName.ERROR_WRITER);
+            return (Writer) map.get(AttributeName.ERROR_WRITER);
         }
         return null;
     }

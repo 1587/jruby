@@ -807,9 +807,9 @@ public final class ThreadContext {
             RubyString str = RubyString.newString(runtime, trace[i - level].mriStyleString());
             newTrace.append(str);
         }
-        
-        if (RubyInstanceConfig.LOG_CALLERS) TraceType.dumpCaller(newTrace);
-        
+
+        if (RubyInstanceConfig.LOG_CALLERS) TraceType.logCaller(newTrace);
+
         return newTrace;
     }
 
@@ -842,9 +842,9 @@ public final class ThreadContext {
         if (traceLength < 0) return null;
         
         trace = Arrays.copyOfRange(trace, level, level + traceLength);
-        
-        if (RubyInstanceConfig.LOG_CALLERS) TraceType.dumpCaller(trace);
-        
+
+        if (RubyInstanceConfig.LOG_CALLERS) TraceType.logCaller(trace);
+
         return trace;
     }
     
@@ -863,7 +863,7 @@ public final class ThreadContext {
 
         RubyStackTraceElement[] trace = gatherCallerBacktrace();
 
-        if (RubyInstanceConfig.LOG_WARNINGS) TraceType.dumpWarning(trace);
+        if (RubyInstanceConfig.LOG_WARNINGS) TraceType.logWarning(trace);
 
         return trace;
     }
@@ -912,17 +912,14 @@ public final class ThreadContext {
      * @return an Array with the backtrace
      */
     public BacktraceElement[] createBacktrace2(int level, boolean nativeException) {
-        BacktraceElement[] backtraceClone = backtrace.clone();
-        int backtraceIndex = this.backtraceIndex;
+        BacktraceElement[] backtrace = this.backtrace.clone(); // TODO do we need to clone?
         BacktraceElement[] newTrace = new BacktraceElement[backtraceIndex + 1];
-        for (int i = 0; i <= backtraceIndex; i++) {
-            newTrace[i] = backtraceClone[i];
-        }
+        System.arraycopy(backtrace, 0, newTrace, 0, newTrace.length);
         return newTrace;
     }
     
     private static String createRubyBacktraceString(StackTraceElement element) {
-        return element.getFileName() + ":" + element.getLineNumber() + ":in `" + element.getMethodName() + "'";
+        return element.getFileName() + ':' + element.getLineNumber() + ":in `" + element.getMethodName() + '\'';
     }
     
     public static String createRawBacktraceStringFromThrowable(Throwable t) {

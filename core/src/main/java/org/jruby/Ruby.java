@@ -543,7 +543,7 @@ public final class Ruby {
             } else {
                 varvalue = getTrue();
             }
-            getGlobalVariables().set("$" + entry.getKey().toString(), varvalue);
+            getGlobalVariables().set('$' + entry.getKey().toString(), varvalue);
         }
 
         if (filename.endsWith(".class")) {
@@ -2773,31 +2773,30 @@ public final class Ruby {
         return new PrintStream(new IOOutputStream(getGlobalVariables().get("$stdout")));
     }
 
-    public RubyModule getClassFromPath(String path) {
-        RubyModule c = getObject();
+    public RubyModule getClassFromPath(final String path) {
         if (path.length() == 0 || path.charAt(0) == '#') {
             throw newTypeError("can't retrieve anonymous class " + path);
         }
-        int pbeg = 0, p = 0;
-        for(int l=path.length(); p<l; ) {
-            while(p<l && path.charAt(p) != ':') {
-                p++;
-            }
-            String str = path.substring(pbeg, p);
 
-            if(p<l && path.charAt(p) == ':') {
-                if(p+1 < l && path.charAt(p+1) != ':') {
-                    throw newTypeError("undefined class/module " + path.substring(pbeg,p));
+        RubyModule c = getObject();
+        int pbeg = 0, p = 0;
+        for ( final int l = path.length(); p < l; ) {
+            while ( p < l && path.charAt(p) != ':' ) p++;
+
+            final String str = path.substring(pbeg, p);
+
+            if ( p < l && path.charAt(p) == ':' ) {
+                if ( ++p < l && path.charAt(p) != ':' ) {
+                    throw newTypeError("undefined class/module " + str);
                 }
-                p += 2;
-                pbeg = p;
+                pbeg = ++p;
             }
 
             IRubyObject cc = c.getConstant(str);
-            if(!(cc instanceof RubyModule)) {
+            if ( ! ( cc instanceof RubyModule ) ) {
                 throw newTypeError("" + path + " does not refer to class/module");
             }
-            c = (RubyModule)cc;
+            c = (RubyModule) cc;
         }
         return c;
     }
@@ -2820,22 +2819,28 @@ public final class Ruby {
         IRubyObject self = wrap ? TopSelfFactory.createTopSelf(this) : getTopSelf();
         ThreadContext context = getCurrentContext();
         String file = context.getFile();
+        RubyModule scopeClass = objectClass;
+
+        Node node = parseFile(in, scriptName, null);
+
+        if (wrap) {
+            // toss an anonymous module into the search path
+            scopeClass = RubyModule.newModule(this);
+            ((RootNode)node).getStaticScope().setModule(scopeClass);
+        }
+
+        context.preNodeEval(scopeClass, self, scriptName);
 
         try {
             ThreadContext.pushBacktrace(context, "(root)", file, 0);
-            context.preNodeEval(objectClass, self, scriptName);
 
-            Node node = parseFile(in, scriptName, null);
-            if (wrap) {
-                // toss an anonymous module into the search path
-                ((RootNode)node).getStaticScope().setModule(RubyModule.newModule(this));
-            }
             runInterpreter(context, node, self);
         } catch (JumpException.ReturnJump rj) {
             return;
         } finally {
-            context.postNodeEval();
             ThreadContext.popBacktrace(context);
+
+            context.postNodeEval();
         }
     }
 

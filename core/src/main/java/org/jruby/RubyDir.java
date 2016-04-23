@@ -553,7 +553,7 @@ public class RubyDir extends RubyObject {
         Ruby runtime = getRuntime();
         StringBuilder part = new StringBuilder();
         String cname = getMetaClass().getRealClass().getName();
-        part.append("#<").append(cname).append(":").append(path.asJavaString()).append(">");
+        part.append("#<").append(cname).append(':').append(path.asJavaString()).append('>');
 
         return runtime.newString(part.toString());
     }
@@ -679,8 +679,8 @@ public class RubyDir extends RubyObject {
         // dir can't be read, so we check permissions first
 
         // no permission
-        if (directory.getParentFile().exists() &&
-                !directory.getParentFile().canWrite()) {
+        File parentFile = directory.getParentFile();
+        if (parentFile.exists() && ! parentFile.canWrite()) {
             throw runtime.newErrnoEACCESError(path);
         }
 
@@ -698,7 +698,7 @@ public class RubyDir extends RubyObject {
         String dir = path;
         String[] pathParts = RubyFile.splitURI(path);
         if (pathParts != null) {
-            if (pathParts[0].startsWith("file:") && pathParts[1].length() > 0 && pathParts[1].indexOf("!/") == -1) {
+            if (pathParts[0].startsWith("file:") && pathParts[1].length() > 0 && pathParts[1].indexOf(".jar!/") == -1) {
                 dir = pathParts[1];
             } else {
                 throw runtime.newErrnoENOTDIRError(dir);

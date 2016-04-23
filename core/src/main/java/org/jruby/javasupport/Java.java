@@ -103,8 +103,10 @@ import org.jruby.util.IdUtil;
 import org.jruby.util.SafePropertyAccessor;
 import org.jruby.util.cli.Options;
 import org.jruby.util.collections.IntHashMap;
+import org.jruby.util.collections.NonBlockingHashMapLong;
 
 import static org.jruby.java.dispatch.CallableSelector.newCallableCache;
+import org.jruby.java.invokers.RubyToJavaInvoker;
 import static org.jruby.java.invokers.RubyToJavaInvoker.convertArguments;
 import static org.jruby.runtime.Visibility.*;
 
@@ -607,41 +609,53 @@ public class Java implements Library {
             }
         });
 
-        subclass.addMethod("__jcreate!", new JavaMethodN(subclassSingleton, PUBLIC) {
+        subclass.addMethod("__jcreate!", new JCreateMethod(subclassSingleton));
+    }
 
-            private final IntHashMap<JavaProxyConstructor> cache = newCallableCache();
+    public static class JCreateMethod extends JavaMethodN implements CallableSelector.CallableCache<JavaProxyConstructor> {
 
-            @Override
-            public IRubyObject call(final ThreadContext context, IRubyObject self, RubyModule clazz, String name, IRubyObject[] args) {
-                IRubyObject proxyClass = self.getMetaClass().getInstanceVariables().getInstanceVariable("@java_proxy_class");
-                if (proxyClass == null || proxyClass.isNil()) {
-                    proxyClass = JavaProxyClass.get_with_class(self, self.getMetaClass());
-                    self.getMetaClass().getInstanceVariables().setInstanceVariable("@java_proxy_class", proxyClass);
-                }
+        private final NonBlockingHashMapLong<JavaProxyConstructor> cache = new NonBlockingHashMapLong<JavaProxyConstructor>(8);
 
-                final int argsLength = args.length;
-                final JavaProxyConstructor[] constructors = ((JavaProxyClass) proxyClass).getConstructors();
-                ArrayList<JavaProxyConstructor> forArity = findCallablesForArity(argsLength, constructors);
+        JCreateMethod(RubyModule cls) { super(cls, PUBLIC); }
 
-                if ( forArity.size() == 0 ) {
-                    throw context.runtime.newArgumentError("wrong number of arguments for constructor");
-                }
-
-                final JavaProxyConstructor matching = CallableSelector.matchingCallableArityN(
-                        context.runtime, cache,
-                        forArity.toArray(new JavaProxyConstructor[forArity.size()]), args
-                );
-
-                if ( matching == null ) {
-                    throw context.runtime.newArgumentError("wrong number of arguments for constructor");
-                }
-
-                final Object[] javaArgs = convertArguments(matching, args);
-                JavaObject newObject = matching.newInstance(self, javaArgs);
-
-                return JavaUtilities.set_java_object(self, self, newObject);
+        @Override
+        public IRubyObject call(final ThreadContext context, IRubyObject self, RubyModule clazz, String name, IRubyObject[] args) {
+            IRubyObject proxyClass = self.getMetaClass().getInstanceVariables().getInstanceVariable("@java_proxy_class");
+            if (proxyClass == null || proxyClass.isNil()) {
+                proxyClass = JavaProxyClass.get_with_class(self, self.getMetaClass());
+                self.getMetaClass().getInstanceVariables().setInstanceVariable("@java_proxy_class", proxyClass);
             }
-        });
+
+            final int argsLength = args.length;
+            final JavaProxyConstructor[] constructors = ((JavaProxyClass) proxyClass).getConstructors();
+            ArrayList<JavaProxyConstructor> forArity = findCallablesForArity(argsLength, constructors);
+
+            if ( forArity.size() == 0 ) {
+                throw context.runtime.newArgumentError("wrong number of arguments for constructor");
+            }
+
+            final JavaProxyConstructor matching = CallableSelector.matchingCallableArityN(
+                    context.runtime, this,
+                    forArity.toArray(new JavaProxyConstructor[forArity.size()]), args
+            );
+
+            if ( matching == null ) {
+                throw context.runtime.newArgumentError("wrong number of arguments for constructor");
+            }
+
+            final Object[] javaArgs = convertArguments(matching, args);
+            JavaObject newObject = matching.newInstance(self, javaArgs);
+
+            return JavaUtilities.set_java_object(self, self, newObject);
+        }
+
+        public final JavaProxyConstructor getSignature(int signatureCode) {
+            return cache.get(signatureCode);
+        }
+
+        public final void putSignature(int signatureCode, JavaProxyConstructor callable) {
+            cache.put(signatureCode, callable);
+        }
     }
 
     // NOTE: move to RubyToJavaInvoker for re-use ?!
@@ -865,10 +879,28 @@ public class Java implements Library {
             clazz = runtime.getJavaSupport().loadJavaClass(className);
         }
         catch (ExceptionInInitializerError ex) {
-            throw runtime.newNameError("cannot initialize Java class " + className, className, ex, false);
+            throw runtime.newNameError("cannot initialize Java class " + className + ' ' + '(' + ex + ')', className, ex, false);
+        }
+        catch (UnsupportedClassVersionError ex) { // LinkageError
+            String type = ex.getClass().getName();
+            String msg = ex.getLocalizedMessage();
+            if ( msg != null ) {
+                final String unMajorMinorVersion = "nsupported major.minor version";
+                // e.g. "com/sample/FooBar : Unsupported major.minor version 52.0"
+                int idx = msg.indexOf(unMajorMinorVersion);
+                if (idx > 0) {
+                    idx += unMajorMinorVersion.length();
+                    idx = mapMajorMinorClassVersionToJavaVersion(msg, idx);
+                    if ( idx > 0 ) msg = "needs Java " + idx + " (" + type + ": " + msg + ')';
+                    else msg = '(' + type + ": " + msg + ')';
+                }
+            }
+            else msg = '(' + type + ')';
+            // cannot link Java class com.sample.FooBar needs Java 8 (java.lang.UnsupportedClassVersionError: com/sample/FooBar : Unsupported major.minor version 52.0)
+            throw runtime.newNameError("cannot link Java class " + className + ' ' + msg, className, ex, false);
         }
         catch (LinkageError ex) {
-            throw runtime.newNameError("cannot link Java class " + className, className, ex, false);
+            throw runtime.newNameError("cannot link Java class " + className + ' ' + '(' + ex + ')', className, ex, false);
         }
         catch (SecurityException ex) {
             throw runtime.newSecurityError(ex.getLocalizedMessage());
@@ -879,6 +911,16 @@ public class Java implements Library {
             return getProxyClass(runtime, JavaClass.get(runtime, clazz));
         }
         return getProxyClass(runtime, clazz);
+    }
+
+    private static int mapMajorMinorClassVersionToJavaVersion(String msg, final int offset) {
+        int end;
+        if ( ( end = msg.indexOf('.', offset) ) == -1 ) end = msg.length();
+        msg = msg.substring(offset, end).trim(); // handle " 52.0"
+        try { // Java SE 6.0 = 50, Java SE 7 = 51, Java SE 8 = 52
+            return Integer.parseInt(msg) - 50 + 6;
+        }
+        catch (RuntimeException ignore) { return 0; }
     }
 
     public static IRubyObject get_proxy_or_package_under_package(final ThreadContext context,

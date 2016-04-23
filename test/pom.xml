@@ -4,7 +4,7 @@
   <parent>
     <groupId>org.jruby</groupId>
     <artifactId>jruby-parent</artifactId>
-    <version>1.7.22</version>
+    <version>1.7.25</version>
   </parent>
   <artifactId>jruby-tests</artifactId>
   <packaging>jar</packaging>
@@ -84,18 +84,6 @@
     </dependency>
     <dependency>
       <groupId>rubygems</groupId>
-      <artifactId>jruby-launcher</artifactId>
-      <version>${jruby-launcher.version}</version>
-      <type>gem</type>
-    </dependency>
-    <dependency>
-      <groupId>rubygems</groupId>
-      <artifactId>rake</artifactId>
-      <version>${rake.version}</version>
-      <type>gem</type>
-    </dependency>
-    <dependency>
-      <groupId>rubygems</groupId>
       <artifactId>rspec</artifactId>
       <version>${rspec.version}</version>
       <type>gem</type>
@@ -110,18 +98,6 @@
       <groupId>rubygems</groupId>
       <artifactId>minitest-excludes</artifactId>
       <version>${minitest-excludes.version}</version>
-      <type>gem</type>
-    </dependency>
-    <dependency>
-      <groupId>rubygems</groupId>
-      <artifactId>json</artifactId>
-      <version>${json.version}</version>
-      <type>gem</type>
-    </dependency>
-    <dependency>
-      <groupId>rubygems</groupId>
-      <artifactId>rdoc</artifactId>
-      <version>${rdoc.version}</version>
       <type>gem</type>
     </dependency>
   </dependencies>
@@ -223,4 +199,17 @@
       </plugin>
     </plugins>
   </build>
+  <profiles>
+    <profile>
+      <id>bootstrap</id>
+      <dependencies>
+	<dependency>
+	  <groupId>rubygems</groupId>
+	  <artifactId>jruby-launcher</artifactId>
+	  <version>${jruby-launcher.version}</version>
+	  <type>gem</type>
+	</dependency>
+      </dependencies>
+    </profile>
+  </profiles>
 </project>

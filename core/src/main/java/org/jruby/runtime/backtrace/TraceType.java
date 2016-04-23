@@ -63,31 +63,63 @@ public class TraceType {
     }
 
     public static void logBacktrace(RubyStackTraceElement[] trace) {
-        LOG.info("Backtrace generated:");
-        for (RubyStackTraceElement element : trace) {
-            LOG.info("  " + element.getFileName() + ":" + element.getLineNumber() + " in " + element.getMethodName());
+        if (trace == null) trace = RubyStackTraceElement.EMPTY_ARRAY;
+        final StringBuilder buffer = new StringBuilder(128);
+        renderBacktraceJRuby(trace, buffer, false);
+        final int len = buffer.length();
+        if ( len > 0 && buffer.charAt(len - 1) == '\n' ) {
+            buffer.setLength(len - 1); // remove last '\n'
         }
+        LOG.info("Backtrace generated:\n{}", buffer);
     }
 
-    public static void dumpException(RubyException exception) {
+    public static void logException(RubyException exception) {
         LOG.info("Exception raised: {} : {}", exception.getMetaClass(), exception);
+    }
+
+    /**
+     * @deprecated use {@link #logException(org.jruby.RubyException)}
+     */
+    public static void dumpException(RubyException exception) {
+        logException(exception);
     }
 
     public static void dumpBacktrace(RubyException exception) {
         Ruby runtime = exception.getRuntime();
-        System.err.println("Backtrace generated:\n" + Format.JRUBY.printBacktrace(exception, runtime.getPosix().isatty(FileDescriptor.err)));
+        System.err.println("Backtrace generated:\n" + printBacktraceJRuby(exception, runtime.getPosix().isatty(FileDescriptor.err)));
     }
 
+    public static void logCaller(RubyArray trace) {
+        LOG.info("Caller backtrace generated:\n{}", trace);
+    }
+
+    /**
+     * @deprecated use {@link #logCaller(org.jruby.RubyArray)}
+     */
     public static void dumpCaller(RubyArray trace) {
-        LOG.info("Caller backtrace generated:\n" + trace);
+        logCaller(trace);
     }
 
+    public static void logCaller(RubyStackTraceElement[] trace) {
+        LOG.info("Caller backtrace generated:\n{}", Arrays.toString(trace));
+    }
+
+    /**
+     * @deprecated use {@link #logCaller(org.jruby.runtime.backtrace.RubyStackTraceElement[]) }
+     */
     public static void dumpCaller(RubyStackTraceElement[] trace) {
-        LOG.info("Caller backtrace generated:\n" + Arrays.toString(trace));
+        logCaller(trace);
     }
 
+    public static void logWarning(RubyStackTraceElement[] trace) {
+        LOG.info("Warning backtrace generated:\n{}", Arrays.toString(trace));
+    }
+
+    /**
+     * @deprecated use {@link #logWarning(org.jruby.runtime.backtrace.RubyStackTraceElement[])
+     */
     public static void dumpWarning(RubyStackTraceElement[] trace) {
-        LOG.info("Warning backtrace generated:\n" + Arrays.toString(trace));
+        logWarning(trace);
     }
 
     public static TraceType traceTypeFor(String style) {
@@ -246,16 +278,17 @@ public class TraceType {
     }
 
     protected static String printBacktraceMRI(RubyException exception, boolean console) {
-        Ruby runtime = exception.getRuntime();
-        ThreadContext context = runtime.getCurrentContext();
-        IRubyObject backtrace = exception.callMethod(context, "backtrace");
+        final Ruby runtime = exception.getRuntime();
+        final ThreadContext context = runtime.getCurrentContext();
+
+        final IRubyObject backtrace = exception.callMethod(context, "backtrace");
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         PrintStream errorStream = new PrintStream(baos);
         boolean printedPosition = false;
         if (backtrace.isNil() || !(backtrace instanceof RubyArray)) {
             if (context.getFile() != null && context.getFile().length() > 0) {
-                errorStream.print(context.getFile() + ":" + context.getLine());
+                errorStream.print(context.getFile() + ':' + context.getLine());
                 printedPosition = true;
             } else {
                 errorStream.print(context.getLine());
@@ -277,11 +310,10 @@ public class TraceType {
         RubyClass type = exception.getMetaClass();
         String info = exception.toString();
 
-        if (printedPosition) errorStream.print(": ");
-
         if (type == runtime.getRuntimeError() && (info == null || info.length() == 0)) {
             errorStream.print(": unhandled exception\n");
         } else {
+            if (printedPosition) errorStream.print(": ");
             String path = type.getName();
 
             if (info.length() == 0) {
@@ -292,9 +324,10 @@ public class TraceType {
                 }
 
                 String tail = null;
-                if (info.indexOf("\n") != -1) {
-                    tail = info.substring(info.indexOf("\n") + 1);
-                    info = info.substring(0, info.indexOf("\n"));
+                int idx = info.indexOf('\n');
+                if (idx != -1) {
+                    tail = info.substring(idx + 1);
+                    info = info.substring(0, idx);
                 }
 
                 errorStream.print(info);
@@ -320,13 +353,14 @@ public class TraceType {
     private static final String CLEAR_COLOR = "\033[0m";
 
     protected static String printBacktraceJRuby(RubyException exception, boolean console) {
-        Ruby runtime = exception.getRuntime();
+        final Ruby runtime = exception.getRuntime();
+        final ThreadContext context = runtime.getCurrentContext();
 
         StringBuilder buffer = new StringBuilder();
         boolean color = console && runtime.getInstanceConfig().getBacktraceColor();
 
         // exception line
-        String message = exception.message(runtime.getCurrentContext()).toString();
+        String message = exception.message(context).toString();
         if (exception.getMetaClass() == runtime.getRuntimeError() && message.length() == 0) {
             message = "No current exception";
         }
@@ -412,7 +446,7 @@ public class TraceType {
         for (int i = 0; i < trace.length; i++) {
             RubyStackTraceElement element = trace[i];
 
-            RubyString str = RubyString.newString(runtime, element.getFileName() + ":" + element.getLineNumber() + ":in `" + element.getMethodName() + "'");
+            RubyString str = RubyString.newString(runtime, element.getFileName() + ':' + element.getLineNumber() + ":in `" + element.getMethodName() + "'");
             traceArray.append(str);
         }
 
@@ -422,10 +456,10 @@ public class TraceType {
     private static void printErrorPos(ThreadContext context, PrintStream errorStream) {
         if (context.getFile() != null && context.getFile().length() > 0) {
             if (context.getFrameName() != null) {
-                errorStream.print(context.getFile() + ":" + context.getLine());
+                errorStream.print(context.getFile() + ':' + context.getLine());
                 errorStream.print(":in '" + context.getFrameName() + '\'');
             } else if (context.getLine() != 0) {
-                errorStream.print(context.getFile() + ":" + context.getLine());
+                errorStream.print(context.getFile() + ':' + context.getLine());
             } else {
                 errorStream.print(context.getFile());
             }

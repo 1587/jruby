@@ -16,6 +16,7 @@ import org.jruby.RubyFloat;
 import org.jruby.RubyInteger;
 import org.jruby.RubyProc;
 import org.jruby.RubyString;
+import org.jruby.java.invokers.RubyToJavaInvoker;
 import org.jruby.javasupport.JavaCallable;
 import org.jruby.javasupport.JavaClass;
 import org.jruby.javasupport.JavaUtil;
@@ -34,6 +35,108 @@ public class CallableSelector {
     private CallableSelector() { /* no-instances */ }
 
     //private static final boolean DEBUG = true;
+
+    public static <T extends ParameterTypes> T matchingCallableArityN(Ruby runtime, CallableCache<T> cache, T[] methods, IRubyObject[] args) {
+        final int signatureCode = argsHashCode(args);
+        T method = cache.getSignature(signatureCode);
+        if (method == null) {
+            method = findMatchingCallableForArgs(runtime, methods, args);
+            if (method != null) cache.putSignature(signatureCode, method);
+        }
+        return method;
+    }
+
+    public static <T extends ParameterTypes> T matchingCallableArityOne(Ruby runtime, CallableCache<T> cache, T[] methods, IRubyObject arg0) {
+        final int signatureCode = argsHashCode(arg0);
+        T method = cache.getSignature(signatureCode);
+        if (method == null) {
+            method = findMatchingCallableForArgs(runtime, methods, arg0);
+            if (method != null) cache.putSignature(signatureCode, method);
+        }
+        return method;
+    }
+
+    public static <T extends ParameterTypes> T matchingCallableArityTwo(Ruby runtime, CallableCache<T> cache, T[] methods, IRubyObject arg0, IRubyObject arg1) {
+        final int signatureCode = argsHashCode(arg0, arg1);
+        T method = cache.getSignature(signatureCode);
+        if (method == null) {
+            method = findMatchingCallableForArgs(runtime, methods, arg0, arg1);
+            if (method != null) cache.putSignature(signatureCode, method);
+        }
+        return method;
+    }
+
+    public static <T extends ParameterTypes> T matchingCallableArityThree(Ruby runtime, CallableCache<T> cache, T[] methods, IRubyObject arg0, IRubyObject arg1, IRubyObject arg2) {
+        final int signatureCode = argsHashCode(arg0, arg1, arg2);
+        T method = cache.getSignature(signatureCode);
+        if (method == null) {
+            method = findMatchingCallableForArgs(runtime, methods, arg0, arg1, arg2);
+            if (method != null) cache.putSignature(signatureCode, method);
+        }
+        return method;
+    }
+
+    public static <T extends ParameterTypes> T matchingCallableArityFour(Ruby runtime, CallableCache<T> cache, T[] methods, IRubyObject arg0, IRubyObject arg1, IRubyObject arg2, IRubyObject arg3) {
+        final int signatureCode = argsHashCode(arg0, arg1, arg2, arg3);
+        T method = cache.getSignature(signatureCode);
+        if (method == null) {
+            method = findMatchingCallableForArgs(runtime, methods, arg0, arg1, arg2, arg3);
+            if (method != null) cache.putSignature(signatureCode, method);
+        }
+        return method;
+    }
+
+    // RubyToJavaInvoker
+
+    public static <T extends JavaCallable> T matchingCallableArityN(Ruby runtime, RubyToJavaInvoker<T> invoker, T[] methods, IRubyObject[] args) {
+        final int signatureCode = argsHashCode(args);
+        T method = invoker.getSignature(signatureCode);
+        if (method == null) {
+            method = findMatchingCallableForArgs(runtime, methods, args);
+            if (method != null) invoker.putSignature(signatureCode, method);
+        }
+        return method;
+    }
+
+    public static <T extends JavaCallable> T matchingCallableArityOne(Ruby runtime, RubyToJavaInvoker<T> invoker, T[] methods, IRubyObject arg0) {
+        final int signatureCode = argsHashCode(arg0);
+        T method = invoker.getSignature(signatureCode);
+        if (method == null) {
+            method = findMatchingCallableForArgs(runtime, methods, arg0);
+            if (method != null) invoker.putSignature(signatureCode, method);
+        }
+        return method;
+    }
+
+    public static <T extends JavaCallable> T matchingCallableArityTwo(Ruby runtime, RubyToJavaInvoker<T> invoker, T[] methods, IRubyObject arg0, IRubyObject arg1) {
+        final int signatureCode = argsHashCode(arg0, arg1);
+        T method = invoker.getSignature(signatureCode);
+        if (method == null) {
+            method = findMatchingCallableForArgs(runtime, methods, arg0, arg1);
+            if (method != null) invoker.putSignature(signatureCode, method);
+        }
+        return method;
+    }
+
+    public static <T extends JavaCallable> T matchingCallableArityThree(Ruby runtime, RubyToJavaInvoker<T> invoker, T[] methods, IRubyObject arg0, IRubyObject arg1, IRubyObject arg2) {
+        final int signatureCode = argsHashCode(arg0, arg1, arg2);
+        T method = invoker.getSignature(signatureCode);
+        if (method == null) {
+            method = findMatchingCallableForArgs(runtime, methods, arg0, arg1, arg2);
+            if (method != null) invoker.putSignature(signatureCode, method);
+        }
+        return method;
+    }
+
+    public static <T extends JavaCallable> T matchingCallableArityFour(Ruby runtime, RubyToJavaInvoker<T> invoker, T[] methods, IRubyObject arg0, IRubyObject arg1, IRubyObject arg2, IRubyObject arg3) {
+        final int signatureCode = argsHashCode(arg0, arg1, arg2, arg3);
+        T method = invoker.getSignature(signatureCode);
+        if (method == null) {
+            method = findMatchingCallableForArgs(runtime, methods, arg0, arg1, arg2, arg3);
+            if (method != null) invoker.putSignature(signatureCode, method);
+        }
+        return method;
+    }
 
     @SuppressWarnings("unchecked")
     public static ParameterTypes matchingCallableArityN(Ruby runtime, Map cache, ParameterTypes[] methods, IRubyObject[] args) {
@@ -172,7 +275,8 @@ public class CallableSelector {
                 final int procArity;
                 if ( lastArg instanceof RubyProc ) {
                     final Method implMethod; final int last = msTypes.length - 1;
-                    if ( last >= 0 && msTypes[last].isInterface() && ( implMethod = getFunctionalInterfaceMethod(msTypes[last]) ) != null ) {
+                    if ( last >= 0 && msTypes[last].isInterface() &&
+                        ( implMethod = getFunctionalInterfaceMethod(msTypes[last]) ) != null ) {
                         mostSpecificArity = implMethod.getParameterTypes().length;
                     }
                     procArity = ((RubyProc) lastArg).getBlock().arity().getValue();
@@ -181,34 +285,40 @@ public class CallableSelector {
                     procArity = Integer.MIN_VALUE;
                 }
 
-                OUTER: for ( int c = 1; c < size; c++ ) {
+                /* OUTER: */
+                for ( int c = 1; c < size; c++ ) {
                     final T candidate = candidates.get(c);
                     final Class<?>[] cTypes = candidate.getParameterTypes();
 
                     // TODO still need to handle var-args better Class<?> lastType;
-                    for ( int i = 0; i < msTypes.length; i++ ) {
-                        final Class<?> msType = msTypes[i], cType = cTypes[i];
-                        if ( msType != cType && msType.isAssignableFrom(cType) ) {
-                            mostSpecific = candidate; msTypes = cTypes;
-                            ambiguous = false; continue OUTER;
-                        }
+
+                    final boolean lastArgProc = procArity != Integer.MIN_VALUE;
+                    final Boolean moreSpecific = moreSpecificTypes(msTypes, cTypes, lastArgProc);
+                    if ( (Object) moreSpecific == Boolean.TRUE ) {
+                        mostSpecific = candidate; msTypes = cTypes;
+                        ambiguous = false; continue /* OUTER */;
                     }
-                    // none more specific; check for ambiguities
-                    for ( int i = 0; i < msTypes.length; i++ ) {
-                        final Class<?> msType = msTypes[i], cType = cTypes[i];
-                        if ( msType == cType || msType.isAssignableFrom(cType) || cType.isAssignableFrom(msType) ) {
-                            ambiguous = false; continue OUTER;
-                        }
-                        else if ( cType.isPrimitive() && msType.isAssignableFrom(getBoxType(cType)) ) {
-                            ambiguous = false; continue OUTER;
-                        }
-                        else {
-                            ambiguous = true;
+                    else { // if ( (Object) moreSpecific == Boolean.FALSE ) {
+                        // none more specific; check for ambiguities
+                        for ( int i = 0; i < msTypes.length; i++ ) {
+                            // TODO if lastArgProc (and we're not dealing with RubyProc.class)
+                            // then comparing last arg should not be needed, right?
+                            // ... same applies for moreSpecificTypes method ...
+                            final Class<?> msType = msTypes[i], cType = cTypes[i];
+                            if ( msType == cType || msType.isAssignableFrom(cType) || cType.isAssignableFrom(msType) ) {
+                                ambiguous = false; break; // continue OUTER;
+                            }
+                            else if ( cType.isPrimitive() && msType.isAssignableFrom(getBoxType(cType)) ) {
+                                ambiguous = false; break; // continue OUTER;
+                            }
+                            else {
+                                ambiguous = true;
+                            }
                         }
                     }
 
                     // special handling if we're dealing with Proc#impl :
-                    if ( procArity != Integer.MIN_VALUE ) { // lastArg instanceof RubyProc
+                    if ( lastArgProc ) {  // lastArg instanceof RubyProc
                         // cases such as (both ifaces - differ in arg count) :
                         // java.io.File#listFiles(java.io.FileFilter) ... accept(File)
                         // java.io.File#listFiles(java.io.FilenameFilter) ... accept(File, String)
@@ -285,6 +395,48 @@ public class CallableSelector {
         }
 
         return method;
+    }
+
+    private static Boolean moreSpecificTypes(final Class[] msTypes, final Class[] cTypes,
+        final boolean lastArgProc) {
+
+        final int last = msTypes.length - 1;
+        int moreSpecific = 0; Class<?> msType, cType;
+        for ( int i = 0; i < last; i++ ) {
+             msType = msTypes[i]; cType = cTypes[i];
+            if ( msType == cType ) ;
+            else if ( msType.isAssignableFrom(cType) ) {
+                moreSpecific++; /* continue; */
+            }
+            else if ( cType.isAssignableFrom(msType) ) {
+                moreSpecific--; /* continue; */
+            }
+            /* return false; */
+        }
+
+        if ( last >= 0 ) { // last argument :
+            msType = msTypes[last]; cType = cTypes[last];
+            if ( lastArgProc ) {
+                if ( cType.isAssignableFrom(RubyProc.class) ) {
+                    if ( ! msType.isAssignableFrom(RubyProc.class) ) moreSpecific++;
+                    // return moreSpecific > 0;
+                }
+                else {
+                    // NOTE: maybe this needs some implMethod arity matching here?
+                    return null; // interface matching logic (can not decide)
+                }
+            }
+            else {
+                if ( msType == cType ) ;
+                else if ( msType.isAssignableFrom(cType) ) {
+                    moreSpecific++;
+                }
+                else if ( cType.isAssignableFrom(msType) ) {
+                    moreSpecific--;
+                }
+            }
+        }
+        return moreSpecific > 0 ? Boolean.TRUE : Boolean.FALSE;
     }
 
     private static <T extends ParameterTypes> T findMatchingCallableForArgsFallback(final Ruby runtime,
@@ -706,10 +858,22 @@ public class CallableSelector {
     }
 
     /**
+     * A cache of "callables" based on method signature hash.
+     * @param <T> java callable type
+     */
+    public static interface CallableCache<T extends ParameterTypes> {
+
+        T getSignature(int signatureCode) ;
+        void putSignature(int signatureCode, T callable) ;
+
+    }
+
+    /**
      * Internal helper to allocate a callable map to cache argument method matches.
      * @param <T> the callable type
      * @return cache usable with {@link CallableSelector}
      */
+    @Deprecated
     public static <T extends ParameterTypes> IntHashMap<T> newCallableCache() {
         return new IntHashMap<T>(8);
     }
