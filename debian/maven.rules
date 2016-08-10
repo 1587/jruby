@@ -3,3 +3,4 @@ org.jruby.extras bytelist jar s/.*/debian/ * *
 org.yaml snakeyaml jar s/.*/1.x/ * *
 junit junit jar s/.*/4.x/ * *
 jline jline jar s/2\..*/2.x/ * *
+org.jruby yecht jar s/.*/debian/ s/jruby// *
