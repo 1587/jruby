@@ -1,4 +1,3 @@
-org.ow2.asm * jar s/.*/4.x/ * *
 org.jruby.extras bytelist jar s/.*/debian/ * *
 org.yaml snakeyaml jar s/.*/1.x/ * *
 junit junit jar s/.*/4.x/ * *

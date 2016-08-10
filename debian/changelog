@@ -1,11 +1,17 @@
 jruby (1.7.25-1) UNRELEASED; urgency=medium
 
+  * Team upload.
+
+  [ Miguel Landaeta ]
   * New upstream release.
   * Fix FTBFS due to changes introduced in yecht 1.1 and snakeyaml 1.7.
     (Closes: #821181).
   * Build with default-jdk now it has finally switched to Java 8.
   * Bump Standards-Version to 3.9.8. No changes were required.
   * Use https URLs with Vcs-* fields.
+
+  [ Emmanuel Bourg ]
+  * Depend on libasm-java (>= 5.0) instead of libasm4-java
 
  -- Miguel Landaeta <nomadium@debian.org>  Sat, 23 Apr 2016 15:23:53 +0100
 
