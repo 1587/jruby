@@ -7,3 +7,4 @@
 0009-Disable-bigdecimal-divmod-spec-failing-test.patch
 0010-Disable-maven-invoker-plugin.patch
 0011-Snakeyaml-1.17-compatibility.patch
+0012-Disable-outdated-specs.patch

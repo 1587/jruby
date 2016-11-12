@@ -9,11 +9,14 @@ jruby (1.7.25-1) UNRELEASED; urgency=medium
   * Build with default-jdk now it has finally switched to Java 8.
   * Bump Standards-Version to 3.9.8. No changes were required.
   * Use https URLs with Vcs-* fields.
+  * Refresh patches:
+    - Add new patch:
+      + d/patches/0012-Disable-outdated-specs.patch.
 
   [ Emmanuel Bourg ]
-  * Depend on libasm-java (>= 5.0) instead of libasm4-java
+  * Depend on libasm-java (>= 5.0) instead of libasm4-java.
 
- -- Miguel Landaeta <nomadium@debian.org>  Sat, 23 Apr 2016 15:23:53 +0100
+ -- Miguel Landaeta <nomadium@debian.org>  Sat, 12 Nov 2016 19:05:29 +0000
 
 jruby (1.7.22-2) unstable; urgency=medium
 
