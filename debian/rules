@@ -65,8 +65,8 @@ ifeq (,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 
 	dh_auto_test -- -Ptest test
 	./bin/jruby spec/mspec/bin/mspec ci
-	# enable it when minitest-excludes is available in the archive
-	#./bin/jruby -S ./bin/rake test:mri19
+	./bin/jruby -S ./bin/rake spec:ruby:fast
+	# many tests are broken in test:extended, help is needed to debug them
 	#./bin/jruby -S ./bin/rake test:extended
 
 	# remove links to jruby-openssl library

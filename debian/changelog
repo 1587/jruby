@@ -11,12 +11,15 @@ jruby (1.7.25-1) UNRELEASED; urgency=medium
   * Use https URLs with Vcs-* fields.
   * Refresh patches:
     - Add new patch:
+      + d/patches/0007-Enable-test-suites.patch.
       + d/patches/0012-Disable-outdated-specs.patch.
+  * Run more unit tests during build time.
+    The suit test spec:ruby:fast is ran from now on.
 
   [ Emmanuel Bourg ]
   * Depend on libasm-java (>= 5.0) instead of libasm4-java.
 
- -- Miguel Landaeta <nomadium@debian.org>  Sat, 12 Nov 2016 19:05:29 +0000
+ -- Miguel Landaeta <nomadium@debian.org>  Sat, 12 Nov 2016 19:35:58 +0000
 
 jruby (1.7.22-2) unstable; urgency=medium
 

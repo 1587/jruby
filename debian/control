@@ -50,7 +50,9 @@ Build-Depends: ant-optional,
                maven-repo-helper,
                nailgun (>= 0.9.1~),
                netbase,
+               ruby-json,
                ruby-minitest,
+               ruby-minitest-excludes,
                ruby-rspec,
                yydebug
 Standards-Version: 3.9.8
@@ -87,7 +89,9 @@ Depends: default-jre | java6-runtime,
          nailgun (>= 0.9.1~),
          libyecht-java (>= 1.0~),
          ${misc:Depends}
-Recommends: ri, jruby-openssl
+Recommends: jruby-openssl,
+            ri,
+            ruby-json
 Provides: ruby-interpreter
 Description: 100% pure-Java implementation of Ruby
  JRuby is a high performance, stable, fully threaded Java implementation

@@ -1,6 +1,6 @@
 From: Miguel Landaeta <nomadium@debian.org>
-Date: Thu, 28 May 2015 21:14:25 -0300
-Subject: Disable rake and rspec load through gems
+Date: Sat, 12 Nov 2016 19:41:24 +0000
+Subject: Adjust rake to run jruby unit tests in Debian
 Forwarded: no
 
 diff --git a/rakelib/rspec.rake b/rakelib/rspec.rake
@@ -20,19 +20,17 @@ index dfdf655..fddd1ca 100644
  
    compile_flags = {
 diff --git a/rakelib/test.rake b/rakelib/test.rake
-index 6765a3b..9890c6a 100644
+index 2501336..302e2cc 100644
 --- a/rakelib/test.rake
 +++ b/rakelib/test.rake
-@@ -113,7 +113,8 @@ namespace :test do
+@@ -114,6 +114,7 @@ namespace :test do
      t.ruby_opts << '-I test/externals/ruby1.9'
      t.ruby_opts << '-I test/externals/ruby1.9/ruby'
      t.ruby_opts << '-r ./test/ruby19_env.rb'
--    t.ruby_opts << '-r minitest/excludes'
-+    # minitest-excludes gem must be packaged first!
-+    #t.ruby_opts << '-r minitest/excludes'
++    t.ruby_opts << '-r minitest'
+     t.ruby_opts << '-r minitest/excludes'
    end
    
-   permute_tests(:mri, compile_flags) do |t|
 --- a/bin/rake
 +++ b/bin/rake
 @@ -19,5 +19,14 @@
