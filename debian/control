@@ -92,7 +92,6 @@ Depends: default-jre | java6-runtime,
 Recommends: jruby-openssl,
             ri,
             ruby-json
-Provides: ruby-interpreter
 Description: 100% pure-Java implementation of Ruby
  JRuby is a high performance, stable, fully threaded Java implementation
  of the Ruby programming language.

@@ -6,6 +6,8 @@ jruby (1.7.25-1) UNRELEASED; urgency=medium
   * New upstream release.
   * Fix FTBFS due to changes introduced in yecht 1.1 and snakeyaml 1.7.
     (Closes: #821181).
+  * Drop Provides: ruby-interpreter in jruby binary package.
+    (Closes: #839567).
   * Build with default-jdk now it has finally switched to Java 8.
   * Bump Standards-Version to 3.9.8. No changes were required.
   * Use https URLs with Vcs-* fields.
