@@ -2,6 +2,7 @@
 0003-Add-usr-lib-ruby-vendor-ruby-to-load-path.patch
 0004-Use-debian-versions-for-plugins-in-pom-test.patch
 0006-Allow-rdoc-to-run-without-gems.patch
+0007-Enable-test-suites.patch
 0008-Disable-some-failing-user-tests-in-pbuilder.patch
 0009-Disable-bigdecimal-divmod-spec-failing-test.patch
 0010-Disable-maven-invoker-plugin.patch
