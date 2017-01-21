@@ -28,7 +28,7 @@ public final class SingletonMethodInvoker extends MethodInvoker {
     @Override
     public IRubyObject call(ThreadContext context, IRubyObject self, RubyModule clazz, String name, IRubyObject[] args) {
         JavaMethod method = (JavaMethod) findCallable(self, name, args, args.length);
-        return method.invokeDirect( singleton, convertArguments(method, args) );
+        return method.invokeDirect( context, singleton, convertArguments(method, args) );
     }
 
     @Override
@@ -36,7 +36,7 @@ public final class SingletonMethodInvoker extends MethodInvoker {
         if (javaVarargsCallables != null) return call(context, self, clazz, name, IRubyObject.NULL_ARRAY);
         JavaMethod method = (JavaMethod) findCallableArityZero(self, name);
 
-        return method.invokeDirect(singleton);
+        return method.invokeDirect(context, singleton);
     }
 
     @Override
@@ -47,7 +47,7 @@ public final class SingletonMethodInvoker extends MethodInvoker {
         final Class<?>[] paramTypes = method.getParameterTypes();
         Object cArg0 = arg0.toJava(paramTypes[0]);
 
-        return method.invokeDirect(singleton, cArg0);
+        return method.invokeDirect(context, singleton, cArg0);
     }
 
     @Override
@@ -58,7 +58,7 @@ public final class SingletonMethodInvoker extends MethodInvoker {
         Object cArg0 = arg0.toJava(paramTypes[0]);
         Object cArg1 = arg1.toJava(paramTypes[1]);
 
-        return method.invokeDirect(singleton, cArg0, cArg1);
+        return method.invokeDirect(context, singleton, cArg0, cArg1);
     }
 
     @Override
@@ -70,7 +70,7 @@ public final class SingletonMethodInvoker extends MethodInvoker {
         Object cArg1 = arg1.toJava(paramTypes[1]);
         Object cArg2 = arg2.toJava(paramTypes[2]);
 
-        return method.invokeDirect(singleton, cArg0, cArg1, cArg2);
+        return method.invokeDirect(context, singleton, cArg0, cArg1, cArg2);
     }
 
     @Override
@@ -89,7 +89,7 @@ public final class SingletonMethodInvoker extends MethodInvoker {
                 convertedArgs[i] = intermediate[i].toJava(paramTypes[i]);
             }
 
-            return method.invokeDirect(singleton, convertedArgs);
+            return method.invokeDirect(context, singleton, convertedArgs);
         }
         return call(context, self, clazz, name, args);
     }
@@ -102,7 +102,7 @@ public final class SingletonMethodInvoker extends MethodInvoker {
             final Class<?>[] paramTypes = method.getParameterTypes();
             Object cArg0 = proc.toJava(paramTypes[0]);
 
-            return method.invokeDirect(singleton, cArg0);
+            return method.invokeDirect(context, singleton, cArg0);
         }
         return call(context, self, clazz, name);
     }
@@ -116,7 +116,7 @@ public final class SingletonMethodInvoker extends MethodInvoker {
             Object cArg0 = arg0.toJava(paramTypes[0]);
             Object cArg1 = proc.toJava(paramTypes[1]);
 
-            return method.invokeDirect(singleton, cArg0, cArg1);
+            return method.invokeDirect(context, singleton, cArg0, cArg1);
         }
         return call(context, self, clazz, name, arg0);
     }
@@ -131,7 +131,7 @@ public final class SingletonMethodInvoker extends MethodInvoker {
             Object cArg1 = arg1.toJava(paramTypes[1]);
             Object cArg2 = proc.toJava(paramTypes[2]);
 
-            return method.invokeDirect(singleton, cArg0, cArg1, cArg2);
+            return method.invokeDirect(context, singleton, cArg0, cArg1, cArg2);
         }
         return call(context, self, clazz, name, arg0, arg1);
     }
@@ -147,7 +147,7 @@ public final class SingletonMethodInvoker extends MethodInvoker {
             Object cArg2 = arg2.toJava(paramTypes[2]);
             Object cArg3 = proc.toJava(paramTypes[3]);
 
-            return method.invokeDirect(singleton, cArg0, cArg1, cArg2, cArg3);
+            return method.invokeDirect(context, singleton, cArg0, cArg1, cArg2, cArg3);
         }
         return call(context, self, clazz, name, arg0, arg1, arg2);
     }

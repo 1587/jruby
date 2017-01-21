@@ -14,7 +14,7 @@
  *
  * Copyright (C) 2007 Ola Bini <ola@ologix.com>
  * Copyright (C) 2007 Thomas E Enebo <enebo@acm.org>
- * 
+ *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
  * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
@@ -48,6 +48,7 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 
 import org.jruby.Ruby;
+import org.jruby.RubyArray;
 import org.jruby.RubyClass;
 import org.jruby.anno.JRubyMethod;
 import org.jruby.runtime.Block;
@@ -55,13 +56,11 @@ import org.jruby.runtime.ObjectAllocator;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.Visibility;
 import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.util.io.ModeFlags;
-import org.jruby.util.io.ChannelDescriptor;
 
 public class RubyTCPSocket extends RubyIPSocket {
     static void createTCPSocket(Ruby runtime) {
         RubyClass rb_cTCPSocket = runtime.defineClass("TCPSocket", runtime.getClass("IPSocket"), TCPSOCKET_ALLOCATOR);
-        
+
         rb_cTCPSocket.defineAnnotatedMethods(RubyTCPSocket.class);
 
         runtime.getObject().setConstant("TCPsocket",rb_cTCPSocket);
@@ -80,11 +79,11 @@ public class RubyTCPSocket extends RubyIPSocket {
     @JRubyMethod(required = 2, optional = 2, visibility = Visibility.PRIVATE)
     public IRubyObject initialize(ThreadContext context, IRubyObject[] args) {
         Ruby runtime = context.runtime;
-        IRubyObject _host = args[0];
-        IRubyObject _port = args[1];
+        IRubyObject host = args[0];
+        IRubyObject port = args[1];
 
-        String remoteHost = _host.isNil()? "localhost" : _host.convertToString().toString();
-        int remotePort = SocketUtils.getPortFrom(context, _port);
+        final String remoteHost = host.isNil() ? "localhost" : host.convertToString().toString();
+        final int remotePort = SocketUtils.getPortFrom(context, port);
 
         String localHost = (args.length >= 3 && !args[2].isNil()) ? args[2].convertToString().toString() : null;
         int localPort = (args.length == 4 && !args[3].isNil()) ? SocketUtils.getPortFrom(context, args[3]) : 0;
@@ -108,43 +107,53 @@ public class RubyTCPSocket extends RubyIPSocket {
                 // Do this nonblocking so we can be interrupted
                 channel.configureBlocking(false);
                 channel.connect( new InetSocketAddress(InetAddress.getByName(remoteHost), remotePort) );
-                context.getThread().select(channel, this, SelectionKey.OP_CONNECT);
-                channel.finishConnect();
+
+                // wait for connection
+                while (!context.getThread().select(channel, this, SelectionKey.OP_CONNECT)) {
+                    context.pollThreadEvents();
+                }
+
+                // complete connection
+                while (!channel.finishConnect()) {
+                    context.pollThreadEvents();
+                }
 
                 // only try to set blocking back if we succeeded to finish connecting
                 channel.configureBlocking(true);
 
-                initSocket(runtime, new ChannelDescriptor(channel, newModeFlags(runtime, ModeFlags.RDWR)));
+                initSocket(newChannelFD(runtime, channel));
                 success = true;
-            } catch(BindException e) {
-            	throw runtime.newErrnoEADDRFromBindException(e, " to: " + remoteHost + ":" + String.valueOf(remotePort));
-
-            } catch (NoRouteToHostException nrthe) {
-                throw runtime.newErrnoEHOSTUNREACHError("SocketChannel.connect");
-
-            } catch(ConnectException e) {
-                throw runtime.newErrnoECONNREFUSEDError();
-
-            } catch(UnknownHostException e) {
-                throw SocketUtils.sockerr(runtime, "initialize: name or service not known");
-
             }
-
-        } catch (ClosedChannelException cce) {
+            catch (BindException e) {
+            	throw runtime.newErrnoEADDRFromBindException(e, " to: " + remoteHost + ':' + remotePort);
+            }
+            catch (NoRouteToHostException e) {
+                throw runtime.newErrnoEHOSTUNREACHError("SocketChannel.connect");
+            }
+            catch (ConnectException e) {
+                throw runtime.newErrnoECONNREFUSEDError("connect(2) for " + host.inspect() + " port " + remotePort);
+            }
+            catch (UnknownHostException e) {
+                throw SocketUtils.sockerr(runtime, "initialize: name or service not known");
+            }
+        }
+        catch (ClosedChannelException e) {
             throw runtime.newErrnoECONNREFUSEDError();
-
-        } catch(BindException e) {
-            throw runtime.newErrnoEADDRFromBindException(e, " on: " + localHost + ":" + String.valueOf(localPort));
-
-        } catch(IOException e) {
-            throw SocketUtils.sockerr(runtime, e.getLocalizedMessage());
-
-        } catch (IllegalArgumentException iae) {
-            throw SocketUtils.sockerr(runtime, iae.getMessage());
-
-        } finally {
-            if (!success && channel != null) {
-                try {channel.close();} catch (IOException ioe) {}
+        }
+        catch (BindException e) {
+            throw runtime.newErrnoEADDRFromBindException(e, " on: " + localHost + ':' + localPort);
+        }
+        catch (IOException e) {
+            throw runtime.newIOErrorFromException(e);
+        }
+        catch (IllegalArgumentException e) {
+            // NOTE: MRI does -1 as SocketError but +65536 as ECONNREFUSED
+            // ... which JRuby does currently not blindly follow!
+            throw sockerr(runtime, e.getMessage(), e);
+        }
+        finally {
+            if ( ! success && channel != null ) {
+                try { channel.close(); } catch (IOException ioe) {}
             }
         }
 
@@ -154,26 +163,26 @@ public class RubyTCPSocket extends RubyIPSocket {
     @JRubyMethod(meta = true)
     public static IRubyObject gethostbyname(ThreadContext context, IRubyObject recv, IRubyObject hostname) {
         Ruby runtime = context.runtime;
-        IRubyObject[] ret = new IRubyObject[4];
+        IRubyObject ret0, ret1, ret2, ret3;
         String hostString = hostname.convertToString().toString();
 
         try {
             InetAddress addr = InetAddress.getByName(hostString);
-            
-            ret[0] = runtime.newString(do_not_reverse_lookup(context, recv).isTrue() ? addr.getHostAddress() : addr.getCanonicalHostName());
-            ret[1] = runtime.newArray();
+
+            ret0 = runtime.newString(do_not_reverse_lookup(context, recv).isTrue() ? addr.getHostAddress() : addr.getCanonicalHostName());
+            ret1 = runtime.newArray();
 
             if (addr instanceof Inet4Address) {
-                ret[2] = runtime.newFixnum(AF_INET);
-            } else if (addr instanceof Inet6Address) {
-                ret[2] = runtime.newFixnum(AF_INET6);
+                ret2 = runtime.newFixnum(AF_INET);
+            } else { // if (addr instanceof Inet6Address) {
+                ret2 = runtime.newFixnum(AF_INET6);
             }
 
-            ret[3] = runtime.newString(addr.getHostAddress());
+            ret3 = runtime.newString(addr.getHostAddress());
 
-            return runtime.newArrayNoCopy(ret);
-
-        } catch(UnknownHostException e) {
+            return RubyArray.newArray(runtime, ret0, ret1, ret2, ret3);
+        }
+        catch(UnknownHostException e) {
             throw SocketUtils.sockerr(runtime, "gethostbyname: name or service not known");
         }
     }

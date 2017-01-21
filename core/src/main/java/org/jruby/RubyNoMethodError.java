@@ -32,22 +32,23 @@ import org.jruby.runtime.Block;
 import org.jruby.runtime.ObjectAllocator;
 import org.jruby.runtime.Visibility;
 import org.jruby.runtime.builtin.IRubyObject;
+import org.jruby.runtime.Visibility;
+import org.jruby.util.ArraySupport;
 
 @JRubyClass(name="NoMethodError", parent="NameError")
 public class RubyNoMethodError extends RubyNameError {
     private IRubyObject args;
 
-    private static final ObjectAllocator NOMETHODERROR_ALLOCATOR = new ObjectAllocator() {
+    private static final ObjectAllocator ALLOCATOR = new ObjectAllocator() {
+        @Override
         public IRubyObject allocate(Ruby runtime, RubyClass klass) {
             return new RubyNoMethodError(runtime, klass);
         }
     };
 
-    public static RubyClass createNoMethodErrorClass(Ruby runtime, RubyClass nameErrorClass) {
-        RubyClass noMethodErrorClass = runtime.defineClass("NoMethodError", nameErrorClass, NOMETHODERROR_ALLOCATOR);
-        
+    static RubyClass createNoMethodErrorClass(Ruby runtime, RubyClass nameErrorClass) {
+        RubyClass noMethodErrorClass = runtime.defineClass("NoMethodError", nameErrorClass, ALLOCATOR);
         noMethodErrorClass.defineAnnotatedMethods(RubyNoMethodError.class);
-
         return noMethodErrorClass;
     }
 
@@ -59,15 +60,24 @@ public class RubyNoMethodError extends RubyNameError {
     public RubyNoMethodError(Ruby runtime, RubyClass exceptionClass, String message, String name, IRubyObject args) {
         super(runtime, exceptionClass, message,  name);
         this.args = args;
-    }    
+    }
 
-    @JRubyMethod(optional = 3, visibility = Visibility.PRIVATE)
+    public static RubyException newNoMethodError(IRubyObject recv, IRubyObject message, IRubyObject name, IRubyObject args) {
+        RubyClass klass = (RubyClass)recv;
+
+        RubyException newError = (RubyException) klass.allocate();
+
+        newError.callInit(message, name, args, Block.NULL_BLOCK);
+
+        return newError;
+    }
+
+    @JRubyMethod(rest = true, visibility = Visibility.PRIVATE)
+    @Override
     public IRubyObject initialize(IRubyObject[] args, Block block) {
         if (args.length > 2) {
-            this.args = args[args.length - 1];
-            IRubyObject []tmpArgs = new IRubyObject[args.length - 1];
-            System.arraycopy(args, 0, tmpArgs, 0, tmpArgs.length);
-            args = tmpArgs;
+            this.args = args[ args.length - 1 ];
+            args = ArraySupport.newCopy(args, args.length - 1);
         } else {
             this.args = getRuntime().getNil();
         }
@@ -76,7 +86,7 @@ public class RubyNoMethodError extends RubyNameError {
         return this;
     }
     
-    @JRubyMethod(name = "args")
+    @JRubyMethod
     public IRubyObject args() {
         return args;
     }

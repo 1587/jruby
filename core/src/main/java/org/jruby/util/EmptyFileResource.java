@@ -2,13 +2,12 @@ package org.jruby.util;
 
 import jnr.constants.platform.Errno;
 import jnr.posix.FileStat;
-import jnr.posix.POSIX;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.util.io.ChannelDescriptor;
 import org.jruby.util.io.ModeFlags;
 import java.io.InputStream;
 
-class EmptyFileResource implements FileResource {
+import java.nio.channels.Channel;
+
+public class EmptyFileResource implements FileResource {
     // All empty resources are the same and immutable, so may as well
     // cache the instance
     private static final EmptyFileResource INSTANCE = new EmptyFileResource();
@@ -69,7 +68,7 @@ class EmptyFileResource implements FileResource {
 
     @Override
     public String[] list() {
-        return new String[0];
+        return StringSupport.EMPTY_STRING_ARRAY;
     }
 
     @Override
@@ -97,7 +96,7 @@ class EmptyFileResource implements FileResource {
         // It is somewhat weird that we're returning the NOT_EXIST instance that this resource is
         // intending to replace. However, that should go away once we get rid of the hacky method, so
         // should be okay for now.
-        return JRubyNonExistentFile.NOT_EXIST;
+        return JRubyFile.DUMMY;
     }
 
     @Override
@@ -106,7 +105,7 @@ class EmptyFileResource implements FileResource {
     }
 
     @Override
-    public ChannelDescriptor openDescriptor(ModeFlags flags, int perm) throws ResourceException {
+    public Channel openChannel(ModeFlags flags, int perm) throws ResourceException {
         throw new ResourceException.NotFound(absolutePath());
     }
 }

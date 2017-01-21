@@ -32,21 +32,21 @@ package org.jruby.util;
 
 import java.io.File;
 import java.io.FileFilter;
+import java.io.FileNotFoundException;
 import java.io.FilenameFilter;
 import java.io.IOException;
 
 import jnr.posix.JavaSecuredFile;
-import jnr.posix.POSIX;
 
-import jnr.posix.POSIXFactory;
 import org.jruby.Ruby;
 import org.jruby.platform.Platform;
 import org.jruby.runtime.ThreadContext;
 
 /**
- * <p>This file acts as an alternative to NormalizedFile, due to the problems with current working
- * directory.</p>
- *
+ * <p>
+ * This file acts as an alternative to NormalizedFile, due to the problems with
+ * current working directory.
+ * </p>
  */
 public class JRubyFile extends JavaSecuredFile {
     private static final long serialVersionUID = 435364547567567L;
@@ -59,19 +59,23 @@ public class JRubyFile extends JavaSecuredFile {
       return createResource(context.runtime, pathname);
     }
 
+    public static FileResource createResourceAsFile(Ruby runtime, String pathname) {
+        return createResource(runtime, runtime.getCurrentDirectory(), pathname, true);
+    }
+
     public static FileResource createRestrictedResource(String cwd, String pathname) {
-      return createResource(POSIXFactory.getJavaPOSIX(), null, cwd, pathname);
+      return createResource(null, cwd, pathname);
     }
 
     public static FileResource createResource(Ruby runtime, String pathname) {
-      return createResource(runtime.getPosix(), runtime, runtime.getCurrentDirectory(), pathname);
+        return createResource(runtime, runtime.getCurrentDirectory(), pathname, false);
     }
 
-    public static FileResource createResource(POSIX posix, String cwd, String pathname) {
-      return createResource(posix, null, cwd, pathname);
+    public static FileResource createResource(Ruby runtime, String cwd, String pathname) {
+        return createResource(runtime, cwd, pathname, false);
     }
 
-    public static FileResource createResource(POSIX posix, Ruby runtime, String cwd, String pathname) {
+    private static FileResource createResource(Ruby runtime, String cwd, String pathname, boolean isFile) {
         FileResource emptyResource = EmptyFileResource.create(pathname);
         if (emptyResource != null) return emptyResource;
 
@@ -80,11 +84,18 @@ public class JRubyFile extends JavaSecuredFile {
         FileResource jarResource = JarResource.create(pathname);
         if (jarResource != null) return jarResource;
 
+        if (Platform.IS_WINDOWS &&
+                (pathname.equalsIgnoreCase("nul") || pathname.equalsIgnoreCase("nul:"))) {
+            return new NullDeviceResource(runtime.getPosix());
+        }
+
         if (pathname.indexOf(':') > 0) { // scheme-oriented resources
-            if (pathname.startsWith("classpath:")) return ClasspathResource.create(pathname);
+            if (pathname.startsWith("classpath:")) {
+                pathname = pathname.replace("classpath:", "uri:classloader:/");
+            }
 
             // replace is needed for maven/jruby-complete/src/it/app_using_classpath_uri to work
-            if (pathname.startsWith("uri:")) return URLResource.create(runtime, pathname.replace("classpath:/", ""));
+            if (pathname.startsWith("uri:")) return URLResource.create(runtime, pathname, isFile);
 
             if (pathname.startsWith("file:")) {
                 pathname = pathname.substring(5);
@@ -95,12 +106,12 @@ public class JRubyFile extends JavaSecuredFile {
 
         File internal = new JavaSecuredFile(pathname);
         if (cwd != null && !internal.isAbsolute() && (cwd.startsWith("uri:") || cwd.startsWith("file:"))) {
-            return createResource(posix, runtime, null, cwd + '/' + pathname);
+            return createResource(runtime, null, cwd + '/' + pathname);
         }
 
         // If any other special resource types fail, count it as a filesystem backed resource.
         JRubyFile f = create(cwd, pathname);
-        return new RegularFileResource(posix, f);
+        return new RegularFileResource(runtime != null ? runtime.getPosix() : null, f);
     }
 
     public static String normalizeSeps(String path) {
@@ -112,9 +123,9 @@ public class JRubyFile extends JavaSecuredFile {
 
     private static JRubyFile createNoUnicodeConversion(String cwd, String pathname) {
         if (pathname == null || pathname.length() == 0 || Ruby.isSecurityRestricted()) {
-            return JRubyNonExistentFile.NOT_EXIST;
+            return JRubyFile.DUMMY;
         }
-        if(pathname.startsWith("file:")) {
+        if (pathname.startsWith("file:")) {
             pathname = pathname.substring(5);
         }
         File internal = new JavaSecuredFile(pathname);
@@ -139,8 +150,12 @@ public class JRubyFile extends JavaSecuredFile {
         this(file.getAbsolutePath());
     }
 
-    protected JRubyFile(String filename) {
+    public JRubyFile(String filename) {
         super(filename);
+    }
+
+    public JRubyFile(String parent, String child) {
+        super(parent, child);
     }
 
     @Override
@@ -167,7 +182,7 @@ public class JRubyFile extends JavaSecuredFile {
 
     @Override
     public String getPath() {
-	return normalizeSeps(super.getPath());
+        return normalizeSeps(super.getPath());
     }
 
     @Override
@@ -273,4 +288,76 @@ public class JRubyFile extends JavaSecuredFile {
         }
         return smartFiles;
     }
+
+    public static JRubyFile DUMMY = new JRubyFile("") {
+        @Override
+        public String getAbsolutePath() {
+            return "";
+        }
+
+        @Override
+        public boolean isDirectory() {
+            return false;
+        }
+
+        @Override
+        public boolean exists() {
+            return false;
+        }
+
+        @Override
+        public String getCanonicalPath() throws IOException {
+            throw new FileNotFoundException("File does not exist");
+        }
+
+        @Override
+        public String getPath() {
+            return "";
+        }
+
+        @Override
+        public String toString() {
+            return "";
+        }
+
+        @Override
+        public File getAbsoluteFile() {
+            return this;
+        }
+
+        @Override
+        public File getCanonicalFile() throws IOException {
+            throw new FileNotFoundException("File does not exist");
+        }
+
+        @Override
+        public String getParent() {
+            return "";
+        }
+
+        @Override
+        public File getParentFile() {
+            return this;
+        }
+
+        @Override
+        public String[] list(FilenameFilter filter) {
+            return new String[0];
+        }
+
+        @Override
+        public File[] listFiles() {
+            return new File[0];
+        }
+
+        @Override
+        public File[] listFiles(final FileFilter filter) {
+            return new File[0];
+        }
+
+        @Override
+        public File[] listFiles(final FilenameFilter filter) {
+            return new File[0];
+        }
+    };
 }

@@ -4,33 +4,50 @@ import org.jruby.RubyClass;
 import org.jruby.ir.IRVisitor;
 import org.jruby.ir.Operation;
 import org.jruby.ir.operands.Operand;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
-import org.jruby.runtime.Block;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.parser.StaticScope;
 import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
+import org.jruby.runtime.ivars.VariableAccessor;
 
-public class PutFieldInstr extends PutInstr {
+public class PutFieldInstr extends PutInstr implements FixedArityInstr {
+    private transient VariableAccessor accessor = VariableAccessor.DUMMY_ACCESSOR;
+
     public PutFieldInstr(Operand obj, String fieldName, Operand value) {
         super(Operation.PUT_FIELD, obj, fieldName, value);
     }
 
     @Override
-    public Instr cloneForInlining(InlinerInfo ii) {
-        return new PutFieldInstr(operands[TARGET].cloneForInlining(ii), ref, operands[VALUE].cloneForInlining(ii));
+    public Instr clone(CloneInfo ii) {
+        return new PutFieldInstr(getTarget().cloneForInlining(ii), ref, getValue().cloneForInlining(ii));
+    }
+
+    public VariableAccessor getAccessor(IRubyObject o) {
+        RubyClass cls = o.getMetaClass().getRealClass();
+        VariableAccessor localAccessor = accessor;
+
+        if (localAccessor.getClassId() != cls.hashCode()) {
+            localAccessor = cls.getVariableAccessorForWrite(getRef());
+            accessor = localAccessor;
+        }
+        return localAccessor;
     }
 
     @Override
-    public Object interpret(ThreadContext context, DynamicScope currDynScope, IRubyObject self, Object[] temp, Block block) {
-        IRubyObject object = (IRubyObject) getTarget().retrieve(context, self, currDynScope, temp);
+    public Object interpret(ThreadContext context, StaticScope currScope, DynamicScope currDynScope, IRubyObject self, Object[] temp) {
+        IRubyObject object = (IRubyObject) getTarget().retrieve(context, self, currScope, currDynScope, temp);
 
-        // FIXME: Why getRealClass? Document
-        RubyClass clazz = object.getMetaClass().getRealClass();
+        VariableAccessor a = getAccessor(object);
+        Object value = getValue().retrieve(context, self, currScope, currDynScope, temp);
+        a.set(object, value);
 
-        // FIXME: Should add this as a field for instruction
-        clazz.getVariableAccessorForWrite(getRef()).set(object,
-                getValue().retrieve(context, self, currDynScope, temp));
         return null;
+    }
+
+    public static PutFieldInstr decode(IRReaderDecoder d) {
+        return new PutFieldInstr(d.decodeOperand(), d.decodeString(), d.decodeOperand());
     }
 
     @Override

@@ -1,83 +1,55 @@
 package org.jruby.ir.operands;
 
-import org.jruby.RubyRegexp;
-import org.jruby.RubyString;
 import org.jruby.ir.IRVisitor;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
-import org.jruby.runtime.DynamicScope;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
+import org.jruby.ir.runtime.IRRuntimeHelpers;
 import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
+import org.jruby.util.ByteList;
 import org.jruby.util.RegexpOptions;
 
-import java.util.List;
-import java.util.Map;
-
-// Represents a regexp from ruby
-//
-// NOTE: This operand is only used in the initial stages of optimization
-// Further down the line, this regexp operand could get converted to calls
-// that actually build the Regexp object
-public class Regexp extends Operand {
+/**
+ * Represents a literal regexp from ruby, constructed on first traversal and then cached.
+ */
+public class Regexp extends ImmutableLiteral {
     final public RegexpOptions options;
-    final private Operand regexp;
-    private RubyRegexp rubyRegexp;
+    final private ByteList source;
 
-    public Regexp(Operand regexp, RegexpOptions options) {
-        this.regexp = regexp;
+    public Regexp(ByteList source, RegexpOptions options) {
+        super();
+
+        this.source = source;
         this.options = options;
     }
 
     @Override
-    public boolean hasKnownValue() {
-        return regexp.hasKnownValue();
+    public OperandType getOperandType() {
+        return OperandType.REGEXP;
+    }
+
+    public ByteList getSource() {
+        return source;
     }
 
     @Override
     public String toString() {
-        return "RE:|" + regexp + "|" + options;
+        return "RE:|" + source + "|" + options;
     }
 
     @Override
-    public Operand getSimplifiedOperand(Map<Operand, Operand> valueMap, boolean force) {
-        Operand newRegexp = regexp.getSimplifiedOperand(valueMap, force);
-        return newRegexp == regexp ? this : new Regexp(newRegexp, options);
-    }
-
-    /** Append the list of variables used in this operand to the input list */
-    @Override
-    public void addUsedVariables(List<Variable> l) {
-        regexp.addUsedVariables(l);
+    public Object createCacheObject(ThreadContext context) {
+        return IRRuntimeHelpers.newLiteralRegexp(context, source, options);
     }
 
     @Override
-    public Operand cloneForInlining(InlinerInfo ii) {
-        return hasKnownValue() ? this : new Regexp(regexp.cloneForInlining(ii), options);
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+        e.encode(source);
+        e.encode(options.toEmbeddedOptions());
     }
 
-    @Override
-    public Object retrieve(ThreadContext context, IRubyObject self, DynamicScope currDynScope, Object[] temp) {
-        // FIXME (from RegexpNode.java): 1.9 should care about internal or external encoding and not kcode.
-        // If we have a constant regexp string or if the regexp patterns asks for caching, cache the regexp
-        if ((!regexp.hasKnownValue() && !options.isOnce()) || (rubyRegexp == null) || context.runtime.getKCode() != rubyRegexp.getKCode()) {
-            RubyRegexp re;
-            if (regexp instanceof CompoundString) {
-                if (context.runtime.is1_9()) {
-                    RubyString[] pieces  = ((CompoundString)regexp).retrievePieces(context, self, currDynScope, temp);
-                    RubyString   pattern = RubyRegexp.preprocessDRegexp(context.runtime, pieces, options);
-                    re = RubyRegexp.newDRegexp(context.runtime, pattern, options);
-                } else {
-                    RubyString pattern = (RubyString) regexp.retrieve(context, self, currDynScope, temp);
-                    re = RubyRegexp.newDRegexp(context.runtime, pattern, options);
-                }
-            } else {
-                RubyString pattern = (RubyString) regexp.retrieve(context, self, currDynScope, temp);
-                re = RubyRegexp.newRegexp(context.runtime, pattern.getByteList(), options);
-            }
-            re.setLiteral();
-            rubyRegexp = re;
-        }
-
-        return rubyRegexp;
+    public static Regexp decode(IRReaderDecoder d) {
+        return new Regexp(d.decodeByteList(), RegexpOptions.fromEmbeddedOptions(d.decodeInt()));
     }
 
     @Override

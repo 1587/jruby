@@ -31,20 +31,13 @@
  ***** END LICENSE BLOCK *****/
 package org.jruby;
 
-import org.jruby.anno.JRubyClass;
 import org.jruby.anno.JRubyMethod;
-import org.jruby.ext.jruby.JRubyLibrary;
 import org.jruby.internal.runtime.methods.DynamicMethod;
-import org.jruby.internal.runtime.methods.ProcMethod;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.BlockBody;
-import org.jruby.runtime.ClassIndex;
-import org.jruby.runtime.CompiledBlockCallback19;
-import org.jruby.runtime.CompiledBlockLight19;
-import org.jruby.runtime.ObjectAllocator;
+import org.jruby.internal.runtime.methods.IRMethodArgs;
+import org.jruby.internal.runtime.methods.UndefinedMethod;
+import org.jruby.runtime.Helpers;
 import org.jruby.runtime.PositionAware;
 import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.Visibility;
 import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.runtime.marshal.DataType;
 
@@ -79,23 +72,25 @@ public abstract class AbstractRubyMethod extends RubyObject implements DataType 
      */
     @JRubyMethod(name = "arity")
     public RubyFixnum arity() {
-        return getRuntime().newFixnum(method.getArity().getValue());
+        int value;
+        if (method instanceof IRMethodArgs) {
+            value = ((IRMethodArgs) method).getSignature().arityValue();
+        } else {
+            value = method.getArity().getValue();
+        }
+
+        return getRuntime().newFixnum(value);
     }
 
-    @JRubyMethod(name = "eql?", required = 1, compat = CompatVersion.RUBY1_9)
+    @JRubyMethod(name = "eql?", required = 1)
     public IRubyObject op_eql19(ThreadContext context, IRubyObject other) {
         return op_equal(context, other);
     }
 
     public abstract AbstractRubyMethod rbClone();
 
-    @JRubyMethod(name = "name", compat = CompatVersion.RUBY1_8)
+    @JRubyMethod(name = "name")
     public IRubyObject name(ThreadContext context) {
-        return context.runtime.newString(methodName);
-    }
-
-    @JRubyMethod(name = "name", compat = CompatVersion.RUBY1_9)
-    public IRubyObject name19(ThreadContext context) {
         return context.runtime.newSymbol(methodName);
     }
 
@@ -105,10 +100,10 @@ public abstract class AbstractRubyMethod extends RubyObject implements DataType 
 
     @JRubyMethod(name = "owner")
     public IRubyObject owner(ThreadContext context) {
-        return implementationModule;
+        return method.getDefinedClass();
     }
 
-    @JRubyMethod(name = "source_location", compat = CompatVersion.RUBY1_9)
+    @JRubyMethod(name = "source_location")
     public IRubyObject source_location(ThreadContext context) {
         Ruby runtime = context.runtime;
 
@@ -138,9 +133,22 @@ public abstract class AbstractRubyMethod extends RubyObject implements DataType 
         return -1;
     }
 
-    @JRubyMethod(name = "parameters", compat = CompatVersion.RUBY1_9)
+    @JRubyMethod(name = "parameters")
     public IRubyObject parameters(ThreadContext context) {
-        return JRubyLibrary.MethodExtensions.methodArgs(this);
+        return Helpers.methodToParameters(context.runtime, this);
+    }
+
+    protected IRubyObject super_method(ThreadContext context, IRubyObject receiver, RubyModule superClass) {
+        if (superClass == null) return context.runtime.getNil();
+
+        DynamicMethod newMethod = superClass.searchMethod(methodName);
+        if (newMethod == UndefinedMethod.INSTANCE) return context.runtime.getNil();
+
+        if (receiver == null) {
+            return RubyUnboundMethod.newUnboundMethod(superClass, methodName, superClass, originName, newMethod);
+        } else {
+            return RubyMethod.newMethod(superClass, methodName, superClass, originName, newMethod, receiver);
+        }
     }
 }
 

@@ -33,28 +33,20 @@ package org.jruby.ast;
 
 import java.util.List;
 
-import org.jruby.Ruby;
-import org.jruby.RubyModule;
 import org.jruby.ast.types.INameNode;
 import org.jruby.ast.visitor.NodeVisitor;
-import org.jruby.runtime.Helpers;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
 
 /**
  * Declaration (and assignment) of a Constant.
  */
-// FIXME: ConstDecl could be two seperate classes (or done differently since constNode and name
-// never exist at the same time.
 public class ConstDeclNode extends AssignableNode implements INameNode {
     private final String name;
     private final INameNode constNode;
 
     // TODO: Split this into two sub-classes so that name and constNode can be specified seperately.
     public ConstDeclNode(ISourcePosition position, String name, INameNode constNode, Node valueNode) {
-        super(position, valueNode);
+        super(position, valueNode, valueNode != null && valueNode.containsVariableAssignment());
         
         this.name = name;        
         this.constNode = constNode;
@@ -68,7 +60,7 @@ public class ConstDeclNode extends AssignableNode implements INameNode {
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitConstDeclNode(this);
     }
 
@@ -82,61 +74,22 @@ public class ConstDeclNode extends AssignableNode implements INameNode {
     }
     
     /**
-     * Get the path the name is associated with or null (in Foo::BAR it is Foo).
+     * Get the full path, including the name of the new constant (in Foo::BAR it is Foo::BAR) or null.
+     * Your probably want to extract the left part with
+     * <code>((Colon2Node) node.getConstNode()).getLeftNode()</code>
+     * if <code>node.getConstNode()</code> is a <code>Colon2ConstNode</code>.
      * @return pathNode
      */
     public Node getConstNode() {
         return (Node) constNode;
     }
-    
+
     public List<Node> childNodes() {
         return createList(getConstNode(), getValueNode());
     }
-    
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        IRubyObject result = getValueNode().interpret(runtime, context, self, aBlock);
-        
-        if (constNode == null) {
-            return context.getCurrentStaticScope().setConstant(name, result);
-        } else if (((Node)constNode).getNodeType() == NodeType.COLON2NODE) {
-            Node leftNode = ((Colon2Node) constNode).getLeftNode();
-            
-            assert leftNode != null : "leftNode is not null";
-            
-            IRubyObject obj = leftNode.interpret(runtime, context, self, aBlock);
-
-            return Helpers.setConstantInModule(context, constNode.getName(), result, obj);
-        } else { // colon3
-            return Helpers.setConstantInModule(context, constNode.getName(), result, runtime.getObject());
-        }
-    }
 
     @Override
-    public IRubyObject assign(Ruby runtime, ThreadContext context, IRubyObject self, IRubyObject value, Block block, boolean checkArity) {
-        IRubyObject module;
-
-        if (constNode == null) {
-            module = context.getCurrentStaticScope().getModule();
-            
-            if (module == null) {
-                // TODO: wire into new exception handling mechanism
-                throw runtime.newTypeError("no class/module to define constant");
-            }
-        } else if (constNode instanceof Colon2Node) {
-            Node leftNode = ((Colon2Node) constNode).getLeftNode();
-
-            if (leftNode == null) {
-                module = runtime.getNil();
-            } else {
-                module = leftNode.interpret(runtime, context, self, block);
-            }
-        } else { // Colon3
-            module = runtime.getObject();
-        }
-
-        ((RubyModule) module).setConstant(getName(), value);
-        
-        return runtime.getNil();
+    public boolean needsDefinitionCheck() {
+        return false;
     }
 }

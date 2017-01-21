@@ -3,7 +3,7 @@ require 'matrix'
 
 describe "Matrix#[]" do
 
-  before(:all) do
+  before :all do
     @m = Matrix[[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11]]
   end
 
@@ -15,11 +15,9 @@ describe "Matrix#[]" do
     end
   end
 
-  ruby_bug "#1518", "1.8.7" do
-    it "returns nil for an invalid index pair" do
-      @m[8,1].should be_nil
-      @m[1,8].should be_nil
-    end
+  it "returns nil for an invalid index pair" do
+    @m[8,1].should be_nil
+    @m[1,8].should be_nil
   end
 
 end

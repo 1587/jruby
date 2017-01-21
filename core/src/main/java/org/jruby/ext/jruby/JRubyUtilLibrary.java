@@ -76,6 +76,9 @@ public class JRubyUtilLibrary implements Library {
     @JRubyMethod(name = "objectspace=", module = true)
     public static IRubyObject setObjectSpaceEnabled(IRubyObject recv, IRubyObject arg) {
         Ruby runtime = recv.getRuntime();
+        if (arg.isTrue()) {
+            runtime.getWarnings().warn("ObjectSpace impacts performance. See http://wiki.jruby.org/PerformanceTuning#dont-enable-objectspace");
+        }
         runtime.setObjectSpaceEnabled(arg.isTrue());
         return runtime.getNil();
     }
@@ -92,7 +95,7 @@ public class JRubyUtilLibrary implements Library {
                 String urlString = getPath(url);
                 urlStrings.add(runtime.newString(urlString));
             }
-            return RubyArray.newArrayNoCopy(runtime, urlStrings.toArray(new IRubyObject[urlStrings.size()]));
+            return RubyArray.newArray(runtime, urlStrings);
         } catch (IOException ignore) {
         }
         return runtime.newEmptyArray();

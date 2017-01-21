@@ -33,26 +33,18 @@ package org.jruby.ast;
 
 import java.util.List;
 
-import org.jruby.Ruby;
-import org.jruby.RubyRegexp;
-import org.jruby.RubyString;
 import org.jruby.ast.visitor.NodeVisitor;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.CallSite;
-import org.jruby.runtime.MethodIndex;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.util.ByteList;
-import org.jruby.util.DefinedMessage;
 
+/**
+ * Used when a Regexp literal is the RHS of a match call.  E.g., "abc" =~ /.+/
+ */
 public class Match3Node extends Node {
     private final Node receiverNode;
     private final Node valueNode;
-    public final CallSite callAdapter = MethodIndex.getFunctionalCallSite("=~");
 
     public Match3Node(ISourcePosition position, Node receiverNode, Node valueNode) {
-        super(position);
+        super(position, receiverNode.containsVariableAssignment() || valueNode.containsVariableAssignment());
         
         assert receiverNode != null : "receiverNode is not null";
         assert valueNode != null : "valueNode is not null";
@@ -69,7 +61,7 @@ public class Match3Node extends Node {
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitMatch3Node(this);
     }
 
@@ -94,21 +86,7 @@ public class Match3Node extends Node {
     }
 
     @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        IRubyObject recv = receiverNode.interpret(runtime, context, self, aBlock);
-        IRubyObject value = valueNode.interpret(runtime,context, self, aBlock);
-   
-        if (value instanceof RubyString) {
-            return runtime.is1_9() ?
-                    ((RubyRegexp) recv).op_match19(context, value) :
-                    ((RubyRegexp) recv).op_match(context, value);
-        } else {
-            return callAdapter.call(context, self, value, recv);
-        }
-    }
-    
-    @Override
-    public RubyString definition(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        return runtime.getDefinedMessage(DefinedMessage.METHOD);
+    public boolean needsDefinitionCheck() {
+        return false;
     }
 }

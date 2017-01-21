@@ -59,9 +59,7 @@ public class TestRubyBase extends TestCase {
     protected void setUp() throws Exception {
         super.setUp();
         if (runtime == null) {
-            RubyInstanceConfig config = new RubyInstanceConfig();
-            config.setCompatVersion(CompatVersion.RUBY1_8);
-        	runtime = Ruby.newInstance(config);
+            runtime = Ruby.newInstance();
         }
     }
 
@@ -71,20 +69,26 @@ public class TestRubyBase extends TestCase {
      * @return the value printed out on  stdout and stderr by 
      **/
     protected String eval(String script) throws Exception {
+        return eval(script, "test");
+    }
+
+    protected final String eval(String script, String fileName) throws Exception {
         ByteArrayOutputStream result = new ByteArrayOutputStream();
         out = new PrintStream(result);
-        RubyIO lStream = new RubyIO(runtime, out); 
+        RubyIO lStream = new RubyIO(runtime, out);
+        lStream.getOpenFileChecked().setSync(true);
         runtime.getGlobalVariables().set("$stdout", lStream);
         runtime.getGlobalVariables().set("$>", lStream);
         runtime.getGlobalVariables().set("$stderr", lStream);
-        
+
         runtime.runNormally(
-                runtime.parseFile(new ByteArrayInputStream(script.getBytes()), "test", runtime.getCurrentContext().getCurrentScope()));
+            runtime.parseFile(new ByteArrayInputStream(script.getBytes()), fileName, runtime.getCurrentContext().getCurrentScope())
+        );
         StringBuffer sb = new StringBuffer(new String(result.toByteArray()));
         for (int idx = sb.indexOf("\n"); idx != -1; idx = sb.indexOf("\n")) {
             sb.deleteCharAt(idx);
         }
-        
+
         return sb.toString();
     }
 

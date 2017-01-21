@@ -30,29 +30,20 @@
  ***** END LICENSE BLOCK *****/
 package org.jruby.ast;
 
-import org.jruby.Ruby;
-import org.jruby.RubyString;
-import org.jruby.ast.types.IArityNode;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Arity;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.util.ByteList;
-import org.jruby.util.DefinedMessage;
 
 /**
  * Base class of any node which can be assigned to.
  */
-public abstract class AssignableNode extends Node implements IArityNode {
+public abstract class AssignableNode extends Node {
     private Node valueNode;
     
     public AssignableNode(ISourcePosition position) {
-        super(position);
+        super(position, true);
     }
     
-    public AssignableNode(ISourcePosition position, Node valueNode) {
-        super(position);
+    public AssignableNode(ISourcePosition position, Node valueNode, boolean containsAssignment) {
+        super(position, containsAssignment);
         
         assert valueNode != null : "valueNode is not null";
         
@@ -73,17 +64,5 @@ public abstract class AssignableNode extends Node implements IArityNode {
      */
     public void setValueNode(Node valueNode) {
         this.valueNode = valueNode == null ? NilImplicitNode.NIL : valueNode;
-    }
-    
-    /**
-     * Almost all assignables are only assigned a single value.
-     */
-    public Arity getArity() {
-        return Arity.singleArgument();
-    }
-    
-    @Override
-    public RubyString definition(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        return runtime.getDefinedMessage(DefinedMessage.ASSIGNMENT);
     }
 }

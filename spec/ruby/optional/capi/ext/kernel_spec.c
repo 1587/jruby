@@ -1,7 +1,7 @@
-#include <errno.h>
-
 #include "ruby.h"
 #include "rubyspec.h"
+
+#include <errno.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -45,7 +45,6 @@ VALUE kernel_spec_rb_block_call(VALUE self, VALUE ary) {
   return rb_block_call(ary, rb_intern("map"), 0, NULL, block_call_inject, Qnil);
 }
 
-#ifdef RUBY_VERSION_IS_1_9
 VALUE block_call_inject_multi_arg(VALUE yield_value, VALUE data2, int argc, VALUE argv[]) {
   /* yield_value yields the first block argument */
   VALUE sum  = yield_value;
@@ -64,7 +63,6 @@ VALUE kernel_spec_rb_block_call_no_func(VALUE self, VALUE ary) {
   return rb_block_call(ary, rb_intern("map"), 0, NULL, NULL, Qnil);
 }
 
-#endif
 #endif
 
 #ifdef HAVE_RB_ENSURE
@@ -114,7 +112,8 @@ VALUE kernel_spec_rb_eval_string(VALUE self, VALUE str) {
 #ifdef HAVE_RB_RAISE
 VALUE kernel_spec_rb_raise(VALUE self, VALUE hash) {
   rb_hash_aset(hash, ID2SYM(rb_intern("stage")), ID2SYM(rb_intern("before")));
-  rb_raise(rb_eTypeError, "Wrong argument type %s (expected %s)", "Integer", "String");
+  if (self != Qundef)
+    rb_raise(rb_eTypeError, "Wrong argument type %s (expected %s)", "Integer", "String");
   rb_hash_aset(hash, ID2SYM(rb_intern("stage")), ID2SYM(rb_intern("after")));
   return Qnil;
 }
@@ -122,14 +121,14 @@ VALUE kernel_spec_rb_raise(VALUE self, VALUE hash) {
 
 #ifdef HAVE_RB_THROW
 VALUE kernel_spec_rb_throw(VALUE self, VALUE result) {
-  rb_throw("foo", result);
+  if (self != Qundef) rb_throw("foo", result);
   return ID2SYM(rb_intern("rb_throw_failed"));
 }
 #endif
 
 #ifdef HAVE_RB_THROW_OBJ
 VALUE kernel_spec_rb_throw_obj(VALUE self, VALUE obj, VALUE result) {
-  rb_throw_obj(obj, result);
+  if (self != Qundef) rb_throw_obj(obj, result);
   return ID2SYM(rb_intern("rb_throw_failed"));
 }
 #endif
@@ -189,7 +188,7 @@ VALUE kernel_spec_rb_sys_fail(VALUE self, VALUE msg) {
   errno = 1;
   if(msg == Qnil) {
     rb_sys_fail(0);
-  } else {
+  } else if (self != Qundef) {
     rb_sys_fail(StringValuePtr(msg));
   }
   return Qnil;
@@ -200,7 +199,7 @@ VALUE kernel_spec_rb_sys_fail(VALUE self, VALUE msg) {
 VALUE kernel_spec_rb_syserr_fail(VALUE self, VALUE err, VALUE msg) {
   if(msg == Qnil) {
     rb_syserr_fail(NUM2INT(err), NULL);
-  } else {
+  } else if (self != Qundef) {
     rb_syserr_fail(NUM2INT(err), StringValuePtr(msg));
   }
   return Qnil;
@@ -277,7 +276,19 @@ static VALUE kernel_spec_rb_obj_method(VALUE self, VALUE obj, VALUE method) {
 }
 #endif
 
-void Init_kernel_spec() {
+#ifdef HAVE_RB_FUNCALL3
+static VALUE kernel_spec_rb_funcall3(VALUE self, VALUE obj, VALUE method) {
+  return rb_funcall3(obj, SYM2ID(method), 0, NULL);
+}
+#endif
+
+#ifdef HAVE_RB_FUNCALL_WITH_BLOCK
+static VALUE kernel_spec_rb_funcall_with_block(VALUE self, VALUE obj, VALUE method, VALUE block) {
+  return rb_funcall_with_block(obj, SYM2ID(method), 0, NULL, block);
+}
+#endif
+
+void Init_kernel_spec(void) {
   VALUE cls;
   cls = rb_define_class("CApiKernelSpecs", rb_cObject);
 
@@ -291,10 +302,8 @@ void Init_kernel_spec() {
 
 #ifdef HAVE_RB_BLOCK_CALL
   rb_define_method(cls, "rb_block_call", kernel_spec_rb_block_call, 1);
-#ifdef RUBY_VERSION_IS_1_9
   rb_define_method(cls, "rb_block_call_multi_arg", kernel_spec_rb_block_call_multi_arg, 1);
   rb_define_method(cls, "rb_block_call_no_func", kernel_spec_rb_block_call_no_func, 1);
-#endif
 #endif
 
 #ifdef HAVE_RB_BLOCK_PROC
@@ -379,6 +388,14 @@ void Init_kernel_spec() {
 
 #ifdef HAVE_RB_OBJ_METHOD
   rb_define_method(cls, "rb_obj_method", kernel_spec_rb_obj_method, 2);
+#endif
+
+#ifdef HAVE_RB_FUNCALL3
+  rb_define_method(cls, "rb_funcall3", kernel_spec_rb_funcall3, 2);
+#endif
+
+#ifdef HAVE_RB_FUNCALL_WITH_BLOCK
+  rb_define_method(cls, "rb_funcall_with_block", kernel_spec_rb_funcall_with_block, 3);
 #endif
 }
 

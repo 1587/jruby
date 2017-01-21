@@ -33,16 +33,8 @@ package org.jruby.ast;
 
 import java.util.List;
 
-import org.jruby.Ruby;
-import org.jruby.RubyMatchData;
-import org.jruby.RubyRegexp;
-import org.jruby.RubyString;
 import org.jruby.ast.visitor.NodeVisitor;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.util.ByteList;
 import org.jruby.util.DefinedMessage;
 
 /** 
@@ -51,13 +43,9 @@ import org.jruby.util.DefinedMessage;
 public class NthRefNode extends Node {
     private final int matchNumber;
     
-    /** ByteList representing the name of this numbered nth ref */
-    private final DefinedMessage definedMessage;
-
     public NthRefNode(ISourcePosition position, int matchNumber) {
-        super(position);
+        super(position, false);
         this.matchNumber = matchNumber;
-        this.definedMessage = DefinedMessage.byText("$" + matchNumber);
     }
 
     public NodeType getNodeType() {
@@ -68,7 +56,7 @@ public class NthRefNode extends Node {
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitNthRefNode(this);
     }
 
@@ -82,26 +70,5 @@ public class NthRefNode extends Node {
     
     public List<Node> childNodes() {
         return EMPTY_LIST;
-    }
-    
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        return RubyRegexp.nth_match(matchNumber, context.getBackRef());
-    }
-    
-    @Override
-    public RubyString definition(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        IRubyObject backref = context.getBackRef();
-        if (backref instanceof RubyMatchData) {
-            if (!((RubyMatchData) backref).group(matchNumber).isNil()) {
-                if (!context.runtime.is1_9()) {
-                    return runtime.getDefinedMessage(definedMessage);
-                } else {
-                    return runtime.getDefinedMessage(DefinedMessage.GLOBAL_VARIABLE);
-                }
-            }
-        }
-        
-        return null;
     }
 }

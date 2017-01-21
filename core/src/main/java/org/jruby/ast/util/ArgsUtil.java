@@ -33,26 +33,20 @@ package org.jruby.ast.util;
 
 import org.jruby.Ruby;
 import org.jruby.RubyArray;
+import org.jruby.RubyHash;
+import org.jruby.RubySymbol;
+import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.util.TypeConverter;
+
+import java.util.Arrays;
+import java.util.HashSet;
 
 /**
  *
  * @author  jpetersen
  */
 public final class ArgsUtil {
-    public static IRubyObject[] convertToJavaArray(IRubyObject value) {
-        if (value == null) {
-        	return IRubyObject.NULL_ARRAY;
-        }
-        
-        if (value instanceof RubyArray) {
-            return ((RubyArray)value).toJavaArrayMaybeUnsafe();
-        }
-
-        return new IRubyObject[] { value };
-    }
-
     /**
      * This name may be a bit misleading, since this also attempts to coerce
      * array behavior using to_ary.
@@ -89,51 +83,6 @@ public final class ArgsUtil {
         return (RubyArray)newValue;
     }
     
-    public static RubyArray convertToRubyArray19(Ruby runtime, IRubyObject value, boolean coerce) {
-        if (value == null) {
-            return RubyArray.newEmptyArray(runtime);
-        }
-        
-        if (coerce) return convertToRubyArrayWithCoerce19(runtime, value);
-
-        // don't attempt to coerce to array, just wrap and return
-        return RubyArray.newArrayLight(runtime, value);
-    }
-    
-    public static RubyArray convertToRubyArrayWithCoerce19(Ruby runtime, IRubyObject value) {
-        if (value instanceof RubyArray) return ((RubyArray)value);
-        
-        IRubyObject newValue = TypeConverter.convertToType19(value, runtime.getArray(), "to_ary", false);
-
-        if (newValue.isNil()) {
-            return RubyArray.newArrayLight(runtime, value);
-        }
-        
-        // must be array by now, or error
-        if (!(newValue instanceof RubyArray)) {
-            throw runtime.newTypeError(newValue.getMetaClass() + "#" + "to_ary" + " should return Array");
-        }
-        
-        return (RubyArray)newValue;
-    }    
-    
-    /**
-     * Remove first element from array
-     * 
-     * @param array to have first element "popped" off
-     * @return all but first element of the supplied array
-     */
-    public static IRubyObject[] popArray(IRubyObject[] array) {
-    	if (array == null || array.length == 0) {
-    		return IRubyObject.NULL_ARRAY;
-    	}
-    	
-    	IRubyObject[] newArray = new IRubyObject[array.length - 1];
-    	System.arraycopy(array, 1, newArray, 0, array.length - 1);
-    	
-    	return newArray;
-    }
-    
     public static int arrayLength(IRubyObject node) {
         return node instanceof RubyArray ? ((RubyArray)node).getLength() : 0;
     }
@@ -144,5 +93,73 @@ public final class ArgsUtil {
             
         }
         return runtime.getNil();
+    }
+
+    public static IRubyObject getOptionsArg(Ruby runtime, IRubyObject arg) {
+        return TypeConverter.checkHashType(runtime, arg);
+    }
+
+    /**
+     * Check that the given kwargs hash doesn't contain any keys other than those which are given as valid.
+     * @param context The context to execute in
+     * @param options A RubyHash of options to extract kwargs from
+     * @param validKeys A list of valid kwargs keys.
+     * @return an array of objects corresponding to the given keys.
+     */
+    public static IRubyObject[] extractKeywordArgs(ThreadContext context, RubyHash options, String[] validKeys) {
+        IRubyObject[] ret = new IRubyObject[validKeys.length];
+        int index = 0;
+        HashSet<RubySymbol> validKeySet = new HashSet<RubySymbol>();
+
+        // Build the return values
+        for(String key : validKeys) {
+            RubySymbol keySym = context.runtime.newSymbol(key);
+            if (options.containsKey(keySym)) {
+                ret[index] = options.fastARef(keySym);
+            } else {
+                ret[index] = context.runtime.getNil();
+            }
+            index++;
+            validKeySet.add(keySym);
+        }
+
+        // Check for any unknown keys
+        for(Object obj : options.keySet()) {
+            if (!validKeySet.contains(obj)) {
+                throw context.runtime.newArgumentError("unknown keyword: " + obj);
+            }
+        }
+
+        return ret;
+    }
+
+    public static IRubyObject[] extractKeywordArgs(ThreadContext context, IRubyObject[] args, String[] validKeys) {
+        IRubyObject options = ArgsUtil.getOptionsArg(context.runtime, args);
+        if(options instanceof RubyHash) {
+            return extractKeywordArgs(context, (RubyHash)options, validKeys);
+        } else {
+            return null;
+        }
+    }
+
+    public static IRubyObject extractKeywordArg(ThreadContext context, String keyword, IRubyObject arg) {
+        IRubyObject opts = ArgsUtil.getOptionsArg(context.runtime, arg);
+
+        if (!opts.isNil()) return ((RubyHash) opts).op_aref(context, context.runtime.newSymbol(keyword));
+
+        return context.nil;
+    }
+
+    public static IRubyObject extractKeywordArg(ThreadContext context, String keyword, IRubyObject... args) {
+        IRubyObject opts = ArgsUtil.getOptionsArg(context.runtime, args);
+
+        if (!opts.isNil()) return ((RubyHash) opts).op_aref(context, context.runtime.newSymbol(keyword));
+
+        return context.nil;
+    }
+
+    public static IRubyObject extractArg(int index, IRubyObject _default, IRubyObject... args) {
+        if (index < args.length) return args[index];
+        return _default;
     }
 }

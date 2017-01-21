@@ -2,7 +2,7 @@ require File.expand_path('../../../spec_helper', __FILE__)
 require 'bigdecimal'
 
 describe "BigDecimal#floor" do
-  before(:each) do
+  before :each do
     @one = BigDecimal("1")
     @three = BigDecimal("3")
     @four = BigDecimal("4")
@@ -40,20 +40,10 @@ describe "BigDecimal#floor" do
     BigDecimal('-0.8').floor.should == -1
   end
 
-  ruby_version_is "" ... "1.9" do
-    it "returns the same value, if self is special value" do
-      @infinity.floor.should == @infinity
-      @infinity_neg.floor.should == @infinity_neg
-      @nan.floor.nan?.should == true
-    end
-  end
-
-  ruby_version_is "1.9" do
-    it "raise exception, if self is special value" do
-      lambda { @infinity.floor }.should raise_error(FloatDomainError)
-      lambda { @infinity_neg.floor }.should raise_error(FloatDomainError)
-      lambda { @nan.floor }.should raise_error(FloatDomainError)
-    end
+  it "raise exception, if self is special value" do
+    lambda { @infinity.floor }.should raise_error(FloatDomainError)
+    lambda { @infinity_neg.floor }.should raise_error(FloatDomainError)
+    lambda { @nan.floor }.should raise_error(FloatDomainError)
   end
 
   it "returns n digits right of the decimal point if given n > 0" do

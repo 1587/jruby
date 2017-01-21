@@ -27,105 +27,23 @@ describe "String#index" do
     "abc".index("c", offset).should == 2
   end
 
-  ruby_version_is ""..."1.9" do
-    it "does not call #to_int to convert the first argument" do
-      char = mock("string index char")
-      char.should_not_receive(:to_int)
-      lambda { "abc".index char }.should raise_error(TypeError)
-    end
-  end
-
-  ruby_version_is "1.9" do
-    it "raises a TypeError if passed a Fixnum" do
-      lambda { "abc".index 97 }.should raise_error(TypeError)
-    end
-  end
-end
-
-ruby_version_is ""..."1.9" do
-  describe "String#index with Fixnum" do
-    it "returns the index of the first occurrence of the given character" do
-      "hello".index(?e).should == 1
-      "hello".index(?l).should == 2
-    end
-
-    it "character values over 255 (256th ASCII character) always result in nil" do
-      # A naive implementation could try to use % 256
-      "hello".index(?e + 256 * 3).should == nil
-    end
-
-    it "negative character values always result in nil" do
-      # A naive implementation could try to use % 256
-      "hello".index(-(256 - ?e)).should == nil
-    end
-
-    it "starts the search at the given offset" do
-      "blablabla".index(?b, 0).should == 0
-      "blablabla".index(?b, 1).should == 3
-      "blablabla".index(?b, 2).should == 3
-      "blablabla".index(?b, 3).should == 3
-      "blablabla".index(?b, 4).should == 6
-      "blablabla".index(?b, 5).should == 6
-      "blablabla".index(?b, 6).should == 6
-
-      "blablabla".index(?a, 0).should == 2
-      "blablabla".index(?a, 2).should == 2
-      "blablabla".index(?a, 3).should == 5
-      "blablabla".index(?a, 4).should == 5
-      "blablabla".index(?a, 5).should == 5
-      "blablabla".index(?a, 6).should == 8
-      "blablabla".index(?a, 7).should == 8
-      "blablabla".index(?a, 8).should == 8
-    end
-
-    it "starts the search at offset + self.length if offset is negative" do
-      str = "blablabla"
-
-      [?a, ?b].each do |needle|
-        (-str.length .. -1).each do |offset|
-          str.index(needle, offset).should ==
-          str.index(needle, offset + str.length)
-        end
-      end
-
-      "blablabla".index(?b, -9).should == 0
-    end
-
-    it "returns nil if offset + self.length is < 0 for negative offsets" do
-      "blablabla".index(?b, -10).should == nil
-      "blablabla".index(?b, -20).should == nil
-    end
-
-    it "returns nil if the character isn't found" do
-      "hello".index(0).should == nil
-
-      "hello".index(?H).should == nil
-      "hello".index(?z).should == nil
-      "hello".index(?e, 2).should == nil
-
-      "blablabla".index(?b, 7).should == nil
-      "blablabla".index(?b, 10).should == nil
-
-      "blablabla".index(?a, 9).should == nil
-      "blablabla".index(?a, 20).should == nil
-    end
+  it "raises a TypeError if passed a Fixnum" do
+    lambda { "abc".index 97 }.should raise_error(TypeError)
   end
 end
 
 describe "String#index with String" do
   it "behaves the same as String#index(char) for one-character strings" do
-    ["blablabla", "hello cruel world...!"].each do |str|
-      str.split("").uniq.each do |str|
-        chr = str[0]
-        str.index(str).should == str.index(chr)
+    "blablabla hello cruel world...!".split("").uniq.each do |str|
+      chr = str[0]
+      str.index(str).should == str.index(chr)
 
-        0.upto(str.size + 1) do |start|
-          str.index(str, start).should == str.index(chr, start)
-        end
+      0.upto(str.size + 1) do |start|
+        str.index(str, start).should == str.index(chr, start)
+      end
 
-        (-str.size - 1).upto(-1) do |start|
-          str.index(str, start).should == str.index(chr, start)
-        end
+      (-str.size - 1).upto(-1) do |start|
+        str.index(str, start).should == str.index(chr, start)
       end
     end
   end
@@ -274,11 +192,13 @@ describe "String#index with Regexp" do
 
     "blablabla".index(/lab|b/).should == 0
 
-    "blablabla".index(/\A/).should == 0
-    "blablabla".index(/\Z/).should == 9
-    "blablabla".index(/\z/).should == 9
-    "blablabla\n".index(/\Z/).should == 9
-    "blablabla\n".index(/\z/).should == 10
+    not_supported_on :opal do
+      "blablabla".index(/\A/).should == 0
+      "blablabla".index(/\Z/).should == 9
+      "blablabla".index(/\z/).should == 9
+      "blablabla\n".index(/\Z/).should == 9
+      "blablabla\n".index(/\z/).should == 10
+    end
 
     "blablabla".index(/^/).should == 0
     "\nblablabla".index(/^/).should == 0
@@ -318,7 +238,9 @@ describe "String#index with Regexp" do
     "xblaxbla".index(/x./, 1).should == 4
     "xblaxbla".index(/x./, 2).should == 4
 
-    "blablabla\n".index(/\Z/, 9).should == 9
+    not_supported_on :opal do
+      "blablabla\n".index(/\Z/, 9).should == 9
+    end
   end
 
   it "starts the search at offset + self.length if offset is negative" do

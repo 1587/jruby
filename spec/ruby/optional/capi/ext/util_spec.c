@@ -56,25 +56,17 @@ static VALUE util_spec_rb_iter_break(VALUE self) {
 
 #ifdef HAVE_RB_SOURCEFILE
 static VALUE util_spec_rb_sourcefile(VALUE self) {
-#ifdef RUBY_VERSION_IS_1_8_EX_1_9
-  return rb_str_new2(ruby_sourcefile);
-#else
   return rb_str_new2(rb_sourcefile());
-#endif
 }
 #endif
 
 #ifdef HAVE_RB_SOURCELINE
 static VALUE util_spec_rb_sourceline(VALUE self) {
-#ifdef RUBY_VERSION_IS_1_8_EX_1_9
-  return INT2NUM(ruby_sourceline);
-#else
   return INT2NUM(rb_sourceline());
-#endif
 }
 #endif
 
-void Init_util_spec() {
+void Init_util_spec(void) {
   VALUE cls = rb_define_class("CApiUtilSpecs", rb_cObject);
 
 #ifdef HAVE_RB_SCAN_ARGS

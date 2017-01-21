@@ -1,14 +1,17 @@
 project 'JRuby Artifacts' do
-
-  version = File.read( File.join( basedir, '..', 'VERSION' ) ).strip
+  
+  version = ENV['JRUBY_VERSION'] ||
+    File.read( File.join( basedir, '..', 'VERSION' ) ).strip
 
   model_version '4.0.0'
   id 'jruby-artifacts'
   inherit 'org.jruby:jruby-parent', version
   packaging 'pom'
 
-  properties( 'tesla.dump.pom' => 'pom.xml',
-              'tesla.dump.readonly' => true )
+  # it looks like some people have problems with this artifact as parent
+  # TODO set the parent pom to pom.rb inside the children
+  properties( 'polyglot.dump.pom' => 'pom.xml',
+              'polyglot.dump.readonly' => true )
 
   plugin_management do
     plugin 'org.codehaus.mojo:build-helper-maven-plugin' do
@@ -23,20 +26,17 @@ project 'JRuby Artifacts' do
   end
 
   # module to profile map
-  map = { 'jruby' => [ :release, :main, :osgi, :j2ee ],
-    'jruby-noasm' => [ :release, :main, :osgi ],
-    'jruby-stdlib' => [ :release, :main, :complete, :dist, 'jruby-jars', :osgi, :j2ee ],
-    'jruby-complete' => [ :release, :complete, :osgi ],
-    'jruby-dist' => [ :release, :dist ],
-    'jruby-jars' => [ :release, 'jruby-jars' ],
-    'jruby-rake-plugin' => [ 'jruby-rake-plugin']
+  map = { 'jruby' => [ :apps, :release, :main, :osgi, :j2ee, :snapshots ],
+    'jruby-complete' => [ :release, :complete, :osgi, :'jruby_complete_jar_extended', :snapshots],
+    'jruby-jars' => [ :release, :'jruby-jars', :snapshots ],
+    'jruby-dist' => [ :release, :dist, :snapshots ]
   }
 
   profile :all do
     modules map.keys
   end
 
-  # TODO once ruby-maven has profile! we can do this in one loop
+  # TODO once ruby-maven profile! we can do this in one loop
   invert = {}
   map.each do |m, pp|
     pp.each do |p|

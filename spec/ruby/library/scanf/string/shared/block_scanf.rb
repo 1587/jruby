@@ -1,6 +1,6 @@
 require 'scanf'
 
-describe :scanf_string_block_scanf, :shared => true do
+describe :scanf_string_block_scanf, shared: true do
   it "passes each match to the block as an array" do
     a = []
     "hello world".send(@method, "%s%s"){|w| a << w}
@@ -12,9 +12,8 @@ describe :scanf_string_block_scanf, :shared => true do
     "hello world".send(@method, "%s"){|w| a << w}
     a.should == [["hello"], ["world"]]
 
-    s = []
-    str = "123 abc 456 def 789 ghi"
-    s = str.send(@method, "%d%s"){|num,str| [num * 2, str.upcase]}
+    string = "123 abc 456 def 789 ghi"
+    s = string.send(@method, "%d%s"){|num,str| [num * 2, str.upcase]}
     s.should == [[246, "ABC"], [912, "DEF"], [1578, "GHI"]]
   end
 

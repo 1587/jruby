@@ -16,25 +16,16 @@ import java.util.Map;
 /**
 * Created by headius on 2/26/15.
 */
-public class ClassInitializer extends Initializer {
-    public ClassInitializer(Ruby runtime, Class<?> javaClass) {
+final class ClassInitializer extends Initializer {
+
+    ClassInitializer(Ruby runtime, Class<?> javaClass) {
         super(runtime, javaClass);
     }
 
     @Override
-    public RubyModule initialize(RubyModule proxy) {
-        RubyClass proxyClass = (RubyClass)proxy;
-        Class<?> superclass = javaClass.getSuperclass();
-
-        final State state = new State(runtime, superclass);
-
-        super.initializeBase(proxy);
-
-        proxyClass.setReifiedClass(javaClass);
-
-        if ( javaClass.isArray() || javaClass.isPrimitive() ) {
-            return proxy;
-        }
+    public RubyClass initialize(final RubyModule proxy) {
+        final RubyClass proxyClass = (RubyClass) proxy;
+        final State state = new State(runtime, javaClass.getSuperclass());
 
         setupClassFields(javaClass, state);
         setupClassMethods(javaClass, state);
@@ -86,9 +77,9 @@ public class ClassInitializer extends Initializer {
         installClassConstructors(proxyClass, state);
         installClassClasses(javaClass, proxyClass);
 
-        proxy.getName(); // trigger calculateName()
+        proxyClass.getName(); // trigger calculateName()
 
-        return proxy;
+        return proxyClass;
     }
 
     private static void installClassInstanceMethods(final RubyClass proxy, final Initializer.State state) {
@@ -122,18 +113,20 @@ public class ClassInitializer extends Initializer {
 
     private void setupClassMethods(Class<?> javaClass, State state) {
         // TODO: protected methods.  this is going to require a rework of some of the mechanism.
-        final List<Method> methods = getMethods(javaClass);
+        final Map<String, List<Method>> nameMethods = getMethods(javaClass);
 
-        for ( int i = methods.size(); --i >= 0; ) {
-            // we need to collect all methods, though we'll only
-            // install the ones that are named in this class
-            Method method = methods.get(i);
-            String name = method.getName();
+        for (List<Method> methods : nameMethods.values()) {
+            for (int i = methods.size(); --i >= 0; ) {
+                // we need to collect all methods, though we'll only
+                // install the ones that are named in this class
+                Method method = methods.get(i);
+                String name = method.getName();
 
-            if ( Modifier.isStatic( method.getModifiers() ) ) {
-                prepareStaticMethod(javaClass, state, method, name);
-            } else {
-                prepareInstanceMethod(javaClass, state, method, name);
+                if (Modifier.isStatic(method.getModifiers())) {
+                    prepareStaticMethod(javaClass, state, method, name);
+                } else {
+                    prepareInstanceMethod(javaClass, state, method, name);
+                }
             }
         }
 

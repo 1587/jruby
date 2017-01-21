@@ -64,16 +64,16 @@ describe "File.chown" do
     File.chown(nil, nil, @fname, @fname).should == 2
   end
 
-  it "raises an error for a non existent path" do
-    lambda {
-      File.chown(nil, nil, "#{@fname}.not.existing")
-    }.should raise_error(Errno::ENOENT)
+  platform_is_not :windows do
+    it "raises an error for a non existent path" do
+      lambda {
+        File.chown(nil, nil, "#{@fname}_not_existing")
+      }.should raise_error(Errno::ENOENT)
+    end
   end
 
-  ruby_version_is "1.9" do
-    it "accepts an object that has a #to_path method" do
-      File.chown(nil, nil, mock_to_path(@fname)).should == 1
-    end
+  it "accepts an object that has a #to_path method" do
+    File.chown(nil, nil, mock_to_path(@fname)).should == 1
   end
 end
 
@@ -143,14 +143,10 @@ describe "File#chown" do
   end
 end
 
-ruby_version_is "1.9" do
-  describe "File.chown" do
-    it "needs to be reviewed for spec completeness"
-  end
+describe "File.chown" do
+  it "needs to be reviewed for spec completeness"
 end
 
-ruby_version_is "1.9" do
-  describe "File#chown" do
-    it "needs to be reviewed for spec completeness"
-  end
+describe "File#chown" do
+  it "needs to be reviewed for spec completeness"
 end

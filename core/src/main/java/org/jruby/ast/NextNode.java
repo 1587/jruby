@@ -33,28 +33,21 @@ package org.jruby.ast;
 
 import java.util.List;
 
-import org.jruby.Ruby;
 import org.jruby.ast.visitor.NodeVisitor;
-import org.jruby.exceptions.JumpException;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
 
 /** 
  * Represents a 'next' statement.
  */
 public class NextNode extends Node implements NonLocalControlFlowNode {
     private final Node valueNode;
-    private final boolean isNil;
 
     public NextNode(ISourcePosition position, Node valueNode) {
-        super(position);
+        super(position, valueNode.containsVariableAssignment());
         
         assert valueNode != null : "valueNode is not null";
         
         this.valueNode = valueNode;
-        this.isNil = valueNode.isNil();
     }
 
     public NodeType getNodeType() {
@@ -65,7 +58,7 @@ public class NextNode extends Node implements NonLocalControlFlowNode {
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitNextNode(this);
     }
     
@@ -83,17 +76,5 @@ public class NextNode extends Node implements NonLocalControlFlowNode {
     
     public List<Node> childNodes() {
         return createList(valueNode);
-    }
-    
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        context.pollThreadEvents();
-
-        // now used as an interpreter event
-        if (isNil) {
-            throw JumpException.NEXT_JUMP;
-        }
-
-        throw new JumpException.NextJump(valueNode.interpret(runtime, context, self, aBlock));
     }
 }

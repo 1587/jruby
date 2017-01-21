@@ -16,24 +16,10 @@ public class ProfilingTest extends TestCase {
         super(testName);
     }
 
-/*
-    public void testCopyOfProfilingServiceFromParentConfigWorks() {
-        RubyInstanceConfig config = Ruby.getGlobalRuntime().getInstanceConfig();
 
-        RubyInstanceConfig configOne = new RubyInstanceConfig(config);
-        configOne.setProfilingService("test.service");
-        configOne.setProfilingMode(RubyInstanceConfig.ProfilingMode.SERVICE );
-
-        RubyInstanceConfig configTwo = new RubyInstanceConfig(configOne);
-
-        assertEquals( configOne.getProfilingService(), configTwo.getProfilingService() );
-        assertEquals( configOne.getProfilingMode(), configTwo.getProfilingMode() );
-    }
-*/
     /**
      * Tests the {@link org.jruby.runtime.profile.ProfilingServiceLookup} too
      */
-/*
     public void testNoProfilingServerAvailableIfProfilingIsDisabled() {
         RubyInstanceConfig config = Ruby.getGlobalRuntime().getInstanceConfig();
 
@@ -43,13 +29,10 @@ public class ProfilingTest extends TestCase {
         Ruby ruby = Ruby.newInstance( configOne );
 
         assertNull(ruby.getProfilingService());
-        assertNull( ruby.getProfiledMethods() );
     }
-*/
     /**
      * Tests the {@link org.jruby.runtime.profile.ProfilingServiceLookup} too
      */
-/*
     public void testProfilingServiceLookupWorks() {
         try {
             RubyInstanceConfig config = Ruby.getGlobalRuntime().getInstanceConfig();
@@ -60,7 +43,6 @@ public class ProfilingTest extends TestCase {
             configOne.setProfilingMode(RubyInstanceConfig.ProfilingMode.SERVICE);
             Ruby ruby = Ruby.newInstance( configOne );
 
-            assertNotNull( ruby.getProfiledMethods() );
             assertNotNull( ruby.getProfilingService() );
             assertTrue(ruby.getProfilingService() instanceof TestProfilingService);
         } catch( RaiseException e ) {
@@ -68,5 +50,4 @@ public class ProfilingTest extends TestCase {
             // TODO hwo to mock org.jruby.exceptions.RaiseException: (LoadError) no such file to load -- jruby/profiler/shutdown_hook
         }
     }
-*/
 }

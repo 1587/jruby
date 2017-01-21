@@ -42,18 +42,19 @@ package org.jruby;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 import org.jruby.anno.JRubyClass;
-import org.jruby.anno.JRubyMethod;
-import org.jruby.runtime.Helpers;
 import org.jruby.runtime.Block;
 import org.jruby.runtime.ClassIndex;
+import org.jruby.runtime.JavaSites;
+import org.jruby.runtime.JavaSites.ObjectSites;
 import org.jruby.runtime.ObjectAllocator;
 import org.jruby.runtime.ThreadContext;
-import static org.jruby.runtime.Visibility.*;
-import static org.jruby.CompatVersion.*;
 import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.runtime.marshal.DataType;
 
@@ -124,11 +125,8 @@ public class RubyObject extends RubyBasicObject {
      * initialization.
      */
     public static RubyClass createObjectClass(Ruby runtime, RubyClass objectClass) {
-        objectClass.index = ClassIndex.OBJECT;
+        objectClass.setClassIndex(ClassIndex.OBJECT);
         objectClass.setReifiedClass(RubyObject.class);
-
-        objectClass.defineAnnotatedMethods(RubyObject.class);
-
         return objectClass;
     }
 
@@ -140,66 +138,77 @@ public class RubyObject extends RubyBasicObject {
      * @see org.jruby.runtime.ObjectAllocator
      */
     public static final ObjectAllocator OBJECT_ALLOCATOR = new ObjectAllocator() {
+        @Override
         public IRubyObject allocate(Ruby runtime, RubyClass klass) {
             return new RubyObject(runtime, klass);
         }
     };
 
     public static final ObjectAllocator OBJECT_VAR0_ALLOCATOR = new ObjectAllocator() {
+        @Override
         public IRubyObject allocate(Ruby runtime, RubyClass klass) {
             return new RubyObjectVar0(runtime, klass);
         }
     };
 
     public static final ObjectAllocator OBJECT_VAR1_ALLOCATOR = new ObjectAllocator() {
+        @Override
         public IRubyObject allocate(Ruby runtime, RubyClass klass) {
             return new RubyObjectVar1(runtime, klass);
         }
     };
 
     public static final ObjectAllocator OBJECT_VAR2_ALLOCATOR = new ObjectAllocator() {
+        @Override
         public IRubyObject allocate(Ruby runtime, RubyClass klass) {
             return new RubyObjectVar2(runtime, klass);
         }
     };
 
     public static final ObjectAllocator OBJECT_VAR3_ALLOCATOR = new ObjectAllocator() {
+        @Override
         public IRubyObject allocate(Ruby runtime, RubyClass klass) {
             return new RubyObjectVar3(runtime, klass);
         }
     };
 
     public static final ObjectAllocator OBJECT_VAR4_ALLOCATOR = new ObjectAllocator() {
+        @Override
         public IRubyObject allocate(Ruby runtime, RubyClass klass) {
             return new RubyObjectVar4(runtime, klass);
         }
     };
 
     public static final ObjectAllocator OBJECT_VAR5_ALLOCATOR = new ObjectAllocator() {
+        @Override
         public IRubyObject allocate(Ruby runtime, RubyClass klass) {
             return new RubyObjectVar5(runtime, klass);
         }
     };
 
     public static final ObjectAllocator OBJECT_VAR6_ALLOCATOR = new ObjectAllocator() {
+        @Override
         public IRubyObject allocate(Ruby runtime, RubyClass klass) {
             return new RubyObjectVar6(runtime, klass);
         }
     };
 
     public static final ObjectAllocator OBJECT_VAR7_ALLOCATOR = new ObjectAllocator() {
+        @Override
         public IRubyObject allocate(Ruby runtime, RubyClass klass) {
             return new RubyObjectVar7(runtime, klass);
         }
     };
 
     public static final ObjectAllocator OBJECT_VAR8_ALLOCATOR = new ObjectAllocator() {
+        @Override
         public IRubyObject allocate(Ruby runtime, RubyClass klass) {
             return new RubyObjectVar8(runtime, klass);
         }
     };
 
     public static final ObjectAllocator OBJECT_VAR9_ALLOCATOR = new ObjectAllocator() {
+        @Override
         public IRubyObject allocate(Ruby runtime, RubyClass klass) {
             return new RubyObjectVar9(runtime, klass);
         }
@@ -218,6 +227,9 @@ public class RubyObject extends RubyBasicObject {
         OBJECT_VAR8_ALLOCATOR,
         OBJECT_VAR9_ALLOCATOR
     };
+
+    public static final Set<ObjectAllocator> FIELD_ALLOCATOR_SET =
+            Collections.unmodifiableSet(new HashSet<ObjectAllocator>(Arrays.asList(FIELD_ALLOCATORS)));
 
     public static final Class[] FIELD_ALLOCATED_CLASSES = {
         RubyObject.class,
@@ -240,6 +252,7 @@ public class RubyObject extends RubyBasicObject {
      * always holding them in an array.
      */
     public static final ObjectAllocator IVAR_INSPECTING_OBJECT_ALLOCATOR = new ObjectAllocator() {
+        @Override
         public IRubyObject allocate(Ruby runtime, RubyClass klass) {
             Set<String> foundVariables = klass.discoverInstanceVariables();
 
@@ -259,26 +272,20 @@ public class RubyObject extends RubyBasicObject {
             klass.setAllocator(allocator);
             klass.setReifiedClass(reified);
 
+            // invalidate metaclass so new allocator is picked up for specialized .new
+            klass.getMetaClass().invalidateCacheDescendants();
+
             return allocator.allocate(runtime, klass);
         }
     };
 
     public static final ObjectAllocator REIFYING_OBJECT_ALLOCATOR = new ObjectAllocator() {
+        @Override
         public IRubyObject allocate(Ruby runtime, RubyClass klass) {
             klass.reifyWithAncestors();
             return klass.allocate();
         }
     };
-
-    @Deprecated
-    public IRubyObject initialize() {
-        return getRuntime().getNil();
-    }
-
-    @JRubyMethod(visibility = PRIVATE, compat = RUBY1_8)
-    public IRubyObject initialize(ThreadContext context) {
-        return context.nil;
-    }
 
     /**
      * Will make sure that this object is added to the current object
@@ -299,7 +306,7 @@ public class RubyObject extends RubyBasicObject {
      * @see org.jruby.runtime.ClassIndex
      */
     @Override
-    public int getNativeTypeIndex() {
+    public ClassIndex getNativeClassIndex() {
         return ClassIndex.OBJECT;
     }
 
@@ -311,9 +318,9 @@ public class RubyObject extends RubyBasicObject {
     }
 
     /**
-     * This method is just a wrapper around the Ruby "==" method,
-     * provided so that RubyObjects can be used as keys in the Java
-     * HashMap object underlying RubyHash.
+     * This override does not do a "checked" dispatch.
+     *
+     * @see RubyBasicObject#equals(Object)
      */
     @Override
     public boolean equals(Object other) {
@@ -328,7 +335,8 @@ public class RubyObject extends RubyBasicObject {
      */
     @Override
     public String toString() {
-        RubyString rubyString = Helpers.invoke(getRuntime().getCurrentContext(), this, "to_s").convertToString();
+        ThreadContext context = getRuntime().getCurrentContext();
+        RubyString rubyString = sites(context).to_s.call(context, this, this).convertToString();
         return rubyString.getUnicodeValue();
     }
 
@@ -336,55 +344,60 @@ public class RubyObject extends RubyBasicObject {
      * Call the Ruby initialize method with the supplied arguments and block.
      */
     public final void callInit(IRubyObject[] args, Block block) {
-        Helpers.invoke(getRuntime().getCurrentContext(), this, "initialize", args, block);
+        ThreadContext context = getRuntime().getCurrentContext();
+        metaClass.getBaseCallSite(RubyClass.CS_IDX_INITIALIZE).call(context, this, this, args, block);
     }
 
     /**
      * Call the Ruby initialize method with the supplied arguments and block.
      */
     public final void callInit(Block block) {
-        Helpers.invoke(getRuntime().getCurrentContext(), this, "initialize", block);
+        ThreadContext context = getRuntime().getCurrentContext();
+        metaClass.getBaseCallSite(RubyClass.CS_IDX_INITIALIZE).call(context, this, this, block);
     }
 
     /**
      * Call the Ruby initialize method with the supplied arguments and block.
      */
     public final void callInit(IRubyObject arg0, Block block) {
-        Helpers.invoke(getRuntime().getCurrentContext(), this, "initialize", arg0, block);
+        ThreadContext context = getRuntime().getCurrentContext();
+        metaClass.getBaseCallSite(RubyClass.CS_IDX_INITIALIZE).call(context, this, this, arg0, block);
     }
 
     /**
      * Call the Ruby initialize method with the supplied arguments and block.
      */
     public final void callInit(IRubyObject arg0, IRubyObject arg1, Block block) {
-        Helpers.invoke(getRuntime().getCurrentContext(), this, "initialize", arg0, arg1, block);
+        ThreadContext context = getRuntime().getCurrentContext();
+        metaClass.getBaseCallSite(RubyClass.CS_IDX_INITIALIZE).call(context, this, this, arg0, arg1, block);
     }
 
     /**
      * Call the Ruby initialize method with the supplied arguments and block.
      */
     public final void callInit(IRubyObject arg0, IRubyObject arg1, IRubyObject arg2, Block block) {
-        Helpers.invoke(getRuntime().getCurrentContext(), this, "initialize", arg0, arg1, arg2, block);
+        ThreadContext context = getRuntime().getCurrentContext();
+        metaClass.getBaseCallSite(RubyClass.CS_IDX_INITIALIZE).call(context, this, this, arg0, arg1, arg2, block);
     }
 
     public final void callInit(ThreadContext context, IRubyObject[] args, Block block) {
-        getMetaClass().getBaseCallSite(RubyClass.CS_IDX_INITIALIZE).call(context, this, this, args, block);
+        metaClass.getBaseCallSite(RubyClass.CS_IDX_INITIALIZE).call(context, this, this, args, block);
     }
 
     public final void callInit(ThreadContext context, Block block) {
-        getMetaClass().getBaseCallSite(RubyClass.CS_IDX_INITIALIZE).call(context, this, this, block);
+        metaClass.getBaseCallSite(RubyClass.CS_IDX_INITIALIZE).call(context, this, this, block);
     }
 
     public final void callInit(ThreadContext context, IRubyObject arg0, Block block) {
-        getMetaClass().getBaseCallSite(RubyClass.CS_IDX_INITIALIZE).call(context, this, this, arg0, block);
+        metaClass.getBaseCallSite(RubyClass.CS_IDX_INITIALIZE).call(context, this, this, arg0, block);
     }
 
     public final void callInit(ThreadContext context, IRubyObject arg0, IRubyObject arg1, Block block) {
-        getMetaClass().getBaseCallSite(RubyClass.CS_IDX_INITIALIZE).call(context, this, this, arg0, arg1, block);
+        metaClass.getBaseCallSite(RubyClass.CS_IDX_INITIALIZE).call(context, this, this, arg0, arg1, block);
     }
 
     public final void callInit(ThreadContext context, IRubyObject arg0, IRubyObject arg1, IRubyObject arg2, Block block) {
-        getMetaClass().getBaseCallSite(RubyClass.CS_IDX_INITIALIZE).call(context, this, this, arg0, arg1, arg2, block);
+        metaClass.getBaseCallSite(RubyClass.CS_IDX_INITIALIZE).call(context, this, this, arg0, arg1, arg2, block);
     }
 
     /**
@@ -407,11 +420,11 @@ public class RubyObject extends RubyBasicObject {
      * filename and line of the string under evaluation.
      */
     @Deprecated
-    public IRubyObject specificEval(ThreadContext context, RubyModule mod, IRubyObject[] args, Block block) {
+    public IRubyObject specificEval(ThreadContext context, RubyModule mod, IRubyObject[] args, Block block, EvalType evalType) {
         if (block.isGiven()) {
             if (args.length > 0) throw getRuntime().newArgumentError(args.length, 0);
 
-            return yieldUnder(context, mod, block);
+            return yieldUnder(context, mod, block, evalType);
         }
 
         if (args.length == 0) {
@@ -444,7 +457,7 @@ public class RubyObject extends RubyBasicObject {
             line = 0;
         }
 
-        return evalUnder(context, mod, evalStr, file, line);
+        return evalUnder(context, mod, evalStr, file, line, evalType);
     }
 
     // Methods of the Object class (rb_obj_*):
@@ -464,13 +477,13 @@ public class RubyObject extends RubyBasicObject {
      * Helper method for checking equality, first using Java identity
      * equality, and then calling the "==" method.
      */
-    protected static boolean equalInternal(final ThreadContext context, final IRubyObject a, final IRubyObject b){
+    public static boolean equalInternal(final ThreadContext context, final IRubyObject a, final IRubyObject b){
         if (a == b) {
             return true;
         } else if (a instanceof RubySymbol) {
             return false;
         } else if (a instanceof RubyFixnum && b instanceof RubyFixnum) {
-            return ((RubyFixnum)a).fastEqual((RubyFixnum)b);
+            return ((RubyFixnum)a).fastEqual((RubyFixnum) b);
         } else if (a instanceof RubyFloat && b instanceof RubyFloat) {
             return ((RubyFloat)a).fastEqual((RubyFloat)b);
         } else {
@@ -496,31 +509,15 @@ public class RubyObject extends RubyBasicObject {
     }
 
     /**
-     * Override the Object#hashCode method to make sure that the Ruby
-     * hash is actually used as the hashcode for Ruby objects. If the
-     * Ruby "hash" method doesn't return a number, the Object#hashCode
-     * implementation will be used instead.
+     * This override does not do "checked" dispatch since Object usually has #hash defined.
+     *
+     * @see RubyBasicObject#hashCode()
      */
     @Override
     public int hashCode() {
         IRubyObject hashValue = invokedynamic(getRuntime().getCurrentContext(), this, HASH);
         if (hashValue instanceof RubyFixnum) return (int) RubyNumeric.fix2long(hashValue);
         return nonFixnumHashCode(hashValue);
-    }
-
-    private int nonFixnumHashCode(IRubyObject hashValue) {
-        Ruby runtime = getRuntime();
-        if (runtime.is1_9()) {
-            RubyInteger integer = hashValue.convertToInteger();
-            if (integer instanceof RubyBignum) {
-                return integer.getBigIntegerValue().intValue();
-            }
-            return (int) integer.getLongValue();
-        } else {
-            hashValue = hashValue.callMethod(runtime.getCurrentContext(), "%", RubyFixnum.newFixnum(runtime, 536870923L));
-            if (hashValue instanceof RubyFixnum) return (int) RubyNumeric.fix2long(hashValue);
-            return System.identityHashCode(hashValue);
-        }
     }
 
     /** rb_inspect
@@ -530,7 +527,46 @@ public class RubyObject extends RubyBasicObject {
      * Prefered over callMethod(context, "inspect")
      */
     public static RubyString inspect(ThreadContext context, IRubyObject object) {
-        return RubyString.objAsString(context, object.callMethod(context, "inspect"));
+        return (RubyString)rbInspect(context, object);
+    }
+
+    // MRI: rb_obj_dig
+    public static IRubyObject dig(ThreadContext context, IRubyObject obj, IRubyObject[] args, int idx) {
+        if ( obj.isNil() ) return context.nil;
+
+        ObjectSites sites = sites(context);
+
+        if ( obj instanceof RubyArray ) {
+            if (sites.dig_array.isBuiltin(obj.getMetaClass())) {
+                return ((RubyArray) obj).dig(context, args, idx);
+            }
+        }
+        if ( obj instanceof RubyHash ) {
+            if (sites.dig_hash.isBuiltin(obj.getMetaClass())) {
+                return ((RubyHash) obj).dig(context, args, idx);
+            }
+        }
+        if ( obj instanceof RubyStruct ) {
+            if (sites.dig_struct.isBuiltin(obj.getMetaClass())) {
+                return ((RubyStruct) obj).dig(context, args, idx);
+            }
+        }
+        if (sites.respond_to_dig.respondsTo(context, obj, obj, true) ) {
+            final int len = args.length - idx;
+            switch ( len ) {
+                case 1:
+                    return sites.dig_misc.call(context, obj, obj, args[idx]);
+                case 2:
+                    return sites.dig_misc.call(context, obj, obj, args[idx], args[idx+1]);
+                case 3:
+                    return sites.dig_misc.call(context, obj, obj, args[idx], args[idx+1], args[idx+2]);
+                default:
+                    IRubyObject[] rest = new IRubyObject[len];
+                    System.arraycopy(args, idx, rest, 0, len);
+                    return sites.dig_misc.call(context, obj, obj, rest);
+            }
+        }
+        throw context.runtime.newTypeError(obj.getMetaClass().getName() + " does not have #dig method");
     }
 
     /**
@@ -562,6 +598,10 @@ public class RubyObject extends RubyBasicObject {
         for (int i = 0; i < ivarCount; i++) {
             setInstanceVariable((String)in.readObject(), (IRubyObject)in.readObject());
         }
+    }
+
+    private static ObjectSites sites(ThreadContext context) {
+        return context.sites.Object;
     }
 
 }

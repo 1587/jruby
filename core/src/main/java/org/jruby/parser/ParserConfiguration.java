@@ -32,13 +32,12 @@ package org.jruby.parser;
 
 import org.jcodings.Encoding;
 import org.jcodings.specific.UTF8Encoding;
-import org.jruby.CompatVersion;
 import org.jruby.Ruby;
 import org.jruby.RubyInstanceConfig;
+import org.jruby.ext.coverage.CoverageData;
 import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.encoding.EncodingService;
 import org.jruby.runtime.scope.ManyVarsDynamicScope;
-import org.jruby.util.ByteList;
 import org.jruby.util.KCode;
 
 import java.util.Arrays;
@@ -52,14 +51,12 @@ public class ParserConfiguration {
     private boolean inlineSource = false;
     // We parse evals more often in source so assume an eval parse.
     private boolean isEvalParse = true;
-    // Should positions added extra IDE-friendly information and leave in all newline nodes
-    private boolean extraPositionInformation = false;
     // Should we display extra debug information while parsing?
     private boolean isDebug = false;
     // whether we should save the end-of-file data as DATA
     private boolean saveData = false;
 
-    private CompatVersion version;
+    private boolean frozenStringLiteral = false;
 
     private Encoding defaultEncoding;
     private Ruby runtime;
@@ -67,42 +64,35 @@ public class ParserConfiguration {
     private int[] coverage = EMPTY_COVERAGE;
 
     private static final int[] EMPTY_COVERAGE = new int[0];
-    
-    public ParserConfiguration(Ruby runtime, int lineNumber, boolean inlineSource,
-            CompatVersion version) {
-        this(runtime, lineNumber, false, inlineSource, version);
-    }
-    
-    public ParserConfiguration(Ruby runtime, int lineNumber,
-            boolean extraPositionInformation, boolean inlineSource, CompatVersion version) {
-        this(runtime, lineNumber, extraPositionInformation, inlineSource, true, version, false);
-    }
 
-    public ParserConfiguration(Ruby runtime, int lineNumber, boolean extraPositionInformation,
-            boolean inlineSource, boolean isFileParse, CompatVersion version, boolean saveData) {
+    public ParserConfiguration(Ruby runtime, int lineNumber, boolean inlineSource, boolean isFileParse, boolean saveData) {
         this.runtime = runtime;
         this.inlineSource = inlineSource;
         this.lineNumber = lineNumber;
-        this.extraPositionInformation = extraPositionInformation;
         this.isEvalParse = !isFileParse;
-        this.version = version;
         this.saveData = saveData;
     }
 
-    public ParserConfiguration(Ruby runtime, int lineNumber, boolean extraPositionInformation,
+    public ParserConfiguration(Ruby runtime, int lineNumber,
             boolean inlineSource, boolean isFileParse, RubyInstanceConfig config) {
-        this(runtime, lineNumber, extraPositionInformation, inlineSource, isFileParse, false, config);
+        this(runtime, lineNumber, inlineSource, isFileParse, false, config);
     }
 
-    public ParserConfiguration(Ruby runtime, int lineNumber, boolean extraPositionInformation,
+    public ParserConfiguration(Ruby runtime, int lineNumber,
             boolean inlineSource, boolean isFileParse, boolean saveData, RubyInstanceConfig config) {
-        this(runtime, lineNumber, extraPositionInformation, inlineSource, isFileParse,
-                config.getCompatVersion(), saveData);
+        this(runtime, lineNumber, inlineSource, isFileParse, saveData);
 
         this.isDebug = config.isParserDebug();
+        this.frozenStringLiteral = config.isFrozenStringLiteral();
     }
 
-    private static final ByteList USASCII = new ByteList(new byte[]{'U', 'S', '-', 'A', 'S', 'C', 'I', 'I'});
+    public void setFrozenStringLiteral(boolean frozenStringLiteral) {
+        this.frozenStringLiteral = frozenStringLiteral;
+    }
+
+    public boolean isFrozenStringLiteral() {
+        return frozenStringLiteral;
+    }
 
     public void setDefaultEncoding(Encoding encoding) {
         this.defaultEncoding = encoding;
@@ -110,11 +100,7 @@ public class ParserConfiguration {
 
     public Encoding getDefaultEncoding() {
         if (defaultEncoding == null) {
-            if (runtime.is2_0()) {
-                defaultEncoding = UTF8Encoding.INSTANCE;
-            } else {
-                defaultEncoding = getEncodingService().loadEncoding(USASCII);
-            }
+            defaultEncoding = UTF8Encoding.INSTANCE;
         }
         
         return defaultEncoding;
@@ -122,31 +108,6 @@ public class ParserConfiguration {
 
     public EncodingService getEncodingService() {
         return runtime.getEncodingService();
-    }
-
-    /**
-     * Set whether this is an parsing of an eval() or not.
-     * 
-     * @param isEvalParse says how we should look at it
-     */
-    public void setEvalParse(boolean isEvalParse) {
-        this.isEvalParse = isEvalParse;
-    }
-
-    /**
-     * Should positions of nodes provide additional information in them (like character offsets).
-     * @param extraPositionInformation
-     */
-    public void setExtraPositionInformation(boolean extraPositionInformation) {
-        this.extraPositionInformation = extraPositionInformation;
-    }
-    
-    /**
-     * Should positions of nodes provide addition information?
-     * @return true if they should
-     */
-    public boolean hasExtraPositionInformation() {
-        return extraPositionInformation;
     }
 
     public boolean isDebug() {
@@ -190,25 +151,22 @@ public class ParserConfiguration {
      * 
      * @return correct top scope for source to be parsed
      */
-    public DynamicScope getScope() {
+    public DynamicScope getScope(String file) {
         if (asBlock) return existingScope;
-        
+
         // FIXME: We should really not be creating the dynamic scope for the root
         // of the AST before parsing.  This makes us end up needing to readjust
         // this dynamic scope coming out of parse (and for local static scopes it
         // will always happen because of $~ and $_).
         // FIXME: Because we end up adjusting this after-the-fact, we can't use
         // any of the specific-size scopes.
-        return new ManyVarsDynamicScope(runtime.getStaticScopeFactory().newLocalScope(null), existingScope);
+        return new ManyVarsDynamicScope(runtime.getStaticScopeFactory().newLocalScope(null, file), existingScope);
     }
 
-    /**
-     * Get the compatibility version we're targeting with this parse.
-     */
-    public CompatVersion getVersion() {
-        return version;
+    public boolean isCoverageEnabled() {
+        return !isEvalParse() && runtime.getCoverageData().isCoverageEnabled();
     }
-    
+
     /**
      * Get whether we are saving the DATA contents of the file.
      */
@@ -229,9 +187,7 @@ public class ParserConfiguration {
      * Zero out coverable lines as they're encountered
      */
     public void coverLine(int i) {
-        if (i < 0) return; // JRUBY-6868: why would there be negative line numbers?
-
-        if (runtime.getCoverageData().isCoverageEnabled()) {
+        if (isCoverageEnabled()) {
             growCoverageLines(i);
             coverage[i] = 0;
         }
@@ -254,9 +210,25 @@ public class ParserConfiguration {
     }
 
     /**
+     * At end of a parse if coverage is enabled we will do final processing
+     * of the primitive coverage array and make sure runtimes coverage data
+     * has been updated with this new data.
+     */
+    public CoverageData finishCoverage(String file, int lines) {
+        if (!isCoverageEnabled()) return null;
+
+        growCoverageLines(lines);
+        CoverageData data = runtime.getCoverageData();
+        data.prepareCoverage(file, coverage);
+        return data;
+    }
+
+    /**
      * Get the coverage array, indicating all coverable lines
      */
+    @Deprecated
     public int[] getCoverage() {
         return coverage;
     }
+
 }

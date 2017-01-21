@@ -1,6 +1,6 @@
 require File.expand_path('../../../spec_helper', __FILE__)
 
-ruby_version_is "1.9" do
+platform_is_not :windows do
   describe "File.realpath" do
     before :each do
       @real_dir = tmp('dir_realpath_real')
@@ -54,7 +54,7 @@ ruby_version_is "1.9" do
       File.realpath(@relative_symlink).should == @file
     end
 
-    it "raises a Errno::ELOOP if the symlink points to itself" do
+    it "raises an Errno::ELOOP if the symlink points to itself" do
       File.unlink @link
       File.symlink(@link, @link)
       lambda { File.realpath(@link) }.should raise_error(Errno::ELOOP)
@@ -66,6 +66,15 @@ ruby_version_is "1.9" do
 
     it "raises Errno::ENOENT if the symlink points to an absent file" do
       lambda { File.realpath(@fake_link) }.should raise_error(Errno::ENOENT)
+    end
+  end
+end
+
+platform_is :windows do
+  describe "File.realpath" do
+    it "returns the same path" do
+      file = __FILE__
+      File.realpath(file).should == file
     end
   end
 end

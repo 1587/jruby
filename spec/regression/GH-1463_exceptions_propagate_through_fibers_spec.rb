@@ -6,21 +6,27 @@ if (RUBY_VERSION >= '1.9')
       it "receives that exception" do
         fiber_exceptions = []
         thread_exceptions = []
+        mutex = Mutex.new
+
         100.times do
           fiber_running = false
           t = Thread.new do
             begin
               f = Fiber.new do
-                fiber_running = true
                 begin
-                  sleep 0.2
+                  fiber_running = true
+                  sleep 10
                 rescue => e
-                  fiber_exceptions << e
+                  mutex.synchronize do
+                    fiber_exceptions << e
+                  end
                 end
               end
               f.resume
             rescue => e
-              thread_exceptions << e
+              mutex.synchronize do
+                thread_exceptions << e
+              end
             end
           end
           Thread.pass until fiber_running
@@ -28,12 +34,12 @@ if (RUBY_VERSION >= '1.9')
           t.join
         end
 
-        fiber_exceptions.size.should == 100
+        expect(fiber_exceptions.size).to eq(100)
         fiber_exceptions.each do |ex|
-          ex.should be_kind_of(StandardError)
+          expect(ex).to be_kind_of(StandardError)
         end
 
-        thread_exceptions.should be_empty
+        expect(thread_exceptions).to eq []
       end
     end
 
@@ -41,6 +47,7 @@ if (RUBY_VERSION >= '1.9')
       it "raises that exception in its parent thread" do
         fiber_exceptions = []
         thread_exceptions = []
+        mutex = Mutex.new
 
         100.times do |i|
           t = Thread.new do
@@ -51,24 +58,28 @@ if (RUBY_VERSION >= '1.9')
                     Fiber.yield
                     end
                 rescue => e
-                  fiber_exceptions << e
+                  mutex.synchronize do
+                    fiber_exceptions << e
+                  end
                 end
               end
               f.resume
               sleep
             rescue Exception => e
-              thread_exceptions << e
+              mutex.synchronize do
+                thread_exceptions << e
+              end
             end
           end
           t.join rescue nil
         end
 
-        thread_exceptions.size.should == 100
+        expect(thread_exceptions.size).to eq(100)
         thread_exceptions.each do |ex|
-          ex.should be_kind_of(StandardError)
+          expect(ex).to be_kind_of(StandardError)
         end
 
-        fiber_exceptions.should be_empty
+        expect(fiber_exceptions).to eq []
       end
     end
   end

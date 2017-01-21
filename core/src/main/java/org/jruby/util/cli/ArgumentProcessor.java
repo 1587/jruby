@@ -28,8 +28,6 @@
  ***** END LICENSE BLOCK *****/
 package org.jruby.util.cli;
 
-import org.jruby.CompatVersion;
-import org.jruby.Ruby;
 import org.jruby.RubyInstanceConfig;
 import org.jruby.exceptions.MainExitException;
 import org.jruby.runtime.profile.builtin.ProfileOutput;
@@ -37,13 +35,20 @@ import org.jruby.util.JRubyFile;
 import org.jruby.util.FileResource;
 import org.jruby.util.KCode;
 import org.jruby.util.SafePropertyAccessor;
+import org.jruby.util.StringSupport;
+import org.jruby.util.func.Function2;
 
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.regex.Pattern;
 
 /**
  * Encapsulated logic for processing JRuby's command-line arguments.
@@ -56,39 +61,59 @@ import java.util.List;
  * script or by a native executable.
  */
 public class ArgumentProcessor {
+
+    public static final String SEPARATOR = "(?<!jar:file|jar|file|classpath|uri:classloader|uri|http|https):";
+
     private static final class Argument {
-        public final String originalValue;
-        public final String dashedValue;
-        public Argument(String value, boolean dashed) {
+        final String originalValue;
+        private String dashedValue;
+        Argument(String value, boolean dashed) {
             this.originalValue = value;
-            this.dashedValue = dashed && !value.startsWith("-") ? "-" + value : value;
+            this.dashedValue = dashed ? null : value;
+        }
+
+        final String getDashedValue() {
+            String dashedValue = this.dashedValue;
+            if ( dashedValue == null ) {
+                final String value = originalValue;
+                dashedValue = ! value.startsWith("-") ? ('-' + value) : value;
+                this.dashedValue = dashedValue;
+            }
+            return dashedValue;
         }
 
         public String toString() {
-            return dashedValue;
+            return getDashedValue();
         }
     }
 
-    private List<Argument> arguments;
+    private final List<Argument> arguments;
     private int argumentIndex = 0;
     private boolean processArgv;
-    RubyInstanceConfig config;
+    private final boolean rubyOpts;
+    final RubyInstanceConfig config;
     private boolean endOfArguments = false;
     private int characterIndex = 0;
 
+    private static final Pattern VERSION_FLAG = Pattern.compile("^--[12]\\.[89012]$");
+
     public ArgumentProcessor(String[] arguments, RubyInstanceConfig config) {
-        this(arguments, true, false, config);
+        this(arguments, true, false, false, config);
     }
 
-    public ArgumentProcessor(String[] arguments, boolean processArgv, boolean dashed, RubyInstanceConfig config) {
+    public ArgumentProcessor(String[] arguments, boolean processArgv, boolean dashed, boolean rubyOpts, RubyInstanceConfig config) {
         this.config = config;
-        this.arguments = new ArrayList<Argument>();
         if (arguments != null && arguments.length > 0) {
+            this.arguments = new ArrayList<>(arguments.length);
             for (String argument : arguments) {
                 this.arguments.add(new Argument(argument, dashed));
             }
         }
+        else {
+            this.arguments = new ArrayList<>(0);
+        }
         this.processArgv = processArgv;
+        this.rubyOpts = rubyOpts;
     }
 
     public void processArguments() {
@@ -96,11 +121,13 @@ public class ArgumentProcessor {
     }
 
     public void processArguments(boolean inline) {
+        checkProperties();
+
         while (argumentIndex < arguments.size() && isInterpreterArgument(arguments.get(argumentIndex).originalValue)) {
             processArgument();
             argumentIndex++;
         }
-        if (inline && !config.isInlineScript() && config.getScriptFileName() == null) {
+        if (inline && !config.isInlineScript() && config.getScriptFileName() == null && !config.isForceStdin()) {
             if (argumentIndex < arguments.size()) {
                 config.setScriptFileName(arguments.get(argumentIndex).originalValue); //consume the file name
                 argumentIndex++;
@@ -146,12 +173,21 @@ public class ArgumentProcessor {
     }
 
     private void processArgument() {
-        String argument = arguments.get(argumentIndex).dashedValue;
+        String argument = arguments.get(argumentIndex).getDashedValue();
+
+        if (argument.length() == 1) {
+            // sole "-" means read from stdin and pass remaining args as ARGV
+            endOfArguments = true;
+            config.setForceStdin(true);
+            return;
+        }
+
         FOR:
         for (characterIndex = 1; characterIndex < argument.length(); characterIndex++) {
             switch (argument.charAt(characterIndex)) {
                 case '0':
                     {
+                        disallowedInRubyOpts(argument);
                         String temp = grabOptionalValue();
                         if (null == temp) {
                             config.setRecordSeparator("\u0000");
@@ -162,7 +198,7 @@ public class ArgumentProcessor {
                         } else {
                             try {
                                 int val = Integer.parseInt(temp, 8);
-                                config.setRecordSeparator("" + (char) val);
+                                config.setRecordSeparator(String.valueOf((char) val));
                             } catch (Exception e) {
                                 MainExitException mee = new MainExitException(1, getArgumentError(" -0 must be followed by either 0, 777, or a valid octal value"));
                                 mee.setUsageError(true);
@@ -172,12 +208,15 @@ public class ArgumentProcessor {
                         break FOR;
                     }
                 case 'a':
+                    disallowedInRubyOpts(argument);
                     config.setSplit(true);
                     break;
                 case 'c':
+                    disallowedInRubyOpts(argument);
                     config.setShouldCheckSyntax(true);
                     break;
                 case 'C':
+                    disallowedInRubyOpts(argument);
                     try {
                         String saved = grabValue(getArgumentError(" -C must be followed by a directory expression"));
                         File base = new File(config.getCurrentDirectory());
@@ -190,12 +229,10 @@ public class ArgumentProcessor {
                             config.setCurrentDirectory(new File(base, newDir.getPath()).getCanonicalPath());
                         }
                         if (!(new File(config.getCurrentDirectory()).isDirectory()) && !config.getCurrentDirectory().startsWith("uri:classloader:")) {
-                            MainExitException mee = new MainExitException(1, "jruby: Can't chdir to " + saved + " (fatal)");
-                            throw mee;
+                            throw new MainExitException(1, "jruby: Can't chdir to " + saved + " (fatal)");
                         }
                     } catch (IOException e) {
-                        MainExitException mee = new MainExitException(1, getArgumentError(" -C must be followed by a valid directory"));
-                        throw mee;
+                        throw new MainExitException(1, getArgumentError(" -C must be followed by a valid directory"));
                     }
                     break FOR;
                 case 'd':
@@ -203,6 +240,7 @@ public class ArgumentProcessor {
                     config.setVerbosity(RubyInstanceConfig.Verbosity.TRUE);
                     break;
                 case 'e':
+                    disallowedInRubyOpts(argument);
                     config.getInlineScript().append(grabValue(getArgumentError(" -e must be followed by an expression to report")));
                     config.getInlineScript().append('\n');
                     config.setHasInlineScript(true);
@@ -211,13 +249,16 @@ public class ArgumentProcessor {
                     processEncodingOption(grabValue(getArgumentError("unknown encoding name")));
                     break FOR;
                 case 'F':
+                    disallowedInRubyOpts(argument);
                     config.setInputFieldSeparator(grabValue(getArgumentError(" -F must be followed by a pattern for input field separation")));
                     break FOR;
                 case 'h':
+                    disallowedInRubyOpts(argument);
                     config.setShouldPrintUsage(true);
                     config.setShouldRunInterpreter(false);
                     break;
                 case 'i':
+                    disallowedInRubyOpts(argument);
                     config.setInPlaceBackupExtension(grabOptionalValue());
                     if (config.getInPlaceBackupExtension() == null) {
                         config.setInPlaceBackupExtension("");
@@ -225,7 +266,11 @@ public class ArgumentProcessor {
                     break FOR;
                 case 'I':
                     String s = grabValue(getArgumentError("-I must be followed by a directory name to add to lib path"));
-                    String[] ls = s.split(java.io.File.pathSeparator);
+                    String separator = java.io.File.pathSeparator;
+                    if (":".equals(separator)) {
+                        separator = SEPARATOR;
+                    }
+                    String[] ls = s.split(separator);
                     config.getLoadPaths().addAll(Arrays.asList(ls));
                     break FOR;
                 case 'J':
@@ -236,10 +281,7 @@ public class ArgumentProcessor {
                         grabValue(getArgumentError(" -J-cp must be followed by a path expression"));
                     }
                     break FOR;
-                case 'K':
-                    // FIXME: No argument seems to work for -K in MRI plus this should not
-                    // siphon off additional args 'jruby -K ~/scripts/foo'.  Also better error
-                    // processing.
+                case 'K': // @Deprecated TODO no longer relevant in Ruby 2.x
                     String eArg = grabValue(getArgumentError("provide a value for -K"));
 
                     config.setKCode(KCode.create(null, eArg));
@@ -254,13 +296,16 @@ public class ArgumentProcessor {
 
                     break;
                 case 'l':
+                    disallowedInRubyOpts(argument);
                     config.setProcessLineEnds(true);
                     break;
                 case 'n':
+                    disallowedInRubyOpts(argument);
                     config.setAssumeLoop(true);
                     config.setKernelGsubDefined(true);
                     break;
                 case 'p':
+                    disallowedInRubyOpts(argument);
                     config.setAssumePrinting(true);
                     config.setAssumeLoop(true);
                     config.setKernelGsubDefined(true);
@@ -269,12 +314,14 @@ public class ArgumentProcessor {
                     config.getRequiredLibraries().add(grabValue(getArgumentError("-r must be followed by a package to require")));
                     break FOR;
                 case 's':
+                    disallowedInRubyOpts(argument);
                     config.setArgvGlobalsOn(true);
                     break;
                 case 'G':
                     config.setLoadGemfile(true);
                     break;
                 case 'S':
+                    disallowedInRubyOpts(argument);
                     runBinScript();
                     break FOR;
                 case 'T':
@@ -313,6 +360,7 @@ public class ArgumentProcessor {
                         break FOR;
                     }
                 case 'x':
+                    disallowedInRubyOpts(argument);
                     try {
                         String saved = grabOptionalValue();
                         if (saved != null) {
@@ -326,17 +374,16 @@ public class ArgumentProcessor {
                                 config.setCurrentDirectory(new File(base, newDir.getPath()).getCanonicalPath());
                             }
                             if (!(new File(config.getCurrentDirectory()).isDirectory()) && !config.getCurrentDirectory().startsWith("uri:classloader:")) {
-                                MainExitException mee = new MainExitException(1, "jruby: Can't chdir to " + saved + " (fatal)");
-                                throw mee;
+                                throw new MainExitException(1, "jruby: Can't chdir to " + saved + " (fatal)");
                             }
                         }
                         config.setXFlag(true);
                     } catch (IOException e) {
-                        MainExitException mee = new MainExitException(1, getArgumentError(" -x must be followed by a valid directory"));
-                        throw mee;
+                        throw new MainExitException(1, getArgumentError(" -x must be followed by a valid directory"));
                     }
                     break FOR;
                 case 'X':
+                    disallowedInRubyOpts(argument);
                     String extendedOption = grabOptionalValue();
                     if (extendedOption == null) {
                         if (SafePropertyAccessor.getBoolean("jruby.launcher.nopreamble", false)) {
@@ -348,14 +395,24 @@ public class ArgumentProcessor {
                         config.setObjectSpaceEnabled(false);
                     } else if (extendedOption.equals("+O")) {
                         config.setObjectSpaceEnabled(true);
-                    } else if (extendedOption.equals("-C")) {
+                    } else if (extendedOption.equals("-C") || extendedOption.equals("-CIR")) {
                         config.setCompileMode(RubyInstanceConfig.CompileMode.OFF);
-                    } else if (extendedOption.equals("-CIR")) {
-                        config.setCompileMode(RubyInstanceConfig.CompileMode.OFFIR);
-                    } else if (extendedOption.equals("+C")) {
+                    } else if (extendedOption.equals("+C") || extendedOption.equals("+CIR")) {
                         config.setCompileMode(RubyInstanceConfig.CompileMode.FORCE);
-                    } else if (extendedOption.equals("+CIR")) {
-                        config.setCompileMode(RubyInstanceConfig.CompileMode.FORCEIR);
+                    } else if (extendedOption.equals("classic")) {
+                        throw new MainExitException(0, "jruby: the -Xclassic option should have been handled in the launcher");
+                    } else if (extendedOption.equals("+T")) {
+                        Options.PARSER_WARN_GROUPED_EXPRESSIONS.force(Boolean.FALSE.toString());
+                        config.setCompileMode(RubyInstanceConfig.CompileMode.TRUFFLE);
+                        // Make the static option consistent with the compile mode.
+                        Options.COMPILE_MODE.force("TRUFFLE");
+                        config.setDisableGems(true);
+                    } else if (extendedOption.endsWith("...")) {
+                        Options.listPrefix(extendedOption.substring(0, extendedOption.length() - "...".length()));
+                        config.setShouldRunInterpreter(false);
+                    } else if (extendedOption.endsWith("?")) {
+                        Options.listContains(extendedOption.substring(0, extendedOption.length() - 1));
+                        config.setShouldRunInterpreter(false);
                     } else {
                         MainExitException mee = new MainExitException(1, "jruby: invalid extended option " + extendedOption + " (-X will list valid options)\n");
                         mee.setUsageError(true);
@@ -363,6 +420,7 @@ public class ArgumentProcessor {
                     }
                     break FOR;
                 case 'y':
+                    disallowedInRubyOpts(argument);
                     config.setParserDebug(true);
                     break FOR;
                 case '-':
@@ -372,21 +430,37 @@ public class ArgumentProcessor {
                         break;
                     } else if (argument.equals("--compat")) {
                         characterIndex = argument.length();
-                        config.setCompatVersion(CompatVersion.getVersionFromString(grabValue(getArgumentError("--compat must be RUBY1_8 or RUBY1_9"))));
+                        grabValue(getArgumentError("--compat takes an argument, but will be ignored"));
+                        config.getError().println("warning: " + argument + " ignored");
                         break FOR;
                     } else if (argument.equals("--copyright")) {
+                        disallowedInRubyOpts(argument);
                         config.setShowCopyright(true);
                         config.setShouldRunInterpreter(false);
                         break FOR;
                     } else if (argument.equals("--debug")) {
+                        disallowedInRubyOpts(argument);
+                        Options.DEBUG_FULLTRACE.force("true");
                         RubyInstanceConfig.FULL_TRACE_ENABLED = true;
-                        config.setCompileMode(RubyInstanceConfig.CompileMode.OFF);
+                        config.setDebuggingFrozenStringLiteral(true);
+                        break FOR;
+                    } else if (argument.startsWith("--debug=")) {
+                        for (String debug : valueListFor(argument, "debug")) {
+                            boolean all = debug.equals("all");
+                            if (all || debug.equals("frozen-string-literal")) {
+                                config.setDebuggingFrozenStringLiteral(true);
+                                continue;
+                            }
+
+                            config.getError().println("warning: unknown argument for --debug: `" + debug + "'");
+                        }
                         break FOR;
                     } else if (argument.equals("--jdb")) {
                         config.setDebug(true);
                         config.setVerbosity(RubyInstanceConfig.Verbosity.TRUE);
                         break;
                     } else if (argument.equals("--help")) {
+                        disallowedInRubyOpts(argument);
                         config.setShouldPrintUsage(true);
                         config.setShouldRunInterpreter(false);
                         break;
@@ -395,6 +469,7 @@ public class ArgumentProcessor {
                         config.setShouldRunInterpreter(false);
                         break;
                     } else if (argument.equals("--version")) {
+                        disallowedInRubyOpts(argument);
                         config.setShowVersion(true);
                         config.setShouldRunInterpreter(false);
                         break FOR;
@@ -441,17 +516,33 @@ public class ArgumentProcessor {
                         }
 
                         break FOR;
-                    } else if (argument.equals("--1.9")) {
-                        config.setCompatVersion(CompatVersion.RUBY1_9);
+                    } else if (VERSION_FLAG.matcher(argument).matches()) {
+                        config.getError().println("warning: " + argument + " ignored");
                         break FOR;
-                    } else if (argument.equals("--2.0")) {
-                        config.setCompatVersion(CompatVersion.RUBY2_0);
+                    } else if (argument.equals("--debug-frozen-string-literal")) {
+                        config.setDebuggingFrozenStringLiteral(true);
                         break FOR;
-                    } else if (argument.equals("--1.8")) {
-                        config.setCompatVersion(CompatVersion.RUBY1_8);
+                    } else if (argument.startsWith("--disable")) {
+                        final int len = argument.length();
+                        if (len == "--disable".length()) {
+                            characterIndex = len;
+                            String feature = grabValue(getArgumentError("missing argument for --disable"), false);
+                            argument = "--disable=" + feature;
+                        }
+                        for (String disable : valueListFor(argument, "disable")) {
+                            enableDisableFeature(disable, false);
+                        }
                         break FOR;
-                    } else if (argument.equals("--disable-gems")) {
-                        config.setDisableGems(true);
+                    } else if (argument.startsWith("--enable")) {
+                        final int len = argument.length();
+                        if (len == "--enable".length()) {
+                            characterIndex = len;
+                            String feature = grabValue(getArgumentError("missing argument for --enable"), false);
+                            argument = "--enable=" + feature;
+                        }
+                        for (String enable : valueListFor(argument, "enable")) {
+                            enableDisableFeature(enable, true);
+                        }
                         break FOR;
                     } else if (argument.equals("--gemfile")) {
                         config.setLoadGemfile(true);
@@ -486,8 +577,21 @@ public class ArgumentProcessor {
                         }
                         break;
                     } else if (argument.equals("--dev")) {
+                        // most we can do after JVM boot
                         Options.COMPILE_INVOKEDYNAMIC.force("false");
                         config.setCompileMode(RubyInstanceConfig.CompileMode.OFF);
+                        break FOR;
+                    } else if (argument.equals("--server")) {
+                        // ignore this...can't do anything with it after boot
+                        break FOR;
+                    } else if (argument.equals("--client")) {
+                        // ignore this...can't do anything with it after boot
+                        break FOR;
+                    } else if (argument.equals("--yydebug")) {
+                        disallowedInRubyOpts(argument);
+                        config.setParserDebug(true);
+                    } else if (argument.equals("--verbose")) {
+                        config.setVerbosity(RubyInstanceConfig.Verbosity.TRUE);
                         break FOR;
                     } else {
                         if (argument.equals("--")) {
@@ -503,16 +607,48 @@ public class ArgumentProcessor {
         }
     }
 
+    private void enableDisableFeature(String name, boolean enable) {
+        Function2<Boolean, ArgumentProcessor, Boolean> feature = FEATURES.get(name);
+
+        if (feature == null) {
+            config.getError().println("warning: unknown argument for --" + (enable ? "enable" : "disable") + ": `" + name + "'");
+        } else {
+            feature.apply(this, enable);
+        }
+    }
+
+    private static String[] valueListFor(String argument, String key) {
+        int length = key.length() + 3; // 3 is from -- and = (e.g. --disable=)
+        String[] values = argument.substring(length).split(",");
+
+        if (values.length == 0) errorMissingEquals(key);
+
+        return values;
+    }
+
+    private void disallowedInRubyOpts(CharSequence option) {
+        if (rubyOpts) {
+            throw new MainExitException(1, "jruby: invalid switch in RUBYOPT: " + option + " (RuntimeError)");
+        }
+    }
+
+    private static void errorMissingEquals(String label) {
+        MainExitException mee;
+        mee = new MainExitException(1, "missing argument for --" + label + "\n");
+        mee.setUsageError(true);
+        throw mee;
+    }
+
     private void processEncodingOption(String value) {
-        String[] encodings = value.split(":", 3);
-        switch (encodings.length) {
+        List<String> encodings = StringSupport.split(value, ':', 3);
+        switch (encodings.size()) {
             case 3:
-                throw new MainExitException(1, "extra argument for -E: " + encodings[2]);
+                throw new MainExitException(1, "extra argument for -E: " + encodings.get(2));
             case 2:
-                config.setInternalEncoding(encodings[1]);
+                config.setInternalEncoding(encodings.get(1));
             case 1:
-                config.setExternalEncoding(encodings[0]);
-                // Zero is impossible
+                config.setExternalEncoding(encodings.get(0));
+            // Zero is impossible
         }
     }
 
@@ -583,7 +719,19 @@ public class ArgumentProcessor {
         return null;
     }
 
+    @Deprecated
+    public String resolveScriptUsingClassLoader(String scriptName) {
+        if (RubyInstanceConfig.defaultClassLoader().getResourceAsStream("bin/" + scriptName) != null){
+            return "classpath:/bin/" + scriptName;
+        }
+        return null;
+    }
+
     private String grabValue(String errorMessage) {
+        return grabValue(errorMessage, true);
+    }
+
+    private String grabValue(String errorMessage, boolean usageError) {
         String optValue = grabOptionalValue();
         if (optValue != null) {
             return optValue;
@@ -593,7 +741,7 @@ public class ArgumentProcessor {
             return arguments.get(argumentIndex).originalValue;
         }
         MainExitException mee = new MainExitException(1, errorMessage);
-        mee.setUsageError(true);
+        if (usageError) mee.setUsageError(true);
         throw mee;
     }
 
@@ -606,4 +754,96 @@ public class ArgumentProcessor {
         return null;
     }
 
+    private static final Set<String> KNOWN_PROPERTIES = new HashSet<>(Options.PROPERTIES.size() + 16, 1);
+
+    static {
+        Options.addPropertyNames(KNOWN_PROPERTIES);
+        KNOWN_PROPERTIES.add("jruby.home");
+        KNOWN_PROPERTIES.add("jruby.script");
+        KNOWN_PROPERTIES.add("jruby.shell");
+        KNOWN_PROPERTIES.add("jruby.lib");
+        KNOWN_PROPERTIES.add("jruby.bindir");
+        KNOWN_PROPERTIES.add("jruby.jar");
+        KNOWN_PROPERTIES.add("jruby.compat.version");
+        KNOWN_PROPERTIES.add("jruby.reflection");
+        KNOWN_PROPERTIES.add("jruby.thread.pool.enabled");
+        KNOWN_PROPERTIES.add("jruby.memory.max");
+        KNOWN_PROPERTIES.add("jruby.stack.max");
+    }
+
+    private static final List<String> KNOWN_PROPERTY_PREFIXES = new ArrayList<>(4);
+
+    static {
+        KNOWN_PROPERTY_PREFIXES.add("jruby.openssl.");
+    }
+
+    private static void checkProperties() {
+        for (String propertyName : System.getProperties().stringPropertyNames()) {
+            if (propertyName.startsWith("jruby.")) {
+                if (!isPropertySupported(propertyName)) {
+                    System.err.println("jruby: warning: unknown property " + propertyName);
+                }
+            }
+        }
+    }
+
+    private static boolean isPropertySupported(String propertyName) {
+        if (KNOWN_PROPERTIES.contains(propertyName)) {
+            return true;
+        }
+
+        for (String prefix : KNOWN_PROPERTY_PREFIXES) {
+            if (propertyName.startsWith(prefix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static final Map<String, Function2<Boolean, ArgumentProcessor, Boolean>> FEATURES;
+
+    static {
+        Map<String, Function2<Boolean, ArgumentProcessor, Boolean>> features = new HashMap<>(12, 1);
+        Function2<Boolean, ArgumentProcessor, Boolean> function2;
+
+        features.put("all", new Function2<Boolean, ArgumentProcessor, Boolean>() {
+            public Boolean apply(ArgumentProcessor processor, Boolean enable) {
+                // disable all features
+                for (Map.Entry<String, Function2<Boolean, ArgumentProcessor, Boolean>> entry : FEATURES.entrySet()) {
+                    if (entry.getKey().equals("all")) continue; // skip self
+                    entry.getValue().apply(processor, enable);
+                }
+                return true;
+            }
+        });
+        features.put("gems", new Function2<Boolean, ArgumentProcessor, Boolean>() {
+            public Boolean apply(ArgumentProcessor processor, Boolean enable) {
+                processor.config.setDisableGems(!enable);
+                return true;
+            }
+        });
+        features.put("did-you-mean", function2 = new Function2<Boolean, ArgumentProcessor, Boolean>() {
+            public Boolean apply(ArgumentProcessor processor, Boolean enable) {
+                processor.config.setDisableDidYouMean(!enable);
+                return true;
+            }
+        });
+        features.put("did_you_mean", function2); // alias
+        features.put("rubyopt", new Function2<Boolean, ArgumentProcessor, Boolean>() {
+            public Boolean apply(ArgumentProcessor processor, Boolean enable) {
+                processor.config.setDisableRUBYOPT(!enable);
+                return true;
+            }
+        });
+        features.put("frozen-string-literal", function2 = new Function2<Boolean, ArgumentProcessor, Boolean>() {
+            public Boolean apply(ArgumentProcessor processor, Boolean enable) {
+                processor.config.setFrozenStringLiteral(enable);
+                return true;
+            }
+        });
+        features.put("frozen_string_literal", function2); // alias
+
+        FEATURES = features;
+    }
 }

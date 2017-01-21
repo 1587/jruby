@@ -1,14 +1,17 @@
 package org.jruby.runtime.backtrace;
 
 import org.jruby.Ruby;
-import org.jruby.compiler.JITCompiler;
 import org.jruby.util.JavaNameMangler;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Map;
 
 public class BacktraceData implements Serializable {
+
+    public static final StackTraceElement[] EMPTY_STACK_TRACE = new StackTraceElement[0];
+
     private RubyStackTraceElement[] backtraceElements;
     private final StackTraceElement[] javaTrace;
     private final BacktraceElement[] rubyTrace;
@@ -20,25 +23,30 @@ public class BacktraceData implements Serializable {
         this.javaTrace = javaTrace;
         this.rubyTrace = rubyTrace;
         this.fullTrace = fullTrace;
-        this.includeNonFiltered = includeNonFiltered;
         this.maskNative = maskNative;
+        this.includeNonFiltered = includeNonFiltered;
     }
 
     public static final BacktraceData EMPTY = new BacktraceData(
-            new StackTraceElement[0],
-            new BacktraceElement[0],
+            EMPTY_STACK_TRACE,
+            BacktraceElement.EMPTY_ARRAY,
             false,
             false,
             false);
 
-    public RubyStackTraceElement[] getBacktrace(Ruby runtime) {
+    public final RubyStackTraceElement[] getBacktrace(Ruby runtime) {
         if (backtraceElements == null) {
-            backtraceElements = transformBacktrace(runtime.getBoundMethods());
+            backtraceElements = constructBacktrace(runtime.getBoundMethods());
         }
         return backtraceElements;
     }
 
-    private RubyStackTraceElement[] transformBacktrace(Map<String, Map<String, String>> boundMethods) {
+    @SuppressWarnings("unchecked")
+    public RubyStackTraceElement[] getBacktraceWithoutRuby() {
+        return constructBacktrace(Collections.EMPTY_MAP);
+    }
+
+    private RubyStackTraceElement[] constructBacktrace(Map<String, Map<String, String>> boundMethods) {
         ArrayList<RubyStackTraceElement> trace = new ArrayList<RubyStackTraceElement>(javaTrace.length);
 
         // used for duplicating the previous Ruby frame when masking native calls
@@ -55,7 +63,6 @@ public class BacktraceData implements Serializable {
 
             // skip unnumbered frames
             int line = element.getLineNumber();
-            if (line == -1) continue;
 
             String className = element.getClassName();
             String methodName = element.getMethodName();
@@ -66,58 +73,19 @@ public class BacktraceData implements Serializable {
                 // Don't process .java files
                 if (!filename.endsWith(".java")) {
 
-                    boolean compiled = false; int index;
+                    String decodedName = JavaNameMangler.decodeMethodForBacktrace(methodName);
 
-                    // Check for compiled name markers
-                    // FIXME: Formalize jitted method structure so this isn't quite as hacky
-                    if (className.startsWith(JITCompiler.RUBY_JIT_PREFIX)) {
-                        compiled = true; // JIT-compiled code
+                    if (decodedName != null) {
+                        // construct Ruby trace element
+                        RubyStackTraceElement rubyElement = new RubyStackTraceElement(className, decodedName, filename, line, false);
 
-                        // pull out and demangle the method name
-                        String tmpClassName = className;
-                        int start = JITCompiler.RUBY_JIT_PREFIX.length() + 1;
-                        int hash = tmpClassName.indexOf(JITCompiler.CLASS_METHOD_DELIMITER, start);
-                        int end = tmpClassName.lastIndexOf('_');
-                        if (hash != -1) { // TODO in case the class file was loaded by jit codeCache. Is this right
-                            className = tmpClassName.substring(start, hash);
+                        // add duplicate if masking native and previous frame was native (Kernel#caller)
+                        if (maskNative && dupFrame) {
+                            dupFrame = false;
+                            trace.add(new RubyStackTraceElement(className, dupFrameName, filename, line, false));
                         }
-                        methodName = tmpClassName.substring(hash + JITCompiler.CLASS_METHOD_DELIMITER.length(), end);
-
-                    } else if ((index = methodName.indexOf("$RUBY$")) >= 0) {
-                        compiled = true; // AOT-compiled code
-
-                        // pull out and demangle the method name
-                        index += "$RUBY$".length();
-                        if (methodName.indexOf("SYNTHETIC", index) == index) {
-                            methodName = methodName.substring(index + "SYNTHETIC".length());
-                        } else {
-                            methodName = methodName.substring(index);
-                        }
-
-                    }
-
-                    // demangle any JVM-prohibited names
-                    methodName = JavaNameMangler.demangleMethodName(methodName);
-
-                    // root body gets named (root)
-                    if (methodName.equals("__file__")) methodName = "(root)";
-
-                    // construct Ruby trace element
-                    RubyStackTraceElement rubyElement = new RubyStackTraceElement(className, methodName, filename, line, false);
-
-                    // add duplicate if masking native and previous frame was native (Kernel#caller)
-                    if (maskNative && dupFrame) {
-                        dupFrame = false;
-                        trace.add(new RubyStackTraceElement(className, dupFrameName, filename, line, false));
-                    }
-                    trace.add(rubyElement);
-
-                    if (compiled) {
-                        // if it's a synthetic call, gobble up parent calls
-                        // TODO: need to formalize this better
-                        while (element.getMethodName().contains("$RUBY$SYNTHETIC") && ++i < javaTrace.length) {
-                            element = javaTrace[i];
-                        }
+                        trace.add(rubyElement);
+                        continue;
                     }
                 }
             }
@@ -144,13 +112,25 @@ public class BacktraceData implements Serializable {
             }
 
             // Interpreted frames
-            if ( rubyFrameIndex >= 0 && FrameType.isInterpreterFrame(className, methodName) ) {
+            final FrameType frameType;
+            if ( rubyFrameIndex >= 0 && (frameType = FrameType.getInterpreterFrame(className, methodName)) != null ) {
 
                 // pop interpreter frame
                 BacktraceElement rubyFrame = rubyTrace[rubyFrameIndex--];
 
                 // construct Ruby trace element
-                RubyStackTraceElement rubyElement = new RubyStackTraceElement("RUBY", rubyFrame.method, rubyFrame.filename, rubyFrame.line + 1, false);
+                final String newName;
+                switch (frameType) {
+                    case METHOD: newName = rubyFrame.method; break;
+                    case BLOCK: newName = "block in " + rubyFrame.method; break;
+                    case CLASS: newName = "<class:" + rubyFrame.method + '>'; break;
+                    case MODULE: newName = "<module:" + rubyFrame.method + '>'; break;
+                    case METACLASS: newName = "singleton class"; break;
+                    case ROOT: newName = "<main>"; break;
+                    case EVAL: newName = "<eval>"; break;
+                    default: newName = rubyFrame.method;
+                }
+                RubyStackTraceElement rubyElement = new RubyStackTraceElement("RUBY", newName, rubyFrame.filename, rubyFrame.line + 1, false);
 
                 // dup if masking native and previous frame was native
                 if (maskNative && dupFrame) {
@@ -174,10 +154,7 @@ public class BacktraceData implements Serializable {
 
     public static String getBoundMethodName(Map<String,Map<String,String>> boundMethods, String className, String methodName) {
         Map<String, String> javaToRuby = boundMethods.get(className);
-
-        if (javaToRuby == null) return null;
-
-        return javaToRuby.get(methodName);
+        return javaToRuby == null ? null : javaToRuby.get(methodName);
     }
 
     private static String packagedFilenameFromElement(final String filename, final String className) {
@@ -197,6 +174,32 @@ public class BacktraceData implements Serializable {
 
     // ^(org\\.jruby)|(sun\\.reflect)
     private static boolean isFilteredClass(final String className) {
-        return className.startsWith("org.jruby") || className.startsWith("sun.reflect") ;
+        if ( className.startsWith("sun.reflect.") ) return true; // sun.reflect.NativeMethodAccessorImpl.invoke
+        // NOTE: previously filtered "too much" (all org.jruby prefixes) hurting traces (e.g. for jruby-openssl)
+        final String org_jruby_ = "org.jruby.";
+        if ( className.startsWith(org_jruby_) ) {
+            final int dot = className.indexOf('.', org_jruby_.length());
+            if ( dot == -1 ) return false; // e.g. org.jruby.RubyArray
+            final String subPackage = className.substring(org_jruby_.length(), dot);
+            switch ( subPackage ) {
+                case "anno" : return true;
+                case "ast" : return true;
+                case "exceptions" : return true;
+                case "gen" : return true;
+                case "ir" : return true;
+                case "internal" : return true; // e.g. org.jruby.internal.runtime.methods.DynamicMethod.call
+                case "java" : return true; // e.g. org.jruby.java.invokers.InstanceMethodInvoker.call
+                // NOTE: if filtering javasupport is added back consider keeping some of the internals as they
+                // help identify issues and probably makes sense to NOT be filtered, namely:
+                // - (most if not all) classes in the package such as Java, JavaPackage, JavaUtil
+                // - sub-packages such as util, binding - maybe only filter the "proxy" sub-package?
+                //case "javasupport" : return true;
+                case "parser" : return true;
+                case "platform" : return true;
+                case "runtime" : return true; // e.g.  org.jruby.runtime.callsite.CachingCallSite.cacheAndCall
+                case "util" : return true;
+            }
+        }
+        return false;
     }
 }

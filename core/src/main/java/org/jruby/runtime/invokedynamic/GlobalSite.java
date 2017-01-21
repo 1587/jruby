@@ -11,24 +11,12 @@ import java.lang.invoke.MethodType;
 import java.lang.invoke.MutableCallSite;
 
 public class GlobalSite extends MutableCallSite {
-    public final String name;
-    private final String file;
-    private final int line;
+    private final String name;
     private volatile int failures;
 
-    public GlobalSite(MethodType type, String name, String file, int line) {
+    public GlobalSite(MethodType type, String name) {
         super(type);
         this.name = name;
-        this.file = file;
-        this.line = line;
-    }
-
-    public String file() {
-        return file;
-    }
-
-    public int line() {
-        return line;
     }
     
     public void setTarget(MethodHandle target) {
@@ -42,5 +30,9 @@ public class GlobalSite extends MutableCallSite {
     
     public void incrementFailures() {
         failures += 1;
+    }
+
+    public String name() {
+        return name;
     }
 }

@@ -1,4 +1,5 @@
 # -*- encoding: utf-8 -*-
+
 require File.expand_path('../../../spec_helper', __FILE__)
 require File.expand_path('../fixtures/common', __FILE__)
 
@@ -33,13 +34,11 @@ describe "File.expand_path" do
     File.expand_path('a', nil).should == File.join(@base, 'a')
   end
 
-  not_compliant_on :ironruby do
-    it "converts a pathname to an absolute pathname, Ruby-Talk:18512 " do
-      # See Ruby-Talk:18512
-      File.expand_path('.a').should == File.join(@base, '.a')
-      File.expand_path('..a').should == File.join(@base, '..a')
-      File.expand_path('a../b').should == File.join(@base, 'a../b')
-    end
+  it "converts a pathname to an absolute pathname, Ruby-Talk:18512" do
+    # See Ruby-Talk:18512
+    File.expand_path('.a').should == File.join(@base, '.a')
+    File.expand_path('..a').should == File.join(@base, '..a')
+    File.expand_path('a../b').should == File.join(@base, 'a../b')
   end
 
   platform_is_not :windows do
@@ -88,8 +87,12 @@ describe "File.expand_path" do
   end
 
   platform_is_not :windows do
+    before do
+      @home = ENV['HOME'].chomp('/')
+    end
+
     # FIXME: these are insane!
-    it "expand path with " do
+    it "expand path with" do
       File.expand_path("../../bin", "/tmp/x").should == "/bin"
       File.expand_path("../../bin", "/tmp").should == "/bin"
       File.expand_path("../../bin", "/").should == "/bin"
@@ -104,22 +107,14 @@ describe "File.expand_path" do
       File.expand_path('./////').should == Dir.pwd
       File.expand_path('.').should == Dir.pwd
       File.expand_path(Dir.pwd).should == Dir.pwd
-      File.expand_path('~/').should == ENV['HOME']
-      File.expand_path('~/..badfilename').should == "#{ENV['HOME']}/..badfilename"
+      File.expand_path('~/').should == @home
+      File.expand_path('~/..badfilename').should == "#{@home}/..badfilename"
       File.expand_path('..').should == Dir.pwd.split('/')[0...-1].join("/")
-      File.expand_path('~/a','~/b').should == "#{ENV['HOME']}/a"
+      File.expand_path('~/a','~/b').should == "#{@home}/a"
     end
 
-    not_compliant_on :rubinius, :macruby do
-      it "does not replace multiple '/' at the beginning of the path" do
-        File.expand_path('////some/path').should == "////some/path"
-      end
-    end
-
-    deviates_on :rubinius, :macruby do
-      it "replaces multiple '/' with a single '/' at the beginning of the path" do
-        File.expand_path('////some/path').should == "/some/path"
-      end
+    it "does not replace multiple '/' at the beginning of the path" do
+      File.expand_path('////some/path').should == "////some/path"
     end
 
     it "replaces multiple '/' with a single '/'" do
@@ -131,8 +126,8 @@ describe "File.expand_path" do
     end
 
     it "expands ~ENV['USER'] to the user's home directory" do
-      File.expand_path("~#{ENV['USER']}").should == ENV['HOME']
-      File.expand_path("~#{ENV['USER']}/a").should == "#{ENV['HOME']}/a"
+      File.expand_path("~#{ENV['USER']}").should == @home
+      File.expand_path("~#{ENV['USER']}/a").should == "#{@home}/a"
     end
 
     it "does not expand ~ENV['USER'] when it's not at the start" do
@@ -140,14 +135,12 @@ describe "File.expand_path" do
     end
 
     it "expands ../foo with ~/dir as base dir to /path/to/user/home/foo" do
-      File.expand_path('../foo', '~/dir').should == "#{ENV['HOME']}/foo"
+      File.expand_path('../foo', '~/dir').should == "#{@home}/foo"
     end
   end
 
-  ruby_version_is "1.9" do
-    it "accepts objects that have a #to_path method" do
-      File.expand_path(mock_to_path("a"), mock_to_path("#{@tmpdir}"))
-    end
+  it "accepts objects that have a #to_path method" do
+    File.expand_path(mock_to_path("a"), mock_to_path("#{@tmpdir}"))
   end
 
   it "raises a TypeError if not passed a String type" do
@@ -169,17 +162,21 @@ describe "File.expand_path" do
   end
 
   with_feature :encoding do
-    ruby_version_is ""..."2.0" do
-      it "produces a String in the default external encoding" do
-        Encoding.default_external = Encoding::SHIFT_JIS
-        File.expand_path("./a").encoding.should equal(Encoding::SHIFT_JIS)
-      end
+    it "returns a String in the same encoding as the argument" do
+      Encoding.default_external = Encoding::SHIFT_JIS
+
+      path = "./a".force_encoding Encoding::CP1251
+      File.expand_path(path).encoding.should equal(Encoding::CP1251)
+
+      weird_path = [222, 173, 190, 175].pack('C*')
+      File.expand_path(weird_path).encoding.should equal(Encoding::ASCII_8BIT)
     end
 
-    ruby_version_is "2.0" do
-      it "returns a String in the same encoding as the argument" do
-        path = "./a".force_encoding Encoding::CP1251
-        File.expand_path(path).encoding.should equal(Encoding::CP1251)
+    platform_is_not :windows do
+      it "expands a path when the default external encoding is ASCII-8BIT" do
+        Encoding.default_external = Encoding::ASCII_8BIT
+        path_8bit = [222, 173, 190, 175].pack('C*')
+        File.expand_path( path_8bit, @rootdir).should == "#{@rootdir}" + path_8bit
       end
     end
 
@@ -187,9 +184,11 @@ describe "File.expand_path" do
       File.expand_path("Ångström").should == "#{@base}/Ångström"
     end
 
-    it "raises an Encoding::CompatibilityError if the external encoding is not compatible" do
-      Encoding.default_external = Encoding::UTF_16BE
-      lambda { File.expand_path("./a") }.should raise_error(Encoding::CompatibilityError)
+    platform_is_not :windows do
+      it "raises an Encoding::CompatibilityError if the external encoding is not compatible" do
+        Encoding.default_external = Encoding::UTF_16BE
+        lambda { File.expand_path("./a") }.should raise_error(Encoding::CompatibilityError)
+      end
     end
   end
 
@@ -201,7 +200,7 @@ describe "File.expand_path" do
 
   it "does not modify a HOME string argument" do
     str = "~/a"
-    File.expand_path(str).should == "#{home_directory.tr('\\', '/')}/a"
+    File.expand_path(str).should == "#{home_directory}/a"
     str.should == "~/a"
   end
 
@@ -233,18 +232,9 @@ platform_is_not :windows do
       lambda { File.expand_path("~/") }.should raise_error(ArgumentError)
     end
 
-    ruby_version_is ""..."1.8.7" do
-      it "returns '/' when passed '~' if HOME == ''" do
-        ENV["HOME"] = ""
-        File.expand_path("~").should == "/"
-      end
-    end
-
-    ruby_version_is "1.8.7" do
-      it "raises an ArgumentError when passed '~' if HOME == ''" do
-        ENV["HOME"] = ""
-        lambda { File.expand_path("~") }.should raise_error(ArgumentError)
-      end
+    it "raises an ArgumentError when passed '~' if HOME == ''" do
+      ENV["HOME"] = ""
+      lambda { File.expand_path("~") }.should raise_error(ArgumentError)
     end
   end
 end

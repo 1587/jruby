@@ -1,60 +1,72 @@
 package org.jruby.ir.instructions;
 
-import org.jruby.ir.IRClosure;
-import org.jruby.ir.IRVisitor;
-import org.jruby.ir.IRMethod;
+import org.jruby.RubyInstanceConfig;
+import org.jruby.ir.IRFlags;
 import org.jruby.ir.IRScope;
+import org.jruby.ir.IRVisitor;
 import org.jruby.ir.Operation;
 import org.jruby.ir.operands.Operand;
 import org.jruby.ir.operands.Variable;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
-import org.jruby.parser.IRStaticScope;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.runtime.IRRuntimeHelpers;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.parser.StaticScope;
 import org.jruby.runtime.Block;
+import org.jruby.runtime.CallType;
 import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 
 public class ZSuperInstr extends UnresolvedSuperInstr {
-	 // SSS FIXME: receiver is never used -- being passed in only to meet requirements of CallInstr
-    public ZSuperInstr(Variable result, Operand receiver, Operand closure) {
-        super(Operation.ZSUPER, result, receiver, closure);
+    public ZSuperInstr(Variable result, Operand receiver, Operand[] args, Operand closure, boolean isPotentiallyRefined) {
+        super(Operation.ZSUPER, result, receiver, args, closure, isPotentiallyRefined);
     }
 
     @Override
-    public Instr cloneForInlining(InlinerInfo ii) {
-        return new ZSuperInstr(ii.getRenamedVariable(result), getReceiver().cloneForInlining(ii), closure == null ? null : closure.cloneForInlining(ii));
+    public boolean computeScopeFlags(IRScope scope) {
+        super.computeScopeFlags(scope);
+        scope.getFlags().add(IRFlags.USES_ZSUPER);
+        return true;
     }
 
     @Override
-    public Operand[] getOperands() {
-        return (closure == null) ? EMPTY_OPERANDS : new Operand[] { closure };
+    public Instr clone(CloneInfo ii) {
+        return new ZSuperInstr(ii.getRenamedVariable(getResult()), getReceiver().cloneForInlining(ii),
+                cloneCallArgs(ii), getClosureArg() == null ? null : getClosureArg().cloneForInlining(ii), isPotentiallyRefined());
     }
 
-    protected IRubyObject[] prepareArguments(ThreadContext context, IRubyObject self, Operand[] arguments, DynamicScope dynamicScope, Object[] temp) {
-        // Unlike calls, zsuper args are known only at interpret time, not at constructor time.
-        // So, we cannot use the cached containsSplat field from CallBase
-        return containsSplat(arguments) ?
-                prepareArgumentsComplex(context, self, arguments, dynamicScope, temp) :
-                prepareArgumentsSimple(context, self, arguments, dynamicScope, temp);
+    public static ZSuperInstr decode(IRReaderDecoder d) {
+        if (RubyInstanceConfig.IR_READING_DEBUG) System.out.println("decoding call");
+        int callTypeOrdinal = d.decodeInt();
+        CallType callType = CallType.fromOrdinal(callTypeOrdinal);
+        if (RubyInstanceConfig.IR_READING_DEBUG) System.out.println("decoding call, calltype(ord):  " + callType);
+        String methAddr = d.decodeString();
+        if (RubyInstanceConfig.IR_READING_DEBUG) System.out.println("decoding call, methaddr:  " + methAddr);
+        Operand receiver = d.decodeOperand();
+        int argsCount = d.decodeInt();
+        boolean hasClosureArg = argsCount < 0;
+        int argsLength = hasClosureArg ? (-1 * (argsCount + 1)) : argsCount;
+        if (RubyInstanceConfig.IR_READING_DEBUG)
+            System.out.println("ARGS: " + argsLength + ", CLOSURE: " + hasClosureArg);
+        Operand[] args = new Operand[argsLength];
+
+        for (int i = 0; i < argsLength; i++) {
+            args[i] = d.decodeOperand();
+        }
+
+        Operand closure = hasClosureArg ? d.decodeOperand() : null;
+        if (RubyInstanceConfig.IR_READING_DEBUG) System.out.println("before result");
+        Variable result = d.decodeVariable();
+        if (RubyInstanceConfig.IR_READING_DEBUG) System.out.println("decoding call, result:  " + result);
+
+        return new ZSuperInstr(result, receiver, args, closure, d.getCurrentScope().maybeUsingRefinements());
     }
 
     @Override
-    public Object interpret(ThreadContext context, DynamicScope currDynScope, IRubyObject self, Object[] temp, Block aBlock) {
-        DynamicScope argsDynScope = currDynScope;
-
-        // Find args that need to be passed into super
-        while (!argsDynScope.getStaticScope().isArgumentScope()) argsDynScope = argsDynScope.getNextCapturedScope();
-        IRScope argsIRScope = ((IRStaticScope)argsDynScope.getStaticScope()).getIRScope();
-        Operand[] superArgs = (argsIRScope instanceof IRMethod) ? ((IRMethod)argsIRScope).getCallArgs() : ((IRClosure)argsIRScope).getBlockArgs();
-
-        // Prepare args -- but look up in 'argsDynScope', not 'currDynScope'
-        IRubyObject[] args = prepareArguments(context, self, superArgs, argsDynScope, temp);
-
-        // Prepare block -- fetching from the frame stack, if necessary
-        Block block = prepareBlock(context, self, currDynScope, temp);
-        if (block == null || !block.isGiven()) block = context.getFrameBlock();
-
-        return interpretSuper(context, self, args, block);
+    public Object interpret(ThreadContext context, StaticScope currScope, DynamicScope currDynScope, IRubyObject self, Object[] temp) {
+        IRubyObject[] args = prepareArguments(context, self, currScope, currDynScope, temp);
+        Block block = prepareBlock(context, self, currScope, currDynScope, temp);
+        return IRRuntimeHelpers.zSuper(context, self, args, block);
     }
 
     @Override

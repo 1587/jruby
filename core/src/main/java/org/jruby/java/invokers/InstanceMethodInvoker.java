@@ -10,6 +10,7 @@ import org.jruby.javasupport.JavaMethod;
 import org.jruby.runtime.Block;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
+import org.jruby.util.ArraySupport;
 
 public final class InstanceMethodInvoker extends MethodInvoker {
     public InstanceMethodInvoker(RubyModule host, List<Method> methods) {
@@ -24,7 +25,7 @@ public final class InstanceMethodInvoker extends MethodInvoker {
     public IRubyObject call(ThreadContext context, IRubyObject self, RubyModule clazz, String name, IRubyObject[] args) {
         JavaProxy proxy = castJavaProxy(self);
         JavaMethod method = (JavaMethod) findCallable(self, name, args, args.length);
-        return method.invokeDirect( proxy.getObject(), convertArguments(method, args) );
+        return method.invokeDirect( context, proxy.getObject(), convertArguments(method, args) );
     }
 
     @Override
@@ -32,7 +33,7 @@ public final class InstanceMethodInvoker extends MethodInvoker {
         if (javaVarargsCallables != null) return call(context, self, clazz, name, IRubyObject.NULL_ARRAY);
         JavaProxy proxy = castJavaProxy(self);
         JavaMethod method = (JavaMethod) findCallableArityZero(self, name);
-        return method.invokeDirect(proxy.getObject());
+        return method.invokeDirect(context, proxy.getObject());
     }
 
     @Override
@@ -42,7 +43,7 @@ public final class InstanceMethodInvoker extends MethodInvoker {
         JavaMethod method = (JavaMethod) findCallableArityOne(self, name, arg0);
         final Class<?>[] paramTypes = method.getParameterTypes();
         Object cArg0 = arg0.toJava(paramTypes[0]);
-        return method.invokeDirect(proxy.getObject(), cArg0);
+        return method.invokeDirect(context, proxy.getObject(), cArg0);
     }
 
     @Override
@@ -53,7 +54,7 @@ public final class InstanceMethodInvoker extends MethodInvoker {
         final Class<?>[] paramTypes = method.getParameterTypes();
         Object cArg0 = arg0.toJava(paramTypes[0]);
         Object cArg1 = arg1.toJava(paramTypes[1]);
-        return method.invokeDirect(proxy.getObject(), cArg0, cArg1);
+        return method.invokeDirect(context, proxy.getObject(), cArg0, cArg1);
     }
 
     @Override
@@ -65,7 +66,7 @@ public final class InstanceMethodInvoker extends MethodInvoker {
         Object cArg0 = arg0.toJava(paramTypes[0]);
         Object cArg1 = arg1.toJava(paramTypes[1]);
         Object cArg2 = arg2.toJava(paramTypes[2]);
-        return method.invokeDirect(proxy.getObject(), cArg0, cArg1, cArg2);
+        return method.invokeDirect(context, proxy.getObject(), cArg0, cArg1, cArg2);
     }
 
     @Override
@@ -74,18 +75,17 @@ public final class InstanceMethodInvoker extends MethodInvoker {
             JavaProxy proxy = castJavaProxy(self);
             final int len = args.length;
             // these extra arrays are really unfortunate; split some of these paths out to eliminate?
-            Object[] convertedArgs = new Object[len + 1];
-            IRubyObject[] intermediate = new IRubyObject[len + 1];
-            System.arraycopy(args, 0, intermediate, 0, len);
-            intermediate[len] = RubyProc.newProc(context.runtime, block, block.type);
+            IRubyObject[] newArgs = ArraySupport.newCopy(args, RubyProc.newProc(context.runtime, block, block.type));
 
-            JavaMethod method = (JavaMethod) findCallable(self, name, intermediate, len + 1);
+            JavaMethod method = (JavaMethod) findCallable(self, name, newArgs, len + 1);
             final Class<?>[] paramTypes = method.getParameterTypes();
+
+            Object[] convertedArgs = new Object[len + 1];
             for (int i = 0; i < len + 1; i++) {
-                convertedArgs[i] = intermediate[i].toJava(paramTypes[i]);
+                convertedArgs[i] = newArgs[i].toJava(paramTypes[i]);
             }
 
-            return method.invokeDirect(proxy.getObject(), convertedArgs);
+            return method.invokeDirect(context, proxy.getObject(), convertedArgs);
         }
         return call(context, self, clazz, name, args);
     }
@@ -98,7 +98,7 @@ public final class InstanceMethodInvoker extends MethodInvoker {
             JavaMethod method = (JavaMethod) findCallableArityOne(self, name, proc);
             final Class<?>[] paramTypes = method.getParameterTypes();
             Object cArg0 = proc.toJava(paramTypes[0]);
-            return method.invokeDirect(proxy.getObject(), cArg0);
+            return method.invokeDirect(context, proxy.getObject(), cArg0);
         }
         return call(context, self, clazz, name);
     }
@@ -112,7 +112,7 @@ public final class InstanceMethodInvoker extends MethodInvoker {
             final Class<?>[] paramTypes = method.getParameterTypes();
             Object cArg0 = arg0.toJava(paramTypes[0]);
             Object cArg1 = proc.toJava(paramTypes[1]);
-            return method.invokeDirect(proxy.getObject(), cArg0, cArg1);
+            return method.invokeDirect(context, proxy.getObject(), cArg0, cArg1);
         }
         return call(context, self, clazz, name, arg0);
     }
@@ -127,7 +127,7 @@ public final class InstanceMethodInvoker extends MethodInvoker {
             Object cArg0 = arg0.toJava(paramTypes[0]);
             Object cArg1 = arg1.toJava(paramTypes[1]);
             Object cArg2 = proc.toJava(paramTypes[2]);
-            return method.invokeDirect(proxy.getObject(), cArg0, cArg1, cArg2);
+            return method.invokeDirect(context, proxy.getObject(), cArg0, cArg1, cArg2);
         }
         return call(context, self, clazz, name, arg0, arg1);
     }
@@ -143,7 +143,7 @@ public final class InstanceMethodInvoker extends MethodInvoker {
             Object cArg1 = arg1.toJava(paramTypes[1]);
             Object cArg2 = arg2.toJava(paramTypes[2]);
             Object cArg3 = proc.toJava(paramTypes[3]);
-            return method.invokeDirect(proxy.getObject(), cArg0, cArg1, cArg2, cArg3);
+            return method.invokeDirect(context, proxy.getObject(), cArg0, cArg1, cArg2, cArg3);
         }
         return call(context, self, clazz, name, arg0, arg1, arg2);
     }

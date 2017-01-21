@@ -124,7 +124,27 @@ public class VariableAccessor {
         ((RubyBasicObject)object).checkFrozen();
         VariableTableManager.setVariableInternal(realClass, (RubyBasicObject)object, index, value);
     }
-    
+
+    /**
+     * Verify if this is the correct accessor for the given object.
+     *
+     * @param object the object for which to test this accessor
+     * @return true if this is the correct accessor for the given object, false otherwise
+     */
+    public boolean verify(Object object) {
+        return ((RubyBasicObject)object).getMetaClass().getRealClass() == this.realClass;
+    }
+
+    /**
+     * Produce a string representation of this VariableAccessor.
+     *
+     * @return a string representation of this VariableAccessor
+     */
+    @Override
+    public String toString() {
+        return "ivar:" + getName() + ":" + index;
+    }
+
     /** a dummy accessor that will always return null */
     public static final VariableAccessor DUMMY_ACCESSOR = new VariableAccessor(null, null, -1, -1);
     

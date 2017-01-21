@@ -107,7 +107,6 @@ for j in "$JRUBY_HOME"/lib/jruby.jar "$JRUBY_HOME"/lib/jruby-complete.jar; do
     JRUBY_ALREADY_ADDED=true
 done
 
-
 # ----- Set Up The System Classpath -------------------------------------------
 
 if [ "$JRUBY_PARENT_CLASSPATH" != "" ]; then
@@ -117,6 +116,9 @@ else
     # add other jars in lib to CP for command-line execution
     for j in "$JRUBY_HOME"/lib/*.jar; do
         if [ "$j" == "$JRUBY_HOME"/lib/jruby.jar ]; then
+          continue
+        fi
+        if [ "$j" == "$JRUBY_HOME"/lib/jruby-truffle.jar ]; then
           continue
         fi
         if [ "$j" == "$JRUBY_HOME"/lib/jruby-complete.jar ]; then
@@ -191,6 +193,15 @@ do
             java_args="${java_args} ${1:2}"
         fi
         ;;
+     # Pass -X... and -X? search options through
+     -X*\.\.\.|-X*\?)
+        ruby_args="${ruby_args} $1" ;;
+     -X+T)
+      echo "error: -X+T isn't supported in the shell launcher"
+      exit 1
+      ;;
+     -Xclassic)
+      ;;
      # Match -Xa.b.c=d to translate to -Da.b.c=d as a java option
      -X*)
      val=${1:2}
@@ -218,7 +229,7 @@ do
         else
           JAVACMD="$JAVA_HOME/bin/jdb"
         fi 
-        java_args="${java_args} -sourcepath $JRUBY_HOME/lib/ruby/1.8:."
+        java_args="${java_args} -sourcepath $JRUBY_HOME/lib/ruby/1.9:."
         JRUBY_OPTS="${JRUBY_OPTS} -X+C" ;;
      --client)
         JAVA_VM=-client ;;
@@ -274,7 +285,7 @@ if [ "$VERIFY_JRUBY" != "" ]; then
       echo "Running with instrumented profiler"
   fi
 
-  if [ $java_class = $JAVA_CLASS_NGSERVER -a -n ${JRUBY_OPTS} ]; then
+  if [ $java_class = $JAVA_CLASS_NGSERVER -a -n "${JRUBY_OPTS}" ]; then
     echo "warning: starting a nailgun server; discarding JRUBY_OPTS: ${JRUBY_OPTS}"
     JRUBY_OPTS=''
   fi

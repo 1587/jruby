@@ -1,119 +1,146 @@
 package org.jruby.ir;
 
-import java.util.List;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Callable;
+
+import org.jruby.ast.DefNode;
+import org.jruby.ast.IterNode;
+import org.jruby.ir.instructions.*;
+import org.jruby.ir.interpreter.ClosureInterpreterContext;
+import org.jruby.ir.interpreter.InterpreterContext;
+import org.jruby.ir.operands.*;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.ir.transformations.inlining.SimpleCloneInfo;
+import org.jruby.parser.StaticScope;
+import org.jruby.runtime.ArgumentDescriptor;
+import org.jruby.runtime.BlockBody;
+import org.jruby.runtime.Helpers;
+import org.jruby.runtime.IRBlockBody;
+import org.jruby.runtime.MixedModeIRBlockBody;
+import org.jruby.runtime.InterpretedIRBlockBody;
+import org.jruby.runtime.Signature;
+import org.objectweb.asm.Handle;
 
 // Closures are contexts/scopes for the purpose of IR building.  They are self-contained and accumulate instructions
 // that don't merge into the flow of the containing scope.  They are manipulated as an unit.
 // Their parents are always execution scopes.
-import org.jruby.ir.operands.Label;
-import org.jruby.ir.operands.Operand;
-import org.jruby.ir.operands.Splat;
-import org.jruby.ir.operands.ClosureLocalVariable;
-import org.jruby.ir.operands.LocalVariable;
-import org.jruby.ir.operands.TemporaryVariable;
-import org.jruby.ir.operands.TemporaryClosureVariable;
-import org.jruby.ir.operands.Variable;
-import org.jruby.ir.instructions.Instr;
-import org.jruby.ir.instructions.ReceiveArgBase;
-import org.jruby.ir.instructions.ReceiveExceptionInstr;
-import org.jruby.ir.instructions.ReceiveRestArgInstr;
-import org.jruby.ir.instructions.RuntimeHelperCall;
-import org.jruby.ir.representations.BasicBlock;
-import org.jruby.ir.representations.CFG;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
-import org.jruby.parser.StaticScope;
-import org.jruby.parser.IRStaticScope;
-import org.jruby.runtime.Arity;
-import org.jruby.runtime.BlockBody;
-import org.jruby.runtime.InterpretedIRBlockBody;
-import org.jruby.runtime.InterpretedIRBlockBody19;
 
 public class IRClosure extends IRScope {
     public final Label startLabel; // Label for the start of the closure (used to implement redo)
     public final Label endLabel;   // Label for the end of the closure (used to implement retry)
     public final int closureId;    // Unique id for this closure within the nearest ancestor method.
 
-    private int nestingDepth;      // How many nesting levels within a method is this closure nested in?
+    private boolean isBeginEndBlock;
 
-    private BlockBody body;
+    private Signature signature;
 
-    // for-loop body closures are special in that they dont really define a new variable scope.
-    // They just silently reuse the parent scope.  This changes how variables are allocated (see IRMethod.java).
-    private boolean isForLoopBody;
+    // We allow closures who happen to be assigned to calls named 'defined_method' to save the original
+    // AST so we can attempt to convert those blocks to full methods.
+    private IterNode source;
 
-    // Block parameters
-    private List<Operand> blockArgs;
+    // Argument description
+    protected ArgumentDescriptor[] argDesc = ArgumentDescriptor.EMPTY_ARRAY;
 
-    /** The parameter names, for Proc#parameters */
-    private String[] parameterList;
+    /** Added for interp/JIT purposes */
+    private IRBlockBody body;
 
-    public boolean addedGEBForUncaughtBreaks;
+    /** Added for JIT purposes */
+    private Handle handle;
 
-    /** Used by cloning code */
-    private IRClosure(IRClosure c, IRScope lexicalParent) {
-        super(c, lexicalParent);
-        this.closureId = lexicalParent.getNextClosureId();
-        setName("_CLOSURE_CLONE_" + closureId);
-        this.startLabel = getNewLabel(getName() + "_START");
-        this.endLabel = getNewLabel(getName() + "_END");
-        this.body = (c.body instanceof InterpretedIRBlockBody19) ? new InterpretedIRBlockBody19(this, c.body.arity(), c.body.getArgumentType())
-                                                                 : new InterpretedIRBlockBody(this, c.body.arity(), c.body.getArgumentType());
-        this.addedGEBForUncaughtBreaks = false;
-    }
+    // Used by other constructions and by IREvalScript as well
+    protected IRClosure(IRManager manager, IRScope lexicalParent, int lineNumber, StaticScope staticScope, String prefix) {
+        super(manager, lexicalParent, null, lineNumber, staticScope);
 
-    public IRClosure(IRManager manager, IRScope lexicalParent, boolean isForLoopBody,
-            int lineNumber, StaticScope staticScope, Arity arity, int argumentType, boolean is1_8) {
-        this(manager, lexicalParent, lexicalParent.getFileName(), lineNumber, staticScope, isForLoopBody ? "_FOR_LOOP_" : "_CLOSURE_");
-        this.isForLoopBody = isForLoopBody;
-        this.blockArgs = new ArrayList<Operand>();
-
-        if (getManager().isDryRun()) {
-            this.body = null;
-        } else {
-            this.body = is1_8 ? new InterpretedIRBlockBody(this, arity, argumentType)
-                              : new InterpretedIRBlockBody19(this, arity, argumentType);
-            if ((staticScope != null) && !isForLoopBody) ((IRStaticScope)staticScope).setIRScope(this);
-        }
-
-        // set nesting depth -- after isForLoopBody value is set
-        int n = 0;
-        IRScope s = this;
-        while (s instanceof IRClosure) {
-            if (!s.isForLoopBody()) n++;
-            s = s.getLexicalParent();
-        }
-        this.nestingDepth = n;
-    }
-
-    // Used by IREvalScript
-    protected IRClosure(IRManager manager, IRScope lexicalParent, String fileName, int lineNumber, StaticScope staticScope, String prefix) {
-        super(manager, lexicalParent, null, fileName, lineNumber, staticScope);
-
-        this.isForLoopBody = false;
         this.startLabel = getNewLabel(prefix + "START");
         this.endLabel = getNewLabel(prefix + "END");
         this.closureId = lexicalParent.getNextClosureId();
         setName(prefix + closureId);
         this.body = null;
-        this.parameterList = new String[] {};
+    }
 
-        // set nesting depth
-        int n = 0;
-        IRScope s = this;
-        while (s instanceof IRClosure) {
-            if (!s.isForLoopBody()) n++;
-            s = s.getLexicalParent();
+    /** Used by cloning code */
+    /* Inlining generates a new name and id and basic cloning will reuse the originals name */
+    protected IRClosure(IRClosure c, IRScope lexicalParent, int closureId, String fullName) {
+        super(c, lexicalParent);
+        this.closureId = closureId;
+        super.setName(fullName);
+        this.startLabel = getNewLabel(getName() + "_START");
+        this.endLabel = getNewLabel(getName() + "_END");
+        if (getManager().isDryRun()) {
+            this.body = null;
+        } else {
+            boolean shouldJit = getManager().getInstanceConfig().getCompileMode().shouldJIT();
+            this.body = shouldJit ? new MixedModeIRBlockBody(c, c.getSignature()) : new InterpretedIRBlockBody(c, c.getSignature());
         }
-        this.nestingDepth = n;
+
+        this.signature = c.signature;
     }
 
-    public void setParameterList(String[] parameterList) {
-        this.parameterList = parameterList;
+    // Used by persistence.  Knowledge of coverage not needed here since it is already instrumented into the instrs
+    public IRClosure(IRManager manager, IRScope lexicalParent, int lineNumber, StaticScope staticScope, Signature signature) {
+        this(manager, lexicalParent, lineNumber, staticScope, signature, "_CLOSURE_", false);
     }
 
-    public String[] getParameterList() {
-        return this.parameterList;
+    // Used by iter + lambda by IRBuilder
+    public IRClosure(IRManager manager, IRScope lexicalParent, int lineNumber, StaticScope staticScope, Signature signature, boolean needsCoverage) {
+        this(manager, lexicalParent, lineNumber, staticScope, signature, "_CLOSURE_", false, needsCoverage);
+    }
+
+
+    public IRClosure(IRManager manager, IRScope lexicalParent, int lineNumber, StaticScope staticScope, Signature signature, String prefix) {
+        this(manager, lexicalParent, lineNumber, staticScope, signature, prefix, false);
+    }
+
+    public IRClosure(IRManager manager, IRScope lexicalParent, int lineNumber, StaticScope staticScope, Signature signature, String prefix, boolean isBeginEndBlock) {
+        this(manager, lexicalParent, lineNumber, staticScope, signature, prefix, isBeginEndBlock, false);
+    }
+
+    public IRClosure(IRManager manager, IRScope lexicalParent, int lineNumber, StaticScope staticScope,
+                     Signature signature, String prefix, boolean isBeginEndBlock, boolean needsCoverage) {
+        this(manager, lexicalParent, lineNumber, staticScope, prefix);
+        this.signature = signature;
+        lexicalParent.addClosure(this);
+
+        if (getManager().isDryRun()) {
+            this.body = null;
+        } else {
+            boolean shouldJit = manager.getInstanceConfig().getCompileMode().shouldJIT();
+            this.body = shouldJit ? new MixedModeIRBlockBody(this, signature) : new InterpretedIRBlockBody(this, signature);
+            if (staticScope != null && !isBeginEndBlock) {
+                staticScope.setIRScope(this);
+                staticScope.setScopeType(this.getScopeType());
+            }
+        }
+
+        if (needsCoverage) getFlags().add(IRFlags.CODE_COVERAGE);
+    }
+
+
+    @Override
+    public InterpreterContext allocateInterpreterContext(List<Instr> instructions) {
+        interpreterContext = new ClosureInterpreterContext(this, instructions);
+
+        return interpreterContext;
+    }
+
+    @Override
+    public InterpreterContext allocateInterpreterContext(Callable<List<Instr>> instructions) {
+        try {
+            interpreterContext = new ClosureInterpreterContext(this, instructions);
+        } catch (Exception e) {
+            Helpers.throwException(e);
+        }
+
+        return interpreterContext;
+    }
+
+    public void setBeginEndBlock() {
+        this.isBeginEndBlock = true;
+    }
+
+    public boolean isBeginEndBlock() {
+        return isBeginEndBlock;
     }
 
     @Override
@@ -127,14 +154,18 @@ public class IRClosure extends IRScope {
     }
 
     @Override
-    public TemporaryVariable getNewTemporaryVariable() {
-        temporaryVariableIndex++;
-        return new TemporaryClosureVariable(closureId, temporaryVariableIndex);
+    public TemporaryLocalVariable createTemporaryVariable() {
+        return getNewTemporaryVariable(TemporaryVariableType.CLOSURE);
     }
 
-    public TemporaryVariable getNewTemporaryVariable(String name) {
-        temporaryVariableIndex++;
-        return new TemporaryClosureVariable(name, temporaryVariableIndex);
+    @Override
+    public TemporaryLocalVariable getNewTemporaryVariable(TemporaryVariableType type) {
+        if (type == TemporaryVariableType.CLOSURE) {
+            temporaryVariableIndex++;
+            return new TemporaryClosureVariable(closureId, temporaryVariableIndex);
+        }
+
+        return super.getNewTemporaryVariable(type);
     }
 
     @Override
@@ -142,13 +173,9 @@ public class IRClosure extends IRScope {
         return getNewLabel("CL" + closureId + "_LBL");
     }
 
-    public String getScopeName() {
-        return "Closure";
-    }
-
     @Override
-    public boolean isForLoopBody() {
-        return isForLoopBody;
+    public IRScopeType getScopeType() {
+        return IRScopeType.CLOSURE;
     }
 
     @Override
@@ -161,154 +188,200 @@ public class IRClosure extends IRScope {
         return false;
     }
 
-    @Override
-    public void addInstr(Instr i) {
-        // Accumulate block arguments
-        if (i instanceof ReceiveRestArgInstr) blockArgs.add(new Splat(((ReceiveRestArgInstr)i).getResult()));
-        else if (i instanceof ReceiveArgBase) blockArgs.add(((ReceiveArgBase) i).getResult());
-
-        super.addInstr(i);
-    }
-
-    public Operand[] getBlockArgs() {
-        return blockArgs.toArray(new Operand[blockArgs.size()]);
-    }
-
     public String toStringBody() {
-        StringBuilder buf = new StringBuilder();
-        buf.append(getName()).append(" = { \n");
-
-        CFG c = getCFG();
-        if (c != null) {
-            buf.append("\nCFG:\n").append(c.toStringGraph()).append("\nInstructions:\n").append(c.toStringInstrs());
-        } else {
-            buf.append(toStringInstrs());
-        }
-        buf.append("\n}\n\n");
-        return buf.toString();
+        return new StringBuilder(getName()).append(" = {\n").append(toStringInstrs()).append("\n}\n\n").toString();
     }
 
     public BlockBody getBlockBody() {
         return body;
     }
 
+    // FIXME: This is too strict.  We can use any closure which does not dip below the define_method closure.  This
+    // will deopt any nested block which dips out of itself.
+    public boolean isNestedClosuresSafeForMethodConversion() {
+        for (IRClosure closure: getClosures()) {
+            if (!closure.isNestedClosuresSafeForMethodConversion()) return false;
+        }
+
+        return !getFlags().contains(IRFlags.ACCESS_PARENTS_LOCAL_VARIABLES);
+    }
+
+    public IRMethod convertToMethod(String name) {
+        // We want variable scoping to be the same as a method and not see outside itself.
+        if (source == null ||
+            getFlags().contains(IRFlags.ACCESS_PARENTS_LOCAL_VARIABLES) ||  // Built methods cannot search down past method scope
+            getFlags().contains(IRFlags.RECEIVES_CLOSURE_ARG) ||            // we pass in captured block at define_method as block so explicits ones not supported
+            !isNestedClosuresSafeForMethodConversion()) {
+            source = null;
+            return null;
+        }
+
+        DefNode def = source;
+        source = null;
+
+        return new IRMethod(getManager(), getLexicalParent(), def, name, true,  getLineNumber(), getStaticScope(), getFlags().contains(IRFlags.CODE_COVERAGE));
+    }
+
+    public void setSource(IterNode iter) {
+        source = iter;
+    }
+
     @Override
-    public LocalVariable findExistingLocalVariable(String name, int scopeDepth) {
-        LocalVariable lvar = localVars.getVariable(name);
+    protected LocalVariable findExistingLocalVariable(String name, int scopeDepth) {
+        LocalVariable lvar = lookupExistingLVar(name);
         if (lvar != null) return lvar;
 
-        int newDepth = isForLoopBody ? scopeDepth : scopeDepth - 1;
+        int newDepth = scopeDepth - 1;
 
-        return newDepth >= 0 ? getLexicalParent().findExistingLocalVariable(name, newDepth) : null;
-    }
+        if (newDepth >= 0) {
+            lvar = getLexicalParent().findExistingLocalVariable(name, newDepth);
 
-    public LocalVariable getNewLocalVariable(String name, int depth) {
-        if (isForLoopBody) return getLexicalParent().getNewLocalVariable(name, depth);
-
-        if (depth == 0) {
-            LocalVariable lvar = new ClosureLocalVariable(this, name, 0, localVars.nextSlot);
-            localVars.putVariable(name, lvar);
-            return lvar;
-        } else {
-            return getLexicalParent().getNewLocalVariable(name, depth-1);
+            if (lvar != null) flags.add(IRFlags.ACCESS_PARENTS_LOCAL_VARIABLES);
         }
-    }
-
-    @Override
-    public LocalVariable getLocalVariable(String name, int scopeDepth) {
-        if (isForLoopBody) return getLexicalParent().getLocalVariable(name, scopeDepth);
-
-        LocalVariable lvar = findExistingLocalVariable(name, scopeDepth);
-        if (lvar == null) lvar = getNewLocalVariable(name, scopeDepth);
-        // Create a copy of the variable usable at the right depth
-        if (lvar.getScopeDepth() != scopeDepth) lvar = lvar.cloneForDepth(scopeDepth);
 
         return lvar;
     }
 
-    public int getNestingDepth() {
-        return nestingDepth;
-    }
-
-    public LocalVariable getImplicitBlockArg() {
-        // SSS: FIXME: Ugly! We cannot use 'getLocalVariable(Variable.BLOCK, getNestingDepth())' because
-        // of scenario 3. below.  Can we clean up this code?
-        //
-        // 1. If the variable has previously been defined, return a copy usable at the closure's nesting depth.
-        // 2. If not, and if the closure is ultimately nested within a method, build a local variable that will
-        //    be defined in that method.
-        // 3. If not, and if the closure is not nested within a method, the closure can never receive a block.
-        //    So, we could return 'null', but it creates problems for IR generation.  So, for this scenario,
-        //    we simply create a dummy var at depth 0 (meaning, it is local to the closure itself) and return it.
-        LocalVariable blockVar = findExistingLocalVariable(Variable.BLOCK, getNestingDepth());
-        if (blockVar != null) {
-            // Create a copy of the variable usable at the right depth
-            if (blockVar.getScopeDepth() != getNestingDepth()) blockVar = blockVar.cloneForDepth(getNestingDepth());
+    public LocalVariable getNewLocalVariable(String name, int depth) {
+        if (depth == 0 && !(this instanceof IRFor)) {
+            LocalVariable lvar = new ClosureLocalVariable(name, 0, getStaticScope().addVariableThisScope(name));
+            localVars.put(name, lvar);
+            return lvar;
         } else {
+            // IRFor does not have it's own state
+            if (!(this instanceof IRFor)) flags.add(IRFlags.ACCESS_PARENTS_LOCAL_VARIABLES);
             IRScope s = this;
-            while (s instanceof IRClosure) s = s.getLexicalParent();
+            int     d = depth;
+            do {
+                // account for for-loops
+                while (s instanceof IRFor) {
+                    depth++;
+                    s = s.getLexicalParent();
+                }
 
-            if (s instanceof IRMethod) {
-                blockVar = s.getNewLocalVariable(Variable.BLOCK, 0);
-                // Create a copy of the variable usable at the right depth
-                if (getNestingDepth() != 0) blockVar = blockVar.cloneForDepth(getNestingDepth());
-            } else {
-                // Dummy var
-                blockVar = getNewLocalVariable(Variable.BLOCK, 0);
+                // walk up
+                d--;
+                if (d >= 0) s = s.getLexicalParent();
+            } while (d >= 0);
+
+            return s.getNewLocalVariable(name, 0).cloneForDepth(depth);
+        }
+    }
+
+    @Override
+    public LocalVariable getLocalVariable(String name, int depth) {
+        // AST doesn't seem to be implementing shadowing properly and sometimes
+        // has the wrong depths which screws up variable access. So, we implement
+        // shadowing here by searching for an existing local var from depth 0 and upwards.
+        //
+        // Check scope depths for 'a' in the closure in the following snippet:
+        //
+        //   "a = 1; foo(1) { |(a)| a }"
+        //
+        // In "(a)", it is 0 (correct), but in the body, it is 1 (incorrect)
+
+        LocalVariable lvar;
+        IRScope s = this;
+        int d = depth;
+        if (depth > 0 && !(this instanceof IRFor)) flags.add(IRFlags.ACCESS_PARENTS_LOCAL_VARIABLES);
+
+        do {
+            // account for for-loops
+            while (s instanceof IRFor) {
+                depth++;
+                s = s.getLexicalParent();
             }
-        }
-        return blockVar;
-    }
 
-    public IRClosure cloneForClonedInstr(InlinerInfo ii) {
-        IRClosure clonedClosure = new IRClosure(this, ii.getNewLexicalParentForClosure());
-        clonedClosure.isForLoopBody = this.isForLoopBody;
-        clonedClosure.nestingDepth  = this.nestingDepth;
-        clonedClosure.parameterList = this.parameterList;
+            // lookup
+            lvar = s.lookupExistingLVar(name);
 
-        // Create a new inliner info object
-        ii = ii.cloneForCloningClosure(clonedClosure);
+            // walk up
+            d--;
+            if (d >= 0) s = s.getLexicalParent();
+        } while (lvar == null && d >= 0);
 
-        // clone the cfg, and all instructions
-        clonedClosure.setCFG(getCFG().cloneForCloningClosure(clonedClosure, ii));
-
-        return clonedClosure;
-    }
-
-    // Add a global-ensure-block to catch uncaught breaks
-    // This is usually required only if this closure is being
-    // used as a lambda, but it is safe to add this for any closure
-
-    protected boolean addGEBForUncaughtBreaks() {
-        // Nothing to do if already done
-        if (addedGEBForUncaughtBreaks) {
-            return false;
-        }
-
-        CFG        cfg = cfg();
-        BasicBlock geb = cfg.getGlobalEnsureBB();
-        if (geb == null) {
-            geb = new BasicBlock(cfg, new Label("_GLOBAL_ENSURE_BLOCK"));
-            Variable exc = getNewTemporaryVariable();
-            geb.addInstr(new ReceiveExceptionInstr(exc, false)); // No need to check type since it is not used before rethrowing
-            // Handle uncaught break using runtime helper
-            // --> IRRuntimeHelpers.catchUncaughtBreakInLambdas(context, scope, bj, blockType)
-            geb.addInstr(new RuntimeHelperCall(null, "catchUncaughtBreakInLambdas", new Operand[]{exc} ));
-            cfg.addGlobalEnsureBB(geb);
+        if (lvar == null) {
+            // Create a new var at requested/adjusted depth
+            lvar = s.getNewLocalVariable(name, 0).cloneForDepth(depth);
         } else {
-            // SSS FIXME: Assumptions:
-            //
-            // First instr is a 'ReceiveExceptionInstr'
-            // Last instr is a 'ThrowExceptionInstr'
-
-            List<Instr> instrs = geb.getInstrs();
-            Variable exc = ((ReceiveExceptionInstr)instrs.get(0)).getResult();
-            instrs.set(instrs.size(), new RuntimeHelperCall(null, "catchUncaughtBreakInLambdas", new Operand[]{exc} ));
+            // Find # of lexical scopes we walked up to find 'lvar'.
+            // We need a copy of 'lvar' usable at that depth
+            int lvarDepth = depth - (d + 1);
+            if (lvar.getScopeDepth() != lvarDepth) lvar = lvar.cloneForDepth(lvarDepth);
         }
 
-        // Update scope
-        addedGEBForUncaughtBreaks = true;
+        return lvar;
+    }
 
-        return true;
+    protected IRClosure cloneForInlining(CloneInfo ii, IRClosure clone) {
+        // SSS FIXME: This is fragile. Untangle this state.
+        // Why is this being copied over to InterpretedIRBlockBody?
+        clone.isBeginEndBlock = this.isBeginEndBlock;
+
+        SimpleCloneInfo clonedII = ii.cloneForCloningClosure(clone);
+
+//        if (getCFG() != null) {
+//            clone.setCFG(getCFG().clone(clonedII, clone));
+//        } else {
+        List<Instr> newInstrs = new ArrayList<>(interpreterContext.getInstructions().length);
+
+        for (Instr i: interpreterContext.getInstructions()) {
+            newInstrs.add(i.clone(clonedII));
+        }
+
+        clone.allocateInterpreterContext(newInstrs);
+
+//        }
+
+        return clone;
+    }
+
+    public IRClosure cloneForInlining(CloneInfo ii) {
+        IRClosure clonedClosure;
+        IRScope lexicalParent = ii.getScope();
+
+        if (ii instanceof SimpleCloneInfo && !((SimpleCloneInfo)ii).isEnsureBlockCloneMode()) {
+            clonedClosure = new IRClosure(this, lexicalParent, closureId, getName());
+        } else {
+            int id = lexicalParent.getNextClosureId();
+            String fullName = lexicalParent.getName() + "_CLOSURE_CLONE_" + id;
+            clonedClosure = new IRClosure(this, lexicalParent, id, fullName);
+        }
+
+        // WrappedIRClosure should always have a single unique IRClosure in them so we should
+        // not end up adding n copies of the same closure as distinct clones...
+        lexicalParent.addClosure(clonedClosure);
+
+        return cloneForInlining(ii, clonedClosure);
+    }
+
+    @Override
+    public void setName(String name) {
+        // We can distinguish closures only with parent scope name
+        super.setName(getLexicalParent().getName() + name);
+    }
+
+    public Signature getSignature() {
+        return signature;
+    }
+
+    public void setHandle(Handle handle) {
+        this.handle = handle;
+    }
+
+    public Handle getHandle() {
+        return handle;
+    }
+
+    public ArgumentDescriptor[] getArgumentDescriptors() {
+        return argDesc;
+    }
+
+
+    /**
+     * Set upon completion of IRBuild of this IRClosure.
+     */
+    public void setArgumentDescriptors(ArgumentDescriptor[] argDesc) {
+        this.argDesc = argDesc;
     }
 }

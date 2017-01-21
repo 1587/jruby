@@ -31,4 +31,13 @@ package org.jruby.runtime;
 
 public enum CallType {
     NORMAL, FUNCTIONAL, SUPER, VARIABLE, UNKNOWN;
+
+    private static final CallType[] VALUES = values();
+
+    public static CallType fromOrdinal(int ordinal) {
+        if (ordinal < 0 || ordinal >= VALUES.length) {
+            return null;
+        }
+        return VALUES[ordinal];
+    }
 }

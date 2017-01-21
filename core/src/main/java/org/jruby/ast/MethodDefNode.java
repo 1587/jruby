@@ -35,67 +35,66 @@ import org.jruby.ast.types.INameNode;
 import org.jruby.lexer.yacc.ISourcePosition;
 import org.jruby.parser.StaticScope;
 
-public abstract class MethodDefNode extends Node implements INameNode {
-	protected final ArgumentNode nameNode;
-	protected final ArgsNode argsNode;
-	protected final StaticScope scope;
-	protected final Node bodyNode;
+public abstract class MethodDefNode extends Node implements INameNode, DefNode {
+    protected final String name;
+    protected final ArgsNode argsNode;
+    protected final StaticScope scope;
+    protected final Node bodyNode;
+    protected final int endLine;
 
-	public MethodDefNode(ISourcePosition position, ArgumentNode nameNode, ArgsNode argsNode, 
-	        StaticScope scope, Node bodyNode) {
-            super(position);
+    public MethodDefNode(ISourcePosition position, String name, ArgsNode argsNode,
+            StaticScope scope, Node bodyNode, int endLine) {
+        super(position, bodyNode.containsVariableAssignment());
+
+        assert bodyNode != null : "bodyNode must not be null";
             
-            // TODO: Adding implicit nils caused multiple problems in compiler -- revist after landing
-            //assert bodyNode != null : "bodyNode is not null";
-            
-            this.nameNode = nameNode;
-            this.argsNode = argsNode;
-            this.scope = scope;
-            this.bodyNode = bodyNode;
+        this.name = name;
+        this.argsNode = argsNode;
+        this.scope = scope;
+        this.bodyNode = bodyNode;
+        this.endLine = endLine;
+    }
 
-            // store argument count information into scope
-            scope.setArities(argsNode.getRequiredArgsCount(), argsNode.getOptionalArgsCount(), argsNode.getRestArg());
-	}
 
-	/**
-	 * Gets the argsNode.
-	 * @return Returns a Node
-	 */
-	public ArgsNode getArgsNode() {
-	    return argsNode;
-	}
+    /**
+     * Gets the argsNode.
+     * @return Returns a Node
+     */
+    public ArgsNode getArgsNode() {
+        return argsNode;
+    }
 
-	/**
-	 * Get the static scoping information.
-	 * 
-	 * @return the scoping info
-	 */
-	public StaticScope getScope() {
-	    return scope;
-	}
+    /**
+     * Get the static scoping information.
+     *
+     * @return the scoping info
+     */
+    public StaticScope getScope() {
+        return scope;
+    }
 
-	/**
-	 * Gets the body of this class.
-	 * 
-	 * @return the contents
-	 */
-	public Node getBodyNode() {
-	    return bodyNode;
-	}
+    /**
+     * Gets the body of this class.
+     *
+     * @return the contents
+     */
+    public Node getBodyNode() {
+        return bodyNode;
+    }
 
-	/**
-	 * Gets the name's node.
-	 * @return Returns an ArgumentNode
-	 */
-	public ArgumentNode getNameNode() {
-	    return nameNode;
-	}
+    /**
+     * Gets the name.
+     * @return Returns a String
+     */
+    public String getName() {
+        return name;
+    }
 
-	/**
-	 * Gets the name.
-	 * @return Returns a String
-	 */
-	public String getName() {
-	    return nameNode.getName();
-	}
+    /**
+     * Which line is the 'end' encountered on.  Useful for RETURN event generation.
+     * @return the zero-based line number
+     */
+    public int getEndLine() {
+        return endLine;
+    }
 }

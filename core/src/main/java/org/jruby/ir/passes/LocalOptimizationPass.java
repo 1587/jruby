@@ -1,12 +1,5 @@
 package org.jruby.ir.passes;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.ListIterator;
-import java.util.Map;
-import org.jruby.ir.IRClosure;
 import org.jruby.ir.IRScope;
 import org.jruby.ir.Operation;
 import org.jruby.ir.instructions.CopyInstr;
@@ -15,51 +8,36 @@ import org.jruby.ir.instructions.ResultInstr;
 import org.jruby.ir.operands.Operand;
 import org.jruby.ir.operands.Variable;
 import org.jruby.ir.representations.BasicBlock;
-import org.jruby.ir.representations.CFG;
+import org.jruby.ir.instructions.ClosureAcceptingInstr;
+import org.jruby.ir.operands.WrappedIRClosure;
+
+import java.util.*;
 
 public class LocalOptimizationPass extends CompilerPass {
-    boolean locallyOptimized = false;
-
-    public static List<Class<? extends CompilerPass>> DEPENDENCIES = Arrays.<Class<? extends CompilerPass>>asList(CFGBuilder.class);
-
     @Override
     public String getLabel() {
         return "Local Optimizations";
     }
 
     @Override
-    public List<Class<? extends CompilerPass>> getDependencies() {
-        return DEPENDENCIES;
-    }
-
-    @Override
     public Object execute(IRScope s, Object... data) {
-        // This let us compute execute scope flags for a method based on what all nested closures do
-        for (IRClosure c: s.getClosures()) {
-            run(c, true);
+        for (BasicBlock b: s.getCFG().getBasicBlocks()) {
+            runLocalOptsOnBasicBlock(s, b);
         }
 
-        for (BasicBlock b: ((CFG) data[0]).getBasicBlocks()) {
-            runLocalOptsOnInstrList(s, b.getInstrs().listIterator(), false);
-        }
-
-        // Only after running local opts, compute various execution scope flags
+        // SSS FIXME: What is this about? 
+        // Why 'Only after running local opts'? Figure out and document.
+        //
+        // Only after running local opts, compute various execution scope flags.
         s.computeScopeFlags();
 
-        // Mark done
-        locallyOptimized = true;
+        // LVA information is no longer valid after this pass
+        // Currently, we don't run this after LVA, but just in case ...
+        //
+        // FIXME: Grrr ... this seems broken to have to create a new object to invalidate
+        (new LiveVariableAnalysis()).invalidate(s);
 
         return null;
-    }
-
-    @Override
-    public Object previouslyRun(IRScope scope) {
-        return locallyOptimized ? new Object() : null;
-    }
-
-    @Override
-    public void invalidate(IRScope scope) {
-        locallyOptimized = false;
     }
 
     private static void recordSimplification(Variable res, Operand val, Map<Operand, Operand> valueMap, Map<Variable, List<Variable>> simplificationMap) {
@@ -79,73 +57,105 @@ public class LocalOptimizationPass extends CompilerPass {
         }
     }
 
-    public static void runLocalOptsOnInstrList(IRScope s, ListIterator<Instr> instrs, boolean preCFG) {
+    public static Instr optInstr(IRScope s, Instr instr, Map<Operand,Operand> valueMap, Map<Variable,List<Variable>> simplificationMap) {
+        // System.out.println("BEFORE: " + instr);
+
+        // Simplify instruction and record mapping between target variable and simplified value
+        Operand val = instr.simplifyAndGetResult(s, valueMap);
+
+        // Variable dst = (instr instanceof ResultInstr) ? ((ResultInstr) instr).getResult() : null;
+        // System.out.println("AFTER: " + instr + "; dst = " + dst + "; val = " + val);
+
+        if (!(instr instanceof ResultInstr)) {
+            return instr;
+        }
+
+        Instr newInstr = instr;
+        Variable res = ((ResultInstr) instr).getResult();
+        if (val == null) {
+            // If we didn't get a simplified value, remove existing simplifications
+            // for the result to get rid of RAW hazards!
+            valueMap.remove(res);
+        } else {
+            if (!res.equals(val)) {
+                recordSimplification(res, val, valueMap, simplificationMap);
+            }
+
+            if (!instr.hasSideEffects()) {
+                if (instr instanceof CopyInstr) {
+                    if (res.equals(val) && instr.canBeDeletedFromScope(s)) {
+                        instr.markDead();
+                    }
+                } else {
+                    newInstr = new CopyInstr(res, val);
+                }
+            }
+        }
+
+        // Purge all entries in valueMap that have 'res' as their simplified value
+        // to take care of RAW scenarios (because we aren't in SSA form yet!)
+        if (!res.equals(val)) {
+            List<Variable> simplifiedVars = simplificationMap.get(res);
+            if (simplifiedVars != null) {
+                for (Variable v: simplifiedVars) {
+                    valueMap.remove(v);
+                }
+                simplificationMap.remove(res);
+            }
+        }
+
+        return newInstr;
+    }
+
+    private static boolean isDataflowBarrier(Instr i, IRScope s) {
+        boolean reset = false;
+        if (!i.isDead() && i instanceof ClosureAcceptingInstr) {
+            Operand o = ((ClosureAcceptingInstr)i).getClosureArg();
+            reset = s.bindingHasEscaped() || (o != null && o instanceof WrappedIRClosure);
+        }
+
+        return reset;
+    }
+
+    public static void runLocalOptsOnInstrArray(IRScope s, Instr[] instrs) {
         // Reset value map if this instruction is the start/end of a basic block
-        //
-        // Right now, calls are considered hard boundaries for optimization and
-        // information cannot be propagated across them!
-        //
-        // SSS FIXME: Rather than treat all calls with a broad brush, what we need
-        // is to capture different attributes about a call :
-        //   - uses closures
-        //   - known call target
-        //   - can modify scope,
-        //   - etc.
-        //
-        // This information is probably already present in the AST Inspector
-        Map<Operand,Operand> valueMap = new HashMap<Operand,Operand>();
-        Map<Variable,List<Variable>> simplificationMap = new HashMap<Variable,List<Variable>>();
+        Map<Operand,Operand> valueMap = new HashMap<>();
+        Map<Variable,List<Variable>> simplificationMap = new HashMap<>();
+        for (int i = 0; i < instrs.length; i++) {
+            Instr instr = instrs[i];
+            Instr newInstr = optInstr(s, instr, valueMap, simplificationMap);
+            if (newInstr != instr) {
+                instrs[i] = newInstr;
+            }
+
+            // Reset simplification info if this starts/ends a basic block
+            // or if the instr is a dataflow barrier.
+            Operation iop = instr.getOperation();
+            if (iop.startsBasicBlock() || iop.endsBasicBlock() || isDataflowBarrier(instr, s)) {
+                valueMap = new HashMap<>();
+                simplificationMap = new HashMap<>();
+            }
+        }
+    }
+
+    public static void runLocalOptsOnBasicBlock(IRScope s, BasicBlock b) {
+        ListIterator<Instr> instrs = b.getInstrs().listIterator();
+        // Reset value map if this instruction is the start/end of a basic block
+        Map<Operand,Operand> valueMap = new HashMap<>();
+        Map<Variable,List<Variable>> simplificationMap = new HashMap<>();
         while (instrs.hasNext()) {
-            Instr i = instrs.next();
-            Operation iop = i.getOperation();
-            if (preCFG && iop.startsBasicBlock()) {
-                valueMap = new HashMap<Operand,Operand>();
-                simplificationMap = new HashMap<Variable,List<Variable>>();
+            Instr instr = instrs.next();
+            Instr newInstr = optInstr(s, instr, valueMap, simplificationMap);
+            if (newInstr.isDead()) {
+                instrs.remove();
+            } else if (newInstr != instr) {
+                instrs.set(newInstr);
             }
 
-            // Simplify instruction and record mapping between target variable and simplified value
-            // System.out.println("BEFORE: " + i);
-            Operand  val = i.simplifyAndGetResult(s, valueMap);
-            // FIXME: This logic can be simplified based on the number of res != null checks only done if doesn't
-            Variable res = i instanceof ResultInstr ? ((ResultInstr) i).getResult() : null;
-
-            // System.out.println("For " + i + "; dst = " + res + "; val = " + val);
-            // System.out.println("AFTER: " + i);
-
-            if (res != null && val != null) {
-                if (!res.equals(val)) {
-                    recordSimplification(res, val, valueMap, simplificationMap);
-                } else if (!i.hasSideEffects()) {
-                    if (i instanceof CopyInstr) {
-                        if (i.canBeDeleted(s)) {
-                            i.markDead();
-                            instrs.remove();
-                        }
-                    } else {
-                        instrs.set(new CopyInstr(res, val));
-                    }
-                }
-            } else if (res != null && val == null) {
-                // If we didn't get a simplified value, remove any existing simplifications for the result
-                // to get rid of RAW hazards!
-                valueMap.remove(res);
-            }
-
-            // Purge all entries in valueMap that have 'res' as their simplified value to take care of RAW scenarios (because we aren't in SSA form yet!)
-            if ((res != null) && !res.equals(val)) {
-                List<Variable> simplifiedVars = simplificationMap.get(res);
-                if (simplifiedVars != null) {
-                    for (Variable v: simplifiedVars) {
-                        valueMap.remove(v);
-                    }
-                    simplificationMap.remove(res);
-                }
-            }
-
-            // If the call has been optimized away in the previous step, it is no longer a hard boundary for opts!
-            if ((preCFG && iop.endsBasicBlock()) || (iop.isCall() && !i.isDead())) {
-                valueMap = new HashMap<Operand,Operand>();
-                simplificationMap = new HashMap<Variable,List<Variable>>();
+            // Reset simplification info if this is a dataflow barrier.
+            if (isDataflowBarrier(instr, s)) {
+                valueMap = new HashMap<>();
+                simplificationMap = new HashMap<>();
             }
         }
     }

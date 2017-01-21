@@ -1,5 +1,4 @@
-/*
- ***** BEGIN LICENSE BLOCK *****
+/***** BEGIN LICENSE BLOCK *****
  * Version: EPL 1.0/GPL 2.0/LGPL 2.1
  *
  * The contents of this file are subject to the Eclipse Public
@@ -12,10 +11,7 @@
  * implied. See the License for the specific language governing
  * rights and limitations under the License.
  *
- * Copyright (C) 2002 Jan Arne Petersen <jpetersen@uni-bonn.de>
- * Copyright (C) 2002 Benoit Cerrina <b.cerrina@wanadoo.fr>
- * Copyright (C) 2002-2004 Anders Bengtsson <ndrsbngtssn@yahoo.se>
- * Copyright (C) 2004-2005 Thomas E Enebo <enebo@acm.org>
+ * Copyright (C) 2008 Thomas E Enebo <enebo@acm.org>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
@@ -33,46 +29,34 @@ package org.jruby.ast;
 
 import java.util.List;
 
-import org.jruby.Ruby;
-import org.jruby.RubyArray;
-import org.jruby.ast.util.ArgsUtil;
 import org.jruby.ast.visitor.NodeVisitor;
-import org.jruby.evaluator.ASTInterpreter;
-import org.jruby.evaluator.AssignmentVisitor;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Arity;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
 
+/**
+ *
+ */
 public class MultipleAsgnNode extends AssignableNode {
     private final ListNode pre;
     private final Node rest;
-    
-    public MultipleAsgnNode(ISourcePosition position, ListNode pre, Node rest) {
+    private final ListNode post;
+
+    public MultipleAsgnNode(ISourcePosition position, ListNode pre, Node rest, ListNode post) {
         super(position);
         this.pre = pre;
         this.rest = rest;
+        this.post = post;
     }
 
     public NodeType getNodeType() {
         return NodeType.MULTIPLEASGNNODE;
     }
-    
-    /**
-     * Accept for the visitor pattern.
-     * @param iVisitor the visitor
-     **/
-    public Object accept(NodeVisitor iVisitor) {
+
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitMultipleAsgnNode(this);
     }
 
-    /**
-     * Gets the headNode.
-     * @return Returns a ListNode
-     */
-    public ListNode getHeadNode() {
-        return pre;
+    public Node getRest() {
+        return rest;
     }
 
     public ListNode getPre() {
@@ -82,64 +66,16 @@ public class MultipleAsgnNode extends AssignableNode {
     public int getPreCount() {
         return pre == null ? 0 : pre.size();
     }
-    
-    /**
-     * Gets the argsNode.
-     * @return Returns a INode
-     */
-    public Node getArgsNode() {
-        return rest;
+
+    public int getPostCount() {
+        return post == null ? 0 : post.size();
     }
 
-    public Node getRest() {
-        return rest;
+    public ListNode getPost() {
+        return post;
     }
-    
-    /**
-     * Number of arguments is dependent on headNodes size
-     */
-    @Override
-    public Arity getArity() {
-        if (rest != null) {
-            return Arity.required(pre == null ? 0 : pre.size());
-        }
-        
-        return Arity.fixed(pre.size());
-    }
-    
+
     public List<Node> childNodes() {
         return Node.createList(pre, rest, getValueNode());
-    }
-    
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        switch (getValueNode().getNodeType()) {
-        case ARRAYNODE: {
-            ArrayNode iVisited2 = (ArrayNode) getValueNode();
-            return ASTInterpreter.multipleAsgnArrayNode(runtime, context, this, iVisited2, self, aBlock);
-        }
-        case SPLATNODE: {
-            SplatNode splatNode = (SplatNode) getValueNode();
-            RubyArray rubyArray = (RubyArray) splatNode.interpret(runtime, context, self, aBlock);
-            return AssignmentVisitor.multiAssign(runtime, context, self, this, rubyArray, false);
-        }
-        default:
-            IRubyObject value = getValueNode().interpret(runtime, context, self, aBlock);
-
-            if (!(value instanceof RubyArray)) {
-                value = RubyArray.newArray(runtime, value);
-            }
-            
-            return AssignmentVisitor.multiAssign(runtime, context, self, this, (RubyArray)value, false);
-        }
-    }
-    
-    @Override
-    public IRubyObject assign(Ruby runtime, ThreadContext context, IRubyObject self, IRubyObject value, Block block, boolean checkArity) {
-        if (!(value instanceof RubyArray)) {
-            value = ArgsUtil.convertToRubyArray(runtime, value, pre != null);
-        }
-        
-        return AssignmentVisitor.multiAssign(runtime, context, self, this, (RubyArray) value, checkArity);
     }
 }

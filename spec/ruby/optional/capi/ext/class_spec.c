@@ -1,8 +1,8 @@
-#include <stdio.h>
-#include <string.h>
-
 #include "ruby.h"
 #include "rubyspec.h"
+
+#include <stdio.h>
+#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -19,14 +19,20 @@ static VALUE class_spec_define_call_super_method(VALUE self, VALUE obj, VALUE st
 }
 #endif
 
+#ifdef HAVE_RB_CLASS_PATH
+static VALUE class_spec_rb_class_path(VALUE self, VALUE klass) {
+  return rb_class_path(klass);
+}
+#endif
+
 #ifdef HAVE_RB_CLASS_NAME
-static VALUE class_spec_rbclass_name(VALUE self, VALUE klass) {
+static VALUE class_spec_rb_class_name(VALUE self, VALUE klass) {
   return rb_class_name(klass);
 }
 #endif
 
 #ifdef HAVE_RB_CLASS2NAME
-static VALUE class_spec_rbclass2name(VALUE self, VALUE klass) {
+static VALUE class_spec_rb_class2name(VALUE self, VALUE klass) {
   return rb_str_new2( rb_class2name(klass) );
 }
 #endif
@@ -40,16 +46,6 @@ static VALUE class_spec_rb_path2class(VALUE self, VALUE path) {
 #ifdef HAVE_RB_PATH_TO_CLASS
 static VALUE class_spec_rb_path_to_class(VALUE self, VALUE path) {
   return rb_path_to_class(path);
-}
-#endif
-
-#ifdef HAVE_RB_CLASS_INHERITED
-static VALUE class_spec_rb_class_inherited(VALUE self, VALUE super, VALUE klass) {
-  if(super == Qfalse) {
-    return rb_class_inherited((VALUE)(0), klass);
-  } else {
-    return rb_class_inherited(super, klass);
-  }
 }
 #endif
 
@@ -74,6 +70,16 @@ static VALUE class_spec_rb_class_new_instance(VALUE self,
 }
 #endif
 
+#ifdef HAVE_RB_CLASS_REAL
+static VALUE class_spec_rb_class_real(VALUE self, VALUE object) {
+  if(rb_type_p(object, T_FIXNUM)) {
+    return INT2FIX(rb_class_real(FIX2INT(object)));
+  } else {
+    return rb_class_real(CLASS_OF(object));
+  }
+}
+#endif
+
 #ifdef HAVE_RB_CLASS_SUPERCLASS
 static VALUE class_spec_rb_class_superclass(VALUE self, VALUE klass) {
   return rb_class_superclass(klass);
@@ -89,38 +95,26 @@ static VALUE class_spec_cvar_defined(VALUE self, VALUE klass, VALUE id) {
 
 #ifdef HAVE_RB_CVAR_GET
 static VALUE class_spec_cvar_get(VALUE self, VALUE klass, VALUE name) {
-	return rb_cvar_get(klass, rb_intern(StringValuePtr(name)));
+  return rb_cvar_get(klass, rb_intern(StringValuePtr(name)));
 }
 #endif
 
-#ifdef RUBY_VERSION_IS_1_8_EX_1_9
 #ifdef HAVE_RB_CVAR_SET
 static VALUE class_spec_cvar_set(VALUE self, VALUE klass, VALUE name, VALUE val) {
-	rb_cvar_set(klass, rb_intern(StringValuePtr(name)), val, 0);
+  rb_cvar_set(klass, rb_intern(StringValuePtr(name)), val);
   return Qnil;
 }
 #endif
-#endif
-
-#ifdef RUBY_VERSION_IS_1_9
-#ifdef HAVE_RB_CVAR_SET
-static VALUE class_spec_cvar_set(VALUE self, VALUE klass, VALUE name, VALUE val) {
-	rb_cvar_set(klass, rb_intern(StringValuePtr(name)), val);
-  return Qnil;
-}
-#endif
-#endif
-
 
 #ifdef HAVE_RB_CV_GET
 static VALUE class_spec_cv_get(VALUE self, VALUE klass, VALUE name) {
-	return rb_cv_get(klass, StringValuePtr(name));
+  return rb_cv_get(klass, StringValuePtr(name));
 }
 #endif
 
 #ifdef HAVE_RB_CV_SET
 static VALUE class_spec_cv_set(VALUE self, VALUE klass, VALUE name, VALUE val) {
-	rb_cv_set(klass, StringValuePtr(name), val);
+  rb_cv_set(klass, StringValuePtr(name), val);
 
   return Qnil;
 }
@@ -136,11 +130,26 @@ VALUE class_spec_define_attr(VALUE self, VALUE klass, VALUE sym, VALUE read, VAL
 }
 #endif
 
+#ifdef HAVE_RB_DEFINE_CLASS
+static VALUE class_spec_rb_define_class(VALUE self, VALUE name, VALUE super) {
+  if(NIL_P(super)) super = 0;
+  return rb_define_class(RSTRING_PTR(name), super);
+}
+#endif
+
 #ifdef HAVE_RB_DEFINE_CLASS_UNDER
 static VALUE class_spec_rb_define_class_under(VALUE self, VALUE outer,
                                                  VALUE name, VALUE super) {
   if(NIL_P(super)) super = 0;
   return rb_define_class_under(outer, RSTRING_PTR(name), super);
+}
+#endif
+
+#ifdef HAVE_RB_DEFINE_CLASS_ID_UNDER
+static VALUE class_spec_rb_define_class_id_under(VALUE self, VALUE outer,
+                                                 VALUE name, VALUE super) {
+  if(NIL_P(super)) super = 0;
+  return rb_define_class_id_under(outer, SYM2ID(name), super);
 }
 #endif
 
@@ -158,7 +167,7 @@ static VALUE class_spec_include_module(VALUE self, VALUE klass, VALUE module) {
 }
 #endif
 
-void Init_class_spec() {
+void Init_class_spec(void) {
   VALUE cls;
   cls = rb_define_class("CApiClassSpecs", rb_cObject);
 
@@ -166,12 +175,16 @@ void Init_class_spec() {
   rb_define_method(cls, "define_call_super_method", class_spec_define_call_super_method, 2);
 #endif
 
+#ifdef HAVE_RB_CLASS_PATH
+  rb_define_method(cls, "rb_class_path", class_spec_rb_class_path, 1);
+#endif
+
 #ifdef HAVE_RB_CLASS_NAME
-  rb_define_method(cls, "rb_class_name", class_spec_rbclass_name, 1);
+  rb_define_method(cls, "rb_class_name", class_spec_rb_class_name, 1);
 #endif
 
 #ifdef HAVE_RB_CLASS2NAME
-  rb_define_method(cls, "rb_class2name", class_spec_rbclass2name, 1);
+  rb_define_method(cls, "rb_class2name", class_spec_rb_class2name, 1);
 #endif
 
 #ifdef HAVE_RB_PATH2CLASS
@@ -182,16 +195,16 @@ void Init_class_spec() {
   rb_define_method(cls, "rb_path_to_class", class_spec_rb_path_to_class, 1);
 #endif
 
-#ifdef HAVE_RB_CLASS_INHERITED
-  rb_define_method(cls, "rb_class_inherited", class_spec_rb_class_inherited, 2);
-#endif
-
 #ifdef HAVE_RB_CLASS_NEW
   rb_define_method(cls, "rb_class_new", class_spec_rb_class_new, 1);
 #endif
 
 #ifdef HAVE_RB_CLASS_NEW_INSTANCE
   rb_define_method(cls, "rb_class_new_instance", class_spec_rb_class_new_instance, 3);
+#endif
+
+#ifdef HAVE_RB_CLASS_REAL
+  rb_define_method(cls, "rb_class_real", class_spec_rb_class_real, 1);
 #endif
 
 #ifdef HAVE_RB_CLASS_SUPERCLASS
@@ -222,8 +235,16 @@ void Init_class_spec() {
   rb_define_method(cls, "rb_define_attr", class_spec_define_attr, 4);
 #endif
 
+#ifdef HAVE_RB_DEFINE_CLASS
+  rb_define_method(cls, "rb_define_class", class_spec_rb_define_class, 2);
+#endif
+
 #ifdef HAVE_RB_DEFINE_CLASS_UNDER
   rb_define_method(cls, "rb_define_class_under", class_spec_rb_define_class_under, 3);
+#endif
+
+#ifdef HAVE_RB_DEFINE_CLASS_ID_UNDER
+  rb_define_method(cls, "rb_define_class_id_under", class_spec_rb_define_class_id_under, 3);
 #endif
 
 #ifdef HAVE_RB_DEFINE_CLASS_VARIABLE

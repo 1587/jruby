@@ -14,7 +14,7 @@
  *
  * Copyright (C) 2006-2007 Thomas E Enebo <enebo@acm.org>
  * Copyright (C) 2006-2007 Charles Nutter <headius@headius.com>
- * 
+ *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
  * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
@@ -29,8 +29,13 @@
  ***** END LICENSE BLOCK *****/
 package org.jruby.runtime;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
+
 import org.jruby.runtime.callsite.LtCallSite;
 import org.jruby.runtime.callsite.LeCallSite;
 import org.jruby.runtime.callsite.MinusCallSite;
@@ -52,12 +57,18 @@ import org.jruby.runtime.callsite.SuperCallSite;
 import org.jruby.runtime.callsite.VariableCachingCallSite;
 import org.jruby.runtime.callsite.XorCallSite;
 import org.jruby.runtime.invokedynamic.MethodNames;
+import org.jruby.util.log.Logger;
+import org.jruby.util.log.LoggerFactory;
 
 /**
  *
  * @author headius
  */
 public class MethodIndex {
+    private static final boolean DEBUG = false;
+
+    private static final Logger LOG = LoggerFactory.getLogger(MethodIndex.class);
+
     @Deprecated
     public static final int NO_METHOD = MethodNames.DUMMY.ordinal();
     @Deprecated
@@ -80,6 +91,9 @@ public class MethodIndex {
         "<=>"
     };
 
+    public static final Set<String> FRAME_AWARE_METHODS = Collections.synchronizedSet(new HashSet<String>());
+    public static final Set<String> SCOPE_AWARE_METHODS = Collections.synchronizedSet(new HashSet<String>());
+
     public static CallSite getCallSite(String name) {
         // fast and safe respond_to? call site logic
         if (name.equals("respond_to?")) return new RespondToCallSite();
@@ -90,92 +104,80 @@ public class MethodIndex {
 
         return new NormalCachingCallSite(name);
     }
-    
-    private static final Map<String, String> FIXNUM_OPS = new HashMap<String, String>();
-    private static final String[][] fastFixnumOps = {
-        {"+", "op_plus"},
-        {"-", "op_minus"},
-        {"*", "op_mul"},
-        {"==", "op_equal"},
-        {"<", "op_lt"},
-        {"<=", "op_le"},
-        {">", "op_gt"},
-        {">=", "op_ge"},
-        {"<=>", "op_cmp"},
-        {"&", "op_and"},
-        {"|", "op_or"},
-        {"^", "op_xor"},
-        {">>", "op_rshift"},
-        {"<<", "op_lshift"}
-    };
-    
+
+    private static final Map<String, String> FIXNUM_OPS;
+
     static {
+        String[][] fastFixnumOps = {
+                {"+", "op_plus"},
+                {"-", "op_minus"},
+                {"*", "op_mul"},
+                {"==", "op_equal"},
+                {"<", "op_lt"},
+                {"<=", "op_le"},
+                {">", "op_gt"},
+                {">=", "op_ge"},
+                {"<=>", "op_cmp"},
+                {"&", "op_and"},
+                {"|", "op_or"},
+                {"^", "op_xor"},
+                {">>", "op_rshift"},
+                {"<<", "op_lshift"}
+        };
+        FIXNUM_OPS = new HashMap<>(fastFixnumOps.length + 1, 1);
         for (String[] fastOp : fastFixnumOps) FIXNUM_OPS.put(fastOp[0], fastOp[1]);
     }
-    
-    private static final Map<String, String> FLOAT_OPS = new HashMap<String, String>();
-    private static final String[][] fastFloatOps = {
-        {"+", "op_plus"},
-        {"-", "op_minus"},
-        {"*", "op_mul"},
-        {"==", "op_equal"},
-        {"<", "op_lt"},
-        {"<=", "op_le"},
-        {">", "op_gt"},
-        {">=", "op_ge"},
-        {"<=>", "op_cmp"}
-    };
-    
+
+    private static final Map<String, String> FLOAT_OPS;
+
     static {
+        final String[][] fastFloatOps = {
+                {"+", "op_plus"},
+                {"-", "op_minus"},
+                {"*", "op_mul"},
+                {"==", "op_equal"},
+                {"<", "op_lt"},
+                {"<=", "op_le"},
+                {">", "op_gt"},
+                {">=", "op_ge"},
+                {"<=>", "op_cmp"}
+        };
+        FLOAT_OPS = new HashMap<>(fastFloatOps.length + 1, 1);
         for (String[] fastOp : fastFloatOps) FLOAT_OPS.put(fastOp[0], fastOp[1]);
     }
-    
+
     public static boolean hasFastFixnumOps(String name) {
         return FIXNUM_OPS.containsKey(name);
     }
-    
+
     public static String getFastFixnumOpsMethod(String name) {
         return FIXNUM_OPS.get(name);
     }
 
     public static CallSite getFastFixnumOpsCallSite(String name) {
-        if (name.equals("+")) {
-            return new PlusCallSite();
-        } else if (name.equals("-")) {
-            return new MinusCallSite();
-        } else if (name.equals("*")) {
-            return new MulCallSite();
-        } else if (name.equals("<")) {
-            return new LtCallSite();
-        } else if (name.equals("<=")) {
-            return new LeCallSite();
-        } else if (name.equals(">")) {
-            return new GtCallSite();
-        } else if (name.equals(">=")) {
-            return new GeCallSite();
-        } else if (name.equals("==")) {
-            return new EqCallSite();
-        } else if (name.equals("<=>")) {
-            return new CmpCallSite();
-        } else if (name.equals("&")) {
-            return new BitAndCallSite();
-        } else if (name.equals("|")) {
-            return new BitOrCallSite();
-        } else if (name.equals("^")) {
-            return new XorCallSite();
-        } else if (name.equals(">>")) {
-            return new ShiftRightCallSite();
-        } else if (name.equals("<<")) {
-            return new ShiftLeftCallSite();
+        switch (name) {
+            case "+" : return new PlusCallSite();
+            case "-" : return new MinusCallSite();
+            case "*" : return new MulCallSite();
+            case "<" : return new LtCallSite();
+            case "<=" : return new LeCallSite();
+            case ">" : return new GtCallSite();
+            case ">=" : return new GeCallSite();
+            case "==" : return new EqCallSite();
+            case "<=>" : return new CmpCallSite();
+            case "&" : return new BitAndCallSite();
+            case "|" : return new BitOrCallSite();
+            case "^" : return new XorCallSite();
+            case ">>" : return new ShiftRightCallSite();
+            case "<<" : return new ShiftLeftCallSite();
         }
-
         return new NormalCachingCallSite(name);
     }
-    
+
     public static boolean hasFastFloatOps(String name) {
         return FLOAT_OPS.containsKey(name);
     }
-    
+
     public static String getFastFloatOpsMethod(String name) {
         return FLOAT_OPS.get(name);
     }
@@ -203,16 +205,26 @@ public class MethodIndex {
 
         return new NormalCachingCallSite(name);
     }
-    
+
     public static CallSite getFunctionalCallSite(String name) {
         return new FunctionalCachingCallSite(name);
     }
-    
+
     public static CallSite getVariableCallSite(String name) {
         return new VariableCachingCallSite(name);
     }
 
     public static CallSite getSuperCallSite() {
         return new SuperCallSite();
+    }
+
+    public static void addFrameAwareMethods(String... methods) {
+        if (DEBUG) LOG.debug("Adding frame-aware method names: {}", Arrays.toString(methods));
+        FRAME_AWARE_METHODS.addAll(Arrays.asList(methods));
+    }
+
+    public static void addScopeAwareMethods(String... methods) {
+        if (DEBUG) LOG.debug("Adding scope-aware method names: {}", Arrays.toString(methods));
+        SCOPE_AWARE_METHODS.addAll(Arrays.asList(methods));
     }
 }

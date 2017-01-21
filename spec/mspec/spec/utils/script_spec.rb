@@ -3,8 +3,6 @@ require 'mspec/utils/script'
 require 'mspec/runner/mspec'
 require 'mspec/runner/filters'
 require 'mspec/runner/actions/filter'
-require 'mspec/runner/actions/debug'
-require 'mspec/runner/actions/gdb'
 
 describe MSpecScript, ".config" do
   it "returns a Hash" do
@@ -55,7 +53,7 @@ describe MSpecScript, "#load_default" do
       @engine = Object.const_get :RUBY_ENGINE
     end
     @script = MSpecScript.new
-    MSpecScript.stub!(:new).and_return(@script)
+    MSpecScript.stub(:new).and_return(@script)
   end
 
   after :each do
@@ -64,8 +62,8 @@ describe MSpecScript, "#load_default" do
   end
 
   it "attempts to load 'default.mspec'" do
-    @script.stub!(:load)
-    @script.should_receive(:load).with('default.mspec').and_return(true)
+    @script.stub(:try_load)
+    @script.should_receive(:try_load).with('default.mspec').and_return(true)
     @script.load_default
   end
 
@@ -73,16 +71,19 @@ describe MSpecScript, "#load_default" do
     Object.const_set :RUBY_ENGINE, "ybur"
     Object.const_set :RUBY_VERSION, "1.8.9"
     default = "ybur.1.8.mspec"
-    @script.should_receive(:load).with('default.mspec').and_return(false)
-    @script.should_receive(:load).with(default)
+    @script.should_receive(:try_load).with('default.mspec').and_return(false)
+    @script.should_receive(:try_load).with(default)
+    @script.should_receive(:try_load).with('ybur.mspec')
     @script.load_default
   end
 end
 
 describe MSpecScript, ".main" do
   before :each do
-    @script = mock("MSpecScript").as_null_object
-    MSpecScript.stub!(:new).and_return(@script)
+    @script = double("MSpecScript").as_null_object
+    MSpecScript.stub(:new).and_return(@script)
+    # Do not require full mspec as it would conflict with RSpec
+    MSpecScript.should_receive(:require).with('mspec')
   end
 
   it "creates an instance of MSpecScript" do
@@ -96,7 +97,7 @@ describe MSpecScript, ".main" do
   end
 
   it "attempts to load the '~/.mspecrc' script" do
-    @script.should_receive(:load).with('~/.mspecrc')
+    @script.should_receive(:try_load).with('~/.mspecrc')
     MSpecScript.main
   end
 
@@ -112,6 +113,11 @@ describe MSpecScript, ".main" do
 
   it "calls the #register method on the script" do
     @script.should_receive(:register)
+    MSpecScript.main
+  end
+
+  it "calls the #setup_env method on the script" do
+    @script.should_receive(:setup_env)
     MSpecScript.main
   end
 
@@ -143,22 +149,23 @@ end
 
 describe MSpecScript, "#load" do
   before :each do
-    File.stub!(:exist?).and_return(false)
+    File.stub(:exist?).and_return(false)
     @script = MSpecScript.new
     @file = "default.mspec"
     @base = "default"
   end
 
   it "attempts to locate the file through the expanded path name" do
-    File.should_receive(:expand_path).with(@file).and_return(@file)
+    File.should_receive(:expand_path).with(@file, ".").and_return(@file)
     File.should_receive(:exist?).with(@file).and_return(true)
     Kernel.should_receive(:load).with(@file).and_return(:loaded)
     @script.load(@file).should == :loaded
   end
 
   it "appends config[:config_ext] to the name and attempts to locate the file through the expanded path name" do
-    File.should_receive(:expand_path).with(@base).and_return(@base)
-    File.should_receive(:expand_path).with(@file).and_return(@file)
+    File.should_receive(:expand_path).with(@base, ".").and_return(@base)
+    File.should_receive(:expand_path).with(@base, "spec").and_return(@base)
+    File.should_receive(:expand_path).with(@file, ".").and_return(@file)
     File.should_receive(:exist?).with(@base).and_return(false)
     File.should_receive(:exist?).with(@file).and_return(true)
     Kernel.should_receive(:load).with(@file).and_return(:loaded)
@@ -166,28 +173,28 @@ describe MSpecScript, "#load" do
   end
 
   it "attemps to locate the file in '.'" do
-    path = File.join ".", @file
+    path = File.expand_path @file, "."
     File.should_receive(:exist?).with(path).and_return(true)
     Kernel.should_receive(:load).with(path).and_return(:loaded)
     @script.load(@file).should == :loaded
   end
 
   it "appends config[:config_ext] to the name and attempts to locate the file in '.'" do
-    path = File.join ".", @file
+    path = File.expand_path @file, "."
     File.should_receive(:exist?).with(path).and_return(true)
     Kernel.should_receive(:load).with(path).and_return(:loaded)
     @script.load(@base).should == :loaded
   end
 
   it "attemps to locate the file in 'spec'" do
-    path = File.join "spec", @file
+    path = File.expand_path @file, "spec"
     File.should_receive(:exist?).with(path).and_return(true)
     Kernel.should_receive(:load).with(path).and_return(:loaded)
     @script.load(@file).should == :loaded
   end
 
   it "appends config[:config_ext] to the name and attempts to locate the file in 'spec'" do
-    path = File.join "spec", @file
+    path = File.expand_path @file, "spec"
     File.should_receive(:exist?).with(path).and_return(true)
     Kernel.should_receive(:load).with(path).and_return(:loaded)
     @script.load(@base).should == :loaded
@@ -203,7 +210,7 @@ describe MSpecScript, "#custom_options" do
   end
 
   it "prints 'None'" do
-    options = mock("options")
+    options = double("options")
     options.should_receive(:doc).with("   No custom options registered")
     @script.custom_options options
   end
@@ -213,7 +220,7 @@ describe MSpecScript, "#register" do
   before :each do
     @script = MSpecScript.new
 
-    @formatter = mock("formatter").as_null_object
+    @formatter = double("formatter").as_null_object
     @script.config[:formatter] = @formatter
   end
 
@@ -234,7 +241,7 @@ describe MSpecScript, "#register" do
   end
 
   it "registers :formatter with the formatter instance" do
-    @formatter.stub!(:new).and_return(@formatter)
+    @formatter.stub(:new).and_return(@formatter)
     MSpec.should_receive(:store).with(:formatter, @formatter)
     @script.register
   end
@@ -250,10 +257,10 @@ describe MSpecScript, "#register" do
   before :each do
     @script = MSpecScript.new
 
-    @formatter = mock("formatter").as_null_object
+    @formatter = double("formatter").as_null_object
     @script.config[:formatter] = @formatter
 
-    @filter = mock("filter")
+    @filter = double("filter")
     @filter.should_receive(:register)
 
     @ary = ["some", "spec"]
@@ -306,22 +313,6 @@ describe MSpecScript, "#register" do
     @script.config[:xprofiles] = @ary
     @script.register
   end
-
-  it "creates and registers a DebugAction for excluded specs" do
-    @script.config[:atags] = ["some"]
-    @script.config[:astrings] = ["string"]
-    DebugAction.should_receive(:new).with(["some"], ["string"]).and_return(@filter)
-    @script.config[:debugger] = true
-    @script.register
-  end
-
-  it "creates and registers a GdbAction for excluded specs" do
-    @script.config[:atags] = ["some"]
-    @script.config[:astrings] = ["string"]
-    GdbAction.should_receive(:new).with(["some"], ["string"]).and_return(@filter)
-    @script.config[:gdb] = true
-    @script.register
-  end
 end
 
 describe MSpecScript, "#signals" do
@@ -351,9 +342,9 @@ describe MSpecScript, "#entries" do
   before :each do
     @script = MSpecScript.new
 
-    File.stub!(:expand_path).and_return("name")
-    File.stub!(:file?).and_return(false)
-    File.stub!(:directory?).and_return(false)
+    File.stub(:expand_path).and_return("name")
+    File.stub(:file?).and_return(false)
+    File.stub(:directory?).and_return(false)
   end
 
   it "returns the pattern in an array if it is a file" do
@@ -364,14 +355,14 @@ describe MSpecScript, "#entries" do
 
   it "returns Dir['pattern/**/*_spec.rb'] if pattern is a directory" do
     File.should_receive(:directory?).with("name").and_return(true)
-    File.stub!(:expand_path).and_return("name","name/**/*_spec.rb")
+    File.stub(:expand_path).and_return("name","name/**/*_spec.rb")
     Dir.should_receive(:[]).with("name/**/*_spec.rb").and_return(["dir1", "dir2"])
     @script.entries("name").should == ["dir1", "dir2"]
   end
 
-  it "returns Dir[pattern] if pattern is neither a file nor a directory" do
-    Dir.should_receive(:[]).with("pattern").and_return(["file1", "file2"])
-    @script.entries("pattern").should == ["file1", "file2"]
+  it "aborts if pattern cannot be resolved to a file nor a directory" do
+    @script.should_receive(:abort)
+    @script.entries("pattern")
   end
 
   describe "with config[:prefix] set" do
@@ -388,15 +379,15 @@ describe MSpecScript, "#entries" do
     end
 
     it "returns Dir['pattern/**/*_spec.rb'] if pattern is a directory" do
-      File.stub!(:expand_path).and_return(@name, @name+"/**/*_spec.rb")
+      File.stub(:expand_path).and_return(@name, @name+"/**/*_spec.rb")
       File.should_receive(:directory?).with(@name).and_return(true)
       Dir.should_receive(:[]).with(@name + "/**/*_spec.rb").and_return(["dir1", "dir2"])
       @script.entries("name").should == ["dir1", "dir2"]
     end
 
-    it "returns Dir[pattern] if pattern is neither a file nor a directory" do
-      Dir.should_receive(:[]).with("pattern").and_return(["file1", "file2"])
-      @script.entries("pattern").should == ["file1", "file2"]
+    it "aborts if pattern cannot be resolved to a file nor a directory" do
+      @script.should_receive(:abort)
+      @script.entries("pattern")
     end
   end
 end
@@ -440,5 +431,35 @@ describe MSpecScript, "#files" do
 
   it "returns an empty list if the config key is not set" do
     @script.files([":all_files"]).should == []
+  end
+end
+
+describe MSpecScript, "#setup_env" do
+  before :each do
+    @script = MSpecScript.new
+    @options, @config = new_option
+    @script.stub(:config).and_return(@config)
+  end
+
+  after :each do
+  end
+
+  it "sets MSPEC_RUNNER = '1' in the environment" do
+    ENV["MSPEC_RUNNER"] = "0"
+    @script.setup_env
+    ENV["MSPEC_RUNNER"].should == "1"
+  end
+
+  it "sets RUBY_EXE = config[:target] in the environment" do
+    ENV["RUBY_EXE"] = nil
+    @script.setup_env
+    ENV["RUBY_EXE"].should == @config[:target]
+  end
+
+  it "sets RUBY_FLAGS = config[:flags] in the environment" do
+    ENV["RUBY_FLAGS"] = nil
+    @config[:flags] = ["-w", "-Q"]
+    @script.setup_env
+    ENV["RUBY_FLAGS"].should == "-w -Q"
   end
 end

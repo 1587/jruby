@@ -33,12 +33,8 @@ package org.jruby.ast;
 
 import java.util.List;
 
-import org.jruby.Ruby;
 import org.jruby.ast.visitor.NodeVisitor;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
 
 /**
  * Represents the contents of a rescue to be evaluated
@@ -49,15 +45,12 @@ public class RescueBodyNode extends Node {
     private final RescueBodyNode optRescueNode;
 
     public RescueBodyNode(ISourcePosition position, Node exceptionNodes, Node bodyNode, RescueBodyNode optRescueNode) {
-        super(position);
+        super(position, exceptionNodes != null && exceptionNodes.containsVariableAssignment() ||
+                bodyNode.containsVariableAssignment() || optRescueNode != null && optRescueNode.containsVariableAssignment());
         
        assert bodyNode != null : "bodyNode is not null";
         
         this.exceptionNodes = exceptionNodes;
-        if (exceptionNodes instanceof ArrayNode) {
-            // array created for rescue args doesn't need to be in ObjectSpace.
-            ((ArrayNode)exceptionNodes).setLightweight(true);
-        }
         this.bodyNode = bodyNode;
         this.optRescueNode = optRescueNode;
     }
@@ -70,7 +63,7 @@ public class RescueBodyNode extends Node {
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitRescueBodyNode(this);
     }
 
@@ -101,10 +94,5 @@ public class RescueBodyNode extends Node {
     	if (optRescueNode != null) return Node.createList(exceptionNodes, bodyNode, optRescueNode);
     	
     	return Node.createList(exceptionNodes, bodyNode);
-    }
-    
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        return bodyNode.interpret(runtime, context, self, aBlock);
     }
 }

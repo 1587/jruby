@@ -31,20 +31,15 @@
  ***** END LICENSE BLOCK *****/
 package org.jruby.ast;
 
-import org.jruby.Ruby;
 import org.jruby.ast.visitor.NodeVisitor;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.SharedScopeBlock;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
 
 /**
  * Captures END statements (END {...})
  */
 public class PostExeNode extends IterNode {
     public PostExeNode(ISourcePosition position, Node body) {
-        super(position, null, null, body);
+        super(position, new ArgsNode(position, null, null, null, null, null, null, null), body, null);
     }
 
     public NodeType getNodeType() {
@@ -56,16 +51,7 @@ public class PostExeNode extends IterNode {
      * @param iVisitor the visitor
      **/
     @Override
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitPostExeNode(this);
-    }
-    
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        Block block = SharedScopeBlock.newInterpretedSharedScopeClosure(context, this, context.getCurrentScope(), self);
-        
-        runtime.pushExitBlock(runtime.newProc(Block.Type.LAMBDA, block));
-        
-        return runtime.getNil();
     }
 }

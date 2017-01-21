@@ -32,45 +32,25 @@
 package org.jruby.ast;
 
 import java.util.List;
-
-import org.jruby.Ruby;
-import org.jruby.RubyString;
 import org.jruby.ast.visitor.NodeVisitor;
-import org.jruby.runtime.Helpers;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.util.DefinedMessage;
 
 /** 
  * Represents a yield statement.
  */
 public class YieldNode extends Node {
     private final Node argsNode;
-    private final boolean expandedArguments;
 
     /**
      * Construct a new YieldNode.
      *
      * @param position position of the node in the source
-     * @param argsNode the arguments to the yield
-     * @param expandedArguments whether the arguments should be treated as directly-passed args
-     *                          as in yield 1, 2, 3 (expandedArguments = true) versus
-     *                          yield [1, 2, 3] (expandedArguments = false).
+     * @param argsNode the arguments to the yield (null == no args)
      */
-    public YieldNode(ISourcePosition position, Node argsNode, boolean expandedArguments) {
-        super(position);
-        
-        // block.yield depends on null to represent empty and nil to represent nil - [nil] vs []
-        //assert argsNode != null : "argsNode is not null";
+    public YieldNode(ISourcePosition position, Node argsNode) {
+        super(position, argsNode != null && argsNode.containsVariableAssignment());
         
         this.argsNode = argsNode;
-        // If we have more than one argument, then make sure the array is not ObjectSpaced.
-        if (argsNode instanceof ArrayNode) {
-            ((ArrayNode)argsNode).setLightweight(true);
-        }
-        this.expandedArguments = expandedArguments;
     }
 
     public NodeType getNodeType() {
@@ -81,7 +61,7 @@ public class YieldNode extends Node {
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitYieldNode(this);
     }
 
@@ -93,34 +73,8 @@ public class YieldNode extends Node {
         return argsNode;
     }
 
-    @Deprecated
-    public boolean getCheckState() {
-        return expandedArguments;
-    }
-
-    public boolean getExpandArguments() {
-        return expandedArguments;
-    }
-
+    @Override
     public List<Node> childNodes() {
         return createList(argsNode);
-    }
-    
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        IRubyObject argsResult = argsNode.interpret(runtime, context, self, aBlock);
-        
-        if (expandedArguments) {
-            if (argsNode instanceof Splat19Node) argsResult = Helpers.unsplatValue19(argsResult);
-
-            return context.getCurrentFrame().getBlock().yieldArray(context, argsResult, null, null);
-        } 
-
-        return context.getCurrentFrame().getBlock().yield(context, argsResult);
-    }
-    
-    @Override
-    public RubyString definition(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        return aBlock.isGiven() ? runtime.getDefinedMessage(DefinedMessage.YIELD) : null;
     }
 }

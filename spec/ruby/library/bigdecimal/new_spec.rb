@@ -9,7 +9,8 @@ describe "BigDecimal.new" do
       BigDecimal.new("1#{i}").should == 10 + i
       BigDecimal.new("-1#{i}").should == -10 - i
       BigDecimal.new("1E#{i}").should == 10**i
-      BigDecimal.new("1000000E-#{i}").should == 10**(6-i)
+      BigDecimal.new("1000000E-#{i}").should == 10**(6-i).to_f
+      # ^ to_f to avoid Rational type
     }
     (1..9).each {|i|
       BigDecimal.new("100.#{i}").to_s.should == "0.100#{i}E3"
@@ -17,30 +18,7 @@ describe "BigDecimal.new" do
     }
   end
 
-  ruby_bug "1589", "1.8.6.368" do
-    ruby_version_is '' ... '1.9.3' do
-      platform_is :wordsize => 32 do
-        it "doesn't segfault when using a very large string to build the number" do
-          BigDecimal.new("1" + "0"*10000000)._dump.should == "10000008:0.1E10000001"
-        end
-      end
-
-      platform_is :wordsize => 64 do
-        it "doesn't segfault when using a very large string to build the number" do
-          BigDecimal.new("1" + "0"*10000000)._dump.should == "10000017:0.1E10000001"
-        end
-      end
-    end
-
-    ruby_version_is '1.9.3' do
-      it "doesn't segfault when using a very large string to build the number" do
-        BigDecimal.new("1" + "0"*10000000)._dump.should == "10000017:0.1E10000001"
-      end
-    end
-  end
-
   it "Number of significant digits >= given precision" do
-    pi_string = "3.1415923"
     BigDecimal.new("3.1415923", 10).precs[1].should >= 10
   end
 
@@ -70,9 +48,6 @@ describe "BigDecimal.new" do
 
   it "allows omitting the integer part" do
     BigDecimal.new(".123").should == BigDecimal.new("0.123")
-    ruby_version_is "1.8.6.5000" do
-    BigDecimal.new("-.123").should == BigDecimal.new("-0.123")
-  end
   end
 
   it "allows for underscores in all parts" do
@@ -116,6 +91,10 @@ describe "BigDecimal.new" do
     BigDecimal.new("+12345.6E-1").should == reference
     BigDecimal.new("-123.456E+1").should == -reference
     BigDecimal.new("-12345.6E-1").should == -reference
+  end
+
+  it 'raises ArgumentError when Float is used without precision' do
+    lambda { BigDecimal(1.0) }.should raise_error(ArgumentError)
   end
 
 end

@@ -33,12 +33,8 @@ package org.jruby.ast;
 
 import java.util.List;
 
-import org.jruby.Ruby;
 import org.jruby.ast.visitor.NodeVisitor;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
 
 /**
  * Explicit block argument (on caller side):
@@ -58,7 +54,7 @@ public class BlockPassNode extends Node {
     private Node argsNode;
 
     public BlockPassNode(ISourcePosition position, Node bodyNode) {
-        super(position);
+        super(position, bodyNode != null && bodyNode.containsVariableAssignment());
         this.bodyNode = bodyNode;
     }
 
@@ -70,7 +66,7 @@ public class BlockPassNode extends Node {
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitBlockPassNode(this);
     }
 
@@ -100,10 +96,5 @@ public class BlockPassNode extends Node {
     
     public List<Node> childNodes() {
         return Node.createList(argsNode, bodyNode);
-    }
-    
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block block) {
-        return bodyNode == null ? runtime.getNil() : bodyNode.interpret(runtime, context, self, block);
     }
 }

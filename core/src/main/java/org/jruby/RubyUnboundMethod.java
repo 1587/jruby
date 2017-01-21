@@ -37,7 +37,6 @@ import org.jruby.runtime.ClassIndex;
 import org.jruby.runtime.ObjectAllocator;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
-import static org.jruby.CompatVersion.*;
 
 /**
  * 
@@ -73,7 +72,7 @@ public class RubyUnboundMethod extends AbstractRubyMethod {
         	runtime.defineClass("UnboundMethod", runtime.getObject(), ObjectAllocator.NOT_ALLOCATABLE_ALLOCATOR);
         runtime.setUnboundMethod(newClass);
 
-        newClass.index = ClassIndex.UNBOUNDMETHOD;
+        newClass.setClassIndex(ClassIndex.UNBOUNDMETHOD);
         newClass.setReifiedClass(RubyUnboundMethod.class);
 
         newClass.defineAnnotatedMethods(AbstractRubyMethod.class);
@@ -139,18 +138,8 @@ public class RubyUnboundMethod extends AbstractRubyMethod {
         return str;
     }
 
-    @JRubyMethod(compat = RUBY1_8)
-    public IRubyObject name(ThreadContext context) {
-        return context.runtime.newString(methodName);
-    }
-
-    @JRubyMethod(name = "name", compat = RUBY1_9)
-    public IRubyObject name19(ThreadContext context) {
-        return context.runtime.newSymbol(methodName);
-    }
-
-    @JRubyMethod(name = "owner")
-    public IRubyObject owner(ThreadContext context) {
-        return implementationModule;
+    @JRubyMethod
+    public IRubyObject super_method(ThreadContext context ) {
+        return super_method(context, null, implementationModule.getSuperClass());
     }
 }

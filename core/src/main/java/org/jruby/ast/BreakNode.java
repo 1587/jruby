@@ -33,13 +33,8 @@ package org.jruby.ast;
 
 import java.util.List;
 
-import org.jruby.Ruby;
 import org.jruby.ast.visitor.NodeVisitor;
-import org.jruby.runtime.Helpers;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
 
 /**
  * Represents a 'break' statement.
@@ -48,7 +43,7 @@ public class BreakNode extends Node implements NonLocalControlFlowNode {
     private final Node valueNode;
     
     public BreakNode(ISourcePosition position, Node valueNode) {
-        super(position);
+        super(position, valueNode != null && valueNode.containsVariableAssignment());
         
         assert valueNode != null : "valueNode is not null";
         
@@ -63,7 +58,7 @@ public class BreakNode extends Node implements NonLocalControlFlowNode {
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitBreakNode(this);
     }
     
@@ -81,12 +76,5 @@ public class BreakNode extends Node implements NonLocalControlFlowNode {
     
     public List<Node> childNodes() {
         return createList(valueNode);
-    }
-    
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        IRubyObject result = valueNode.interpret(runtime, context, self, aBlock);
-   
-        return Helpers.breakJump(context, result);
     }
 }

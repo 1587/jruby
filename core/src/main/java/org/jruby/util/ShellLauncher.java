@@ -33,8 +33,6 @@ import static java.lang.System.out;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.FilterInputStream;
-import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -46,6 +44,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -62,13 +61,12 @@ import org.jruby.RubyIO;
 import org.jruby.RubyInstanceConfig;
 import org.jruby.RubyModule;
 import org.jruby.RubyString;
-import jnr.posix.util.FieldAccess;
 import jnr.posix.util.Platform;
 import org.jruby.runtime.Helpers;
 import org.jruby.ext.rbconfig.RbConfigLibrary;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.util.cli.Options;
+import org.jruby.util.io.ChannelHelper;
 import org.jruby.util.io.IOOptions;
 import org.jruby.util.io.ModeFlags;
 
@@ -161,10 +159,10 @@ public class ShellLauncher {
 
         public void start() throws IOException {
             config = new RubyInstanceConfig(parentRuntime.getInstanceConfig());
-            
+
             config.setEnvironment(environmentMap(env));
             config.setCurrentDirectory(pwd.toString());
-            
+
             if (pipedStreams) {
                 config.setInput(new PipedInputStream(processInput));
                 config.setOutput(new PrintStream(new PipedOutputStream(processOutput)));
@@ -215,10 +213,15 @@ public class ShellLauncher {
     }
 
     public static String[] getCurrentEnv(Ruby runtime) {
-        return getCurrentEnv(runtime, null);
+        return getModifiedEnv(runtime, Collections.EMPTY_LIST, false);
     }
 
     private static String[] getCurrentEnv(Ruby runtime, Map mergeEnv) {
+        // TODO: ensure nobody passes null
+        return getModifiedEnv(runtime, mergeEnv == null ? Collections.EMPTY_LIST : mergeEnv.entrySet(), false);
+    }
+
+    public static String[] getModifiedEnv(Ruby runtime, Collection mergeEnv, boolean clearEnv) {
         ThreadContext context = runtime.getCurrentContext();
 
         // disable tracing for the dup call below
@@ -227,30 +230,21 @@ public class ShellLauncher {
 
         try {
             // dup for JRUBY-6603 (avoid concurrent modification while we walk it)
-            RubyHash hash = (RubyHash)runtime.getObject().getConstant("ENV").dup();
+            RubyHash hash = null;
+            if (!clearEnv) {
+                hash = (RubyHash)runtime.getObject().getConstant("ENV").dup();
+            }
             String[] ret, ary;
 
-            if (mergeEnv != null && !mergeEnv.isEmpty()) {
+            if (mergeEnv != null) {
                 ret = new String[hash.size() + mergeEnv.size()];
             } else {
                 ret = new String[hash.size()];
             }
 
             int i=0;
-            for(Map.Entry e : (Set<Map.Entry>)hash.directEntrySet()) {
-                // if the key is nil, raise TypeError
-                if (e.getKey() == null) {
-                    throw runtime.newTypeError(runtime.getNil(), runtime.getStructClass());
-                }
-                // ignore if the value is nil
-                if (e.getValue() == null) {
-                    continue;
-                }
-                ret[i] = e.getKey().toString() + "=" + e.getValue().toString();
-                i++;
-            }
-            if (mergeEnv != null) {
-                for (Map.Entry e : (Set<Map.Entry>) mergeEnv.entrySet()) {
+            if (hash != null) {
+                for(Map.Entry<String, String> e : (Set<Map.Entry<String, String>>)hash.entrySet()) {
                     // if the key is nil, raise TypeError
                     if (e.getKey() == null) {
                         throw runtime.newTypeError(runtime.getNil(), runtime.getStructClass());
@@ -259,11 +253,45 @@ public class ShellLauncher {
                     if (e.getValue() == null) {
                         continue;
                     }
-                    ret[i] = e.getKey().toString() + "=" + e.getValue().toString();
+                    ret[i] = e.getKey() + "=" + e.getValue();
                     i++;
                 }
             }
-            
+            if (mergeEnv != null) {
+                if (mergeEnv instanceof Set) {
+                    for (Map.Entry<String, String> e : (Set<Map.Entry<String, String>>)mergeEnv) {
+                        // if the key is nil, raise TypeError
+                        if (e.getKey() == null) {
+                            throw runtime.newTypeError(runtime.getNil(), runtime.getStructClass());
+                        }
+                        // ignore if the value is nil
+                        if (e.getValue() == null) {
+                            continue;
+                        }
+                        ret[i] = e.getKey().toString() + "=" + e.getValue().toString();
+                        i++;
+                    }
+                } else if (mergeEnv instanceof RubyArray) {
+                    for (int j = 0; j < ((RubyArray)mergeEnv).size(); j++) {
+                        RubyArray e = ((RubyArray)mergeEnv).eltOk(j).convertToArray();
+                        // if there are not two elements, raise ArgumentError
+                        if (e.size() != 2) {
+                            throw runtime.newArgumentError("env assignments must come in pairs");
+                        }
+                        // if the key is nil, raise TypeError
+                        if (e.eltOk(0) == null) {
+                            throw runtime.newTypeError(runtime.getNil(), runtime.getStructClass());
+                        }
+                        // ignore if the value is nil
+                        if (e.eltOk(1) == null) {
+                            continue;
+                        }
+                        ret[i] = e.eltOk(0).toString() + "=" + e.eltOk(1).toString();
+                        i++;
+                    }
+                }
+            }
+
             ary = new String[i];
             System.arraycopy(ret, 0, ary, 0, i);
             return ary;
@@ -358,15 +386,23 @@ public class ShellLauncher {
 
     private static File findPathFile(Ruby runtime, String fname, String[] path, boolean isExec) {
         File pathFile = null;
+        if (Platform.IS_WINDOWS && fname.startsWith("\"") && fname.endsWith("\"")) {
+            fname = fname.substring(1, fname.length() - 1); // remove double quotes if present
+        }
         boolean doPathSearch = filenameIsPathSearchable(fname, isExec);
         if (doPathSearch) {
             for (String fdir: path) {
                 // NOTE: Jruby's handling of tildes is more complete than
                 //       MRI's, which can't handle user names after the tilde
                 //       when searching the executable path
-                pathFile = isValidFile(runtime, fdir, fname, isExec);
-                if (pathFile != null) {
-                    break;
+                try {
+                    pathFile = isValidFile(runtime, fdir, fname, isExec);
+                    if (pathFile != null) {
+                        break;
+                    }
+                } catch (SecurityException se) {
+                    // Security prevented accessing this PATH entry, proceed to next
+                    continue;
                 }
             }
         } else {
@@ -375,7 +411,8 @@ public class ShellLauncher {
         return pathFile;
     }
 
-    private static File findPathExecutable(Ruby runtime, String fname) {
+    // MRI: Hopefully close to dln_find_exe_r used by popen logic
+    public static File findPathExecutable(Ruby runtime, String fname) {
         RubyHash env = (RubyHash) runtime.getObject().getConstant("ENV");
         IRubyObject pathObject = env.op_aref(runtime.getCurrentContext(), RubyString.newString(runtime, PATH_ENV));
         String[] pathNodes = null;
@@ -425,8 +462,17 @@ public class ShellLauncher {
                 } else {
                     log(runtime, "Launching directly (no shell)");
                     cfg.verifyExecutableForDirect();
-                    aProcess = buildProcess(runtime, cfg.getExecArgs(), getCurrentEnv(runtime, mergeEnv), pwd);
                 }
+                String[] args = cfg.getExecArgs();
+                // only if we inside a jar and spawning org.jruby.Main we
+                // change to the current directory inside the jar
+                if (runtime.getCurrentDirectory().startsWith("uri:classloader:") &&
+                        args[args.length - 1].contains("org.jruby.Main")) {
+                    pwd = new File(System.getProperty("user.dir"));
+                    args[args.length - 1] = args[args.length - 1].replace("org.jruby.Main",
+                            "org.jruby.Main -C " + runtime.getCurrentDirectory());
+                }
+                aProcess = buildProcess(runtime, args, getCurrentEnv(runtime, mergeEnv), pwd);
             } catch (SecurityException se) {
                 throw runtime.newSecurityError(se.getLocalizedMessage());
             }
@@ -447,13 +493,13 @@ public class ShellLauncher {
         if (env.isNil() || !(env instanceof Map)) {
             env = null;
         }
-        
+
         IRubyObject[] rawArgs = args.convertToArray().toJavaArray();
-        
+
         OutputStream output = runtime.getOutputStream();
         OutputStream error = runtime.getErrorStream();
         InputStream input = runtime.getInputStream();
-        
+
         try {
             Process aProcess = null;
             File pwd = new File(runtime.getCurrentDirectory());
@@ -465,16 +511,24 @@ public class ShellLauncher {
                     // execute command with sh -c
                     // this does shell expansion of wildcards
                     cfg.verifyExecutableForShell();
-                    aProcess = buildProcess(runtime, cfg.getExecArgs(), getCurrentEnv(runtime, (Map)env), pwd);
                 } else {
                     log(runtime, "Launching directly (no shell)");
                     cfg.verifyExecutableForDirect();
-                    aProcess = buildProcess(runtime, cfg.getExecArgs(), getCurrentEnv(runtime, (Map)env), pwd);
                 }
+                String[] finalArgs = cfg.getExecArgs();
+                // only if we inside a jar and spawning org.jruby.Main we
+                // change to the current directory inside the jar
+                if (runtime.getCurrentDirectory().startsWith("uri:classloader:") &&
+                        finalArgs[finalArgs.length - 1].contains("org.jruby.Main")) {
+                    pwd = new File(".");
+                    finalArgs[finalArgs.length - 1] = finalArgs[finalArgs.length - 1].replace("org.jruby.Main",
+                            "org.jruby.Main -C " + runtime.getCurrentDirectory());
+                }
+                aProcess = buildProcess(runtime, finalArgs, getCurrentEnv(runtime, (Map)env), pwd);
             } catch (SecurityException se) {
                 throw runtime.newSecurityError(se.getLocalizedMessage());
             }
-            
+
             if (wait) {
                 handleStreams(runtime, aProcess, input, output, error);
                 try {
@@ -584,14 +638,14 @@ public class ShellLauncher {
             return reflectPidFromProcess(process);
         }
     }
-    
+
     private static final Class UNIXProcess;
     private static final Field UNIXProcess_pid;
     private static final Class ProcessImpl;
     private static final Field ProcessImpl_handle;
     private interface PidGetter { public long getPid(Process process); }
     private static final PidGetter PID_GETTER;
-    
+
     static {
         // default PidGetter
         PidGetter pg = new PidGetter() {
@@ -599,7 +653,7 @@ public class ShellLauncher {
                 return process.hashCode();
             }
         };
-        
+
         Class up = null;
         Field pid = null;
         try {
@@ -689,7 +743,7 @@ public class ShellLauncher {
     }
 
     public static Process run(Ruby runtime, IRubyObject string) throws IOException {
-        return run(runtime, new IRubyObject[]{string}, false);
+        return run(runtime, new IRubyObject[] {string}, false);
     }
 
     public static POpenProcess popen(Ruby runtime, IRubyObject string, ModeFlags modes) throws IOException {
@@ -703,7 +757,7 @@ public class ShellLauncher {
     public static POpenProcess popen(Ruby runtime, IRubyObject string, Map env, ModeFlags modes) throws IOException {
         return new POpenProcess(popenShared(runtime, new IRubyObject[] {string}, env, true), runtime, modes);
     }
-    
+
     @Deprecated
     public static POpenProcess popen(Ruby runtime, IRubyObject string, IOOptions modes) throws IOException {
         return new POpenProcess(popenShared(runtime, new IRubyObject[] {string}, null, true), runtime, modes);
@@ -714,10 +768,12 @@ public class ShellLauncher {
         return new POpenProcess(popenShared(runtime, strings, env), runtime, modes);
     }
 
+    @Deprecated
     public static POpenProcess popen3(Ruby runtime, IRubyObject[] strings) throws IOException {
         return new POpenProcess(popenShared(runtime, strings));
     }
 
+    @Deprecated
     public static POpenProcess popen3(Ruby runtime, IRubyObject[] strings, boolean addShell) throws IOException {
         return new POpenProcess(popenShared(runtime, strings, null, addShell));
     }
@@ -786,58 +842,6 @@ public class ShellLauncher {
         return childProcess;
     }
 
-    /**
-     * Unwrap all filtering streams between the given stream and its actual
-     * unfiltered stream. This is primarily to unwrap streams that have
-     * buffers that would interfere with interactivity.
-     *
-     * @param filteredStream The stream to unwrap
-     * @return An unwrapped stream, presumably unbuffered
-     */
-    public static OutputStream unwrapBufferedStream(OutputStream filteredStream) {
-        if (RubyInstanceConfig.NO_UNWRAP_PROCESS_STREAMS) return filteredStream;
-        while (filteredStream instanceof FilterOutputStream) {
-            try {
-                filteredStream = (OutputStream)
-                    FieldAccess.getProtectedFieldValue(FilterOutputStream.class,
-                        "out", filteredStream);
-            } catch (Exception e) {
-                break; // break out if we've dug as deep as we can
-            }
-        }
-        return filteredStream;
-    }
-
-    /**
-     * Unwrap all filtering streams between the given stream and its actual
-     * unfiltered stream. This is primarily to unwrap streams that have
-     * buffers that would interfere with interactivity.
-     *
-     * @param filteredStream The stream to unwrap
-     * @return An unwrapped stream, presumably unbuffered
-     */
-    public static InputStream unwrapBufferedStream(InputStream filteredStream) {
-        if (RubyInstanceConfig.NO_UNWRAP_PROCESS_STREAMS) return filteredStream;
-        
-        // Java 7+ uses a stream that drains the child on exit, which when
-        // unwrapped breaks because the channel gets drained prematurely.
-//        System.out.println("class is :" + filteredStream.getClass().getName());
-        if (filteredStream.getClass().getName().indexOf("ProcessPipeInputStream") != 1) {
-            return filteredStream;
-        }
-        
-        while (filteredStream instanceof FilterInputStream) {
-            try {
-                filteredStream = (InputStream)
-                    FieldAccess.getProtectedFieldValue(FilterInputStream.class,
-                        "in", filteredStream);
-            } catch (Exception e) {
-                break; // break out if we've dug as deep as we can
-            }
-        }
-        return filteredStream;
-    }
-
     public static class POpenProcess extends Process {
         private final Process child;
         private final boolean waitForChild;
@@ -860,7 +864,7 @@ public class ShellLauncher {
         public POpenProcess(Process child, Ruby runtime, IOOptions modes) {
             this(child, runtime, modes.getModeFlags());
         }
-        
+
         public POpenProcess(Process child, Ruby runtime, ModeFlags modes) {
             this.child = child;
 
@@ -881,7 +885,7 @@ public class ShellLauncher {
                 pumpInput(child, runtime);
             }
 
-            pumpInerr(child, runtime);            
+            pumpInerr(child, runtime);
         }
 
         public POpenProcess(Process child) {
@@ -969,31 +973,27 @@ public class ShellLauncher {
         private void prepareInput(Process child) {
             // popen callers wants to be able to read, provide subprocess in directly
             realInput = child.getInputStream();
-            input = unwrapBufferedStream(realInput);
-            if (input instanceof FileInputStream) {
-//                inputChannel = ((FileInputStream) input).getChannel();
-            } else {
-                inputChannel = null;
-            }
+            // We no longer unwrap, because Java 7+ empties the underlying stream and new native IO popen[3,4] works
+            // properly. The pure-Java version has always been somewhat crippled and hacky.
+            input = realInput;
+            inputChannel = null;
             inputPumper = null;
         }
 
         private void prepareInerr(Process child) {
             // popen callers wants to be able to read, provide subprocess in directly
             realInerr = child.getErrorStream();
-            inerr = unwrapBufferedStream(realInerr);
-            if (inerr instanceof FileInputStream) {
-                inerrChannel = ((FileInputStream) inerr).getChannel();
-            } else {
-                inerrChannel = null;
-            }
+            // We no longer unwrap, because Java 7+ empties the underlying stream and new native IO popen[3,4] works
+            // properly. The pure-Java version has always been somewhat crippled and hacky.
+            inerr = realInerr;
+            inerrChannel = null;
             inerrPumper = null;
         }
 
         private void prepareOutput(Process child) {
             // popen caller wants to be able to write, provide subprocess out directly
             realOutput = child.getOutputStream();
-            output = unwrapBufferedStream(realOutput);
+            output = ChannelHelper.unwrapBufferedStream(realOutput);
             if (output instanceof FileOutputStream) {
                 outputChannel = ((FileOutputStream) output).getChannel();
             } else {
@@ -1003,12 +1003,12 @@ public class ShellLauncher {
 
         private void pumpInput(Process child, Ruby runtime) {
             // no read requested, hook up read to parents output
-            InputStream childIn = unwrapBufferedStream(child.getInputStream());
+            InputStream childIn = ChannelHelper.unwrapBufferedStream(child.getInputStream());
             FileChannel childInChannel = null;
             if (childIn instanceof FileInputStream) {
                 childInChannel = ((FileInputStream) childIn).getChannel();
             }
-            OutputStream parentOut = unwrapBufferedStream(runtime.getOut());
+            OutputStream parentOut = ChannelHelper.unwrapBufferedStream(runtime.getOut());
             FileChannel parentOutChannel = null;
             if (parentOut instanceof FileOutputStream) {
                 parentOutChannel = ((FileOutputStream) parentOut).getChannel();
@@ -1025,12 +1025,12 @@ public class ShellLauncher {
 
         private void pumpInerr(Process child, Ruby runtime) {
             // no read requested, hook up read to parents output
-            InputStream childIn = unwrapBufferedStream(child.getErrorStream());
+            InputStream childIn = ChannelHelper.unwrapBufferedStream(child.getErrorStream());
             FileChannel childInChannel = null;
             if (childIn instanceof FileInputStream) {
                 childInChannel = ((FileInputStream) childIn).getChannel();
             }
-            OutputStream parentOut = unwrapBufferedStream(runtime.getOut());
+            OutputStream parentOut = ChannelHelper.unwrapBufferedStream(runtime.getOut());
             FileChannel parentOutChannel = null;
             if (parentOut instanceof FileOutputStream) {
                 parentOutChannel = ((FileOutputStream) parentOut).getChannel();
@@ -1326,7 +1326,7 @@ public class ShellLauncher {
         for (int i = 0; i < originalArgs.length; i++) {
             if (hasGlobCharacter(originalArgs[i])) {
                 // FIXME: Encoding lost here
-                List<ByteList> globs = Dir.push_glob(runtime.getPosix(), runtime.getCurrentDirectory(),
+                List<ByteList> globs = Dir.push_glob(runtime, runtime.getCurrentDirectory(),
                         new ByteList(originalArgs[i].getBytes()), 0);
 
                 for (ByteList glob: globs) {
@@ -1365,7 +1365,7 @@ public class ShellLauncher {
                     log(runtime, "Launching directly (no shell)");
                     cfg.verifyExecutableForDirect();
                 }
-                String[] args = cfg.execArgs;
+                String[] args = cfg.getExecArgs();
                 // only if we inside a jar and spawning org.jruby.Main we
                 // change to the current directory inside the jar
                 if (runtime.getCurrentDirectory().startsWith("uri:classloader:") &&
@@ -1379,7 +1379,7 @@ public class ShellLauncher {
         } catch (SecurityException se) {
             throw runtime.newSecurityError(se.getLocalizedMessage());
         }
-        
+
         return aProcess;
     }
 
@@ -1400,8 +1400,8 @@ public class ShellLauncher {
         private final Ruby runtime;
 
         StreamPumper(Ruby runtime, InputStream in, OutputStream out, boolean avail, Slave slave, Object sync) {
-            this.in = unwrapBufferedStream(in);
-            this.out = unwrapBufferedStream(out);
+            this.in = ChannelHelper.unwrapBufferedStream(in);
+            this.out = ChannelHelper.unwrapBufferedStream(out);
             this.onlyIfAvailable = avail;
             this.slave = slave;
             this.sync = sync;
@@ -1627,31 +1627,43 @@ public class ShellLauncher {
         return RbConfigLibrary.jrubyShell();
     }
 
-    // This is more of a hack than not.  If we can detect any ENV logic at front of the
-    // command we will defer to invoking via shell.  We probably should be prarsing off the env
-    // and invoking this another way but I am leery to change this infrastructure on our
-    // maintenance branch (jruby-1_7) at this point.
-    private static boolean firstWordIsENV(String command) {
-        int space = command.indexOf(' ');
-
-        return space != -1 && command.substring(0, space).contains("=");
-    }
-
     public static boolean shouldUseShell(String command) {
         boolean useShell = false;
         for (char c : command.toCharArray()) {
             if (c != ' ' && !Character.isLetter(c) && "*?{}[]<>()~&|\\$;'`\"\n".indexOf(c) != -1) {
-                return true;
+                useShell = true;
             }
         }
-        if (Platform.IS_WINDOWS && command.length() >= 1 && command.charAt(0) == '@') return true; // JRUBY-5522
-
-        return firstWordIsENV(command);
+        if (Platform.IS_WINDOWS && command.length() >= 1 && command.charAt(0) == '@') {
+            // JRUBY-5522
+            useShell = true;
+        }
+        return useShell;
     }
 
     static void log(Ruby runtime, String msg) {
         if (RubyInstanceConfig.DEBUG_LAUNCHING) {
             runtime.getErr().println("ShellLauncher: " + msg);
         }
+    }
+
+    @Deprecated
+    public static OutputStream unwrapBufferedStream(OutputStream filteredStream) {
+        return ChannelHelper.unwrapBufferedStream(filteredStream);
+    }
+
+    @Deprecated
+    public static InputStream unwrapBufferedStream(InputStream filteredStream) {
+        return ChannelHelper.unwrapBufferedStream(filteredStream);
+    }
+
+    @Deprecated
+    public static OutputStream unwrapFilterOutputStream(OutputStream filteredStream) {
+        return ChannelHelper.unwrapFilterOutputStream(filteredStream);
+    }
+
+    @Deprecated
+    public static InputStream unwrapFilterInputStream(InputStream filteredStream) {
+        return ChannelHelper.unwrapFilterInputStream(filteredStream);
     }
 }

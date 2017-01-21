@@ -1,4 +1,4 @@
-describe :process_abort, :shared => true do
+describe :process_abort, shared: true do
   before :each do
     @stderr, $stderr = $stderr, IOStub.new
   end
@@ -15,7 +15,7 @@ describe :process_abort, :shared => true do
     lambda { @object.abort "message" }.should raise_error { |e| e.message.should == "message" }
   end
 
-  it "sets the exception status code of of 1" do
+  it "sets the exception status code of 1" do
     lambda { @object.abort }.should raise_error { |e| e.status.should == 1 }
   end
 
@@ -24,12 +24,10 @@ describe :process_abort, :shared => true do
     $stderr.should =~ /a message/
   end
 
-  ruby_version_is "1.9.3" do
-    it "coerces the argument with #to_str" do
-      str = mock('to_str')
-      str.should_receive(:to_str).any_number_of_times.and_return("message")
-      lambda { @object.abort str }.should raise_error(SystemExit, "message")
-    end
+  it "coerces the argument with #to_str" do
+    str = mock('to_str')
+    str.should_receive(:to_str).any_number_of_times.and_return("message")
+    lambda { @object.abort str }.should raise_error(SystemExit, "message")
   end
 
   it "raises TypeError when given a non-String object" do

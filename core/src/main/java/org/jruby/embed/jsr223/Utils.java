@@ -175,11 +175,16 @@ public class Utils {
     }
     
     private static RubyIO getRubyIO(Ruby runtime, Writer writer) throws IOException, BadDescriptorException {
-        PrintStream pstream = new PrintStream(new WriterOutputStream(writer), true);
+        PrintStream pstream = new PrintStream(new WriterOutputStream(writer, runtime.getDefaultCharset().name()), true);
         RubyIO io = new RubyIO(runtime, pstream, false);
-        io.getOpenFile().getMainStreamSafe().setSync(true);
-        io.getOpenFile().getMainStreamSafe().fflush();
-        return io;
+        boolean locked = io.getOpenFile().lock();
+        try {
+            io.getOpenFile().setSync(true);
+            io.getOpenFile().io_fflush(runtime.getCurrentContext());
+            return io;
+        } finally {
+            if (locked) io.getOpenFile().unlock();
+        }
     }
 
     static void postEval(ScriptingContainer container, ScriptContext context) {

@@ -14,50 +14,31 @@ end
 # TODO: verify these on non-windows, non-darwin OS
 platform_is_not :windows do
   describe "Etc.getgrgid" do
-    before(:all) do
+    before :all do
       @gid = `id -g`.strip.to_i
       @name = `id -gn`.strip
     end
 
-    ruby_version_is "" ... "1.9" do
-      it "returns a Struct::Group struct instance for the given user" do
-        gr = Etc.getgrgid(@gid)
+    it "returns a Etc::Group struct instance for the given user" do
+      gr = Etc.getgrgid(@gid)
 
-        gr.is_a?(Struct::Group).should == true
-        gr.gid.should == @gid
-        gr.name.should == @name
-      end
-
-      it "returns the Struct::Group for a given gid if it exists" do
-        grp = Etc.getgrgid(@gid)
-        grp.should be_kind_of(Struct::Group)
-        grp.gid.should == @gid
-        grp.name.should == @name
-      end
+      gr.is_a?(Etc::Group).should == true
+      gr.gid.should == @gid
+      gr.name.should == @name
     end
 
-    ruby_version_is "1.9" do
-      it "returns a Etc::Group struct instance for the given user" do
-        gr = Etc.getgrgid(@gid)
+    it "returns the Etc::Group for a given gid if it exists" do
+      grp = Etc.getgrgid(@gid)
+      grp.should be_kind_of(Etc::Group)
+      grp.gid.should == @gid
+      grp.name.should == @name
+    end
 
-        gr.is_a?(Etc::Group).should == true
-        gr.gid.should == @gid
-        gr.name.should == @name
-      end
+    it "uses Process.gid as the default value for the argument" do
+      gr = Etc.getgrgid
 
-      it "returns the Etc::Group for a given gid if it exists" do
-        grp = Etc.getgrgid(@gid)
-        grp.should be_kind_of(Etc::Group)
-        grp.gid.should == @gid
-        grp.name.should == @name
-      end
-
-      it "uses Process.gid as the default value for the argument" do
-        gr = Etc.getgrgid
-
-        gr.gid.should == @gid
-        gr.name.should == @name
-      end
+      gr.gid.should == @gid
+      gr.name.should == @name
     end
 
     it "returns the Group for a given gid if it exists" do
@@ -74,6 +55,16 @@ platform_is_not :windows do
     it "raises a TypeError if not passed an Integer" do
       lambda { Etc.getgrgid("foo") }.should raise_error(TypeError)
       lambda { Etc.getgrgid(nil)   }.should raise_error(TypeError)
+    end
+
+    it "can be called safely by multiple threads" do
+      20.times.map do
+        Thread.new do
+          100.times do
+            Etc.getgrgid(@gid).gid.should == @gid
+          end
+        end
+      end.each(&:join)
     end
   end
 end

@@ -1,41 +1,65 @@
 package org.jruby.ir;
 
+import org.jruby.ir.instructions.Instr;
+import org.jruby.ir.interpreter.BeginEndInterpreterContext;
+import org.jruby.ir.interpreter.InterpreterContext;
+import org.jruby.parser.StaticScope;
+import org.jruby.runtime.DynamicScope;
+import org.jruby.runtime.Helpers;
+
 import java.util.ArrayList;
 import java.util.List;
-import org.jruby.ir.operands.LocalVariable;
-import org.jruby.parser.IRStaticScope;
-import org.jruby.parser.StaticScope;
+import java.util.concurrent.Callable;
 
-// FIXME: I made this IRModule because any methods placed in top-level script goes
-// into something which an IRScript is basically a module that is special in that
-// it represents a lexical unit.  Fix what now?
 public class IRScriptBody extends IRScope {
     private List<IRClosure> beginBlocks;
-    private List<IRClosure> endBlocks;
+    private DynamicScope toplevelScope;
+    private String fileName;
 
-    public IRScriptBody(IRManager manager, String className, String sourceName,
-            StaticScope staticScope) {
-        super(manager, null, sourceName, sourceName, 0, staticScope);
+    public IRScriptBody(IRManager manager, String sourceName, StaticScope staticScope) {
+        super(manager, null, sourceName, 0, staticScope);
+        this.toplevelScope = null;
+        this.fileName = sourceName;
 
-        if (!getManager().isDryRun()) {
-            if (staticScope != null) ((IRStaticScope)staticScope).setIRScope(this);
+        if (!getManager().isDryRun() && staticScope != null) {
+            staticScope.setIRScope(this);
         }
     }
 
-    @Override
-    public IRScope getNearestModuleReferencingScope() {
-        return this;
+    public DynamicScope getToplevelScope() {
+        return toplevelScope;
+    }
+
+    public void setTopLevelBindingScope(DynamicScope tlbScope) {
+        this.toplevelScope = tlbScope;
     }
 
     @Override
-    public LocalVariable getImplicitBlockArg() {
-        assert false: "A Script body never accepts block args";
+    public InterpreterContext allocateInterpreterContext(List<Instr> instructions) {
+        interpreterContext = new BeginEndInterpreterContext(this, instructions);
 
-        return null;
+        return interpreterContext;
     }
 
-    public String getScopeName() {
-        return "ScriptBody";
+    @Override
+    public InterpreterContext allocateInterpreterContext(Callable<List<Instr>> instructions) {
+        try {
+            interpreterContext = new BeginEndInterpreterContext(this, instructions);
+        } catch (Exception e) {
+            Helpers.throwException(e);
+        }
+
+        return interpreterContext;
+    }
+
+    @Override
+    public int getNearestModuleReferencingScopeDepth() {
+        return 0;
+    }
+
+    @Override
+    public IRScopeType getScopeType() {
+        return IRScopeType.SCRIPT_BODY;
     }
 
     @Override
@@ -46,27 +70,28 @@ public class IRScriptBody extends IRScope {
     /* Record a begin block -- not all scope implementations can handle them */
     @Override
     public void recordBeginBlock(IRClosure beginBlockClosure) {
-        if (beginBlocks == null) beginBlocks = new ArrayList<IRClosure>();
+        if (beginBlocks == null) beginBlocks = new ArrayList<>();
+        beginBlockClosure.setBeginEndBlock();
         beginBlocks.add(beginBlockClosure);
     }
 
-    /* Record an end block -- not all scope implementations can handle them */
     @Override
-    public void recordEndBlock(IRClosure endBlockClosure) {
-        if (endBlocks == null) endBlocks = new ArrayList<IRClosure>();
-        endBlocks.add(endBlockClosure);
-    }
-
     public List<IRClosure> getBeginBlocks() {
         return beginBlocks;
-    }
-
-    public List<IRClosure> getEndBlocks() {
-        return endBlocks;
     }
 
     @Override
     public boolean isScriptScope() {
         return true;
+    }
+
+    @Override
+    public void setFileName(String fileName) {
+        this.fileName = fileName;
+    }
+
+    @Override
+    public String getFileName() {
+        return fileName;
     }
 }

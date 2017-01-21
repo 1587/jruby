@@ -17,7 +17,7 @@
  * Copyright (C) 2005 Charles O Nutter <headius@headius.com>
  * Copyright (C) 2006 Miguel Covarrubias <mlcovarrubias@gmail.com>
  * Copyright (C) 2007 William N Dortch <bill.dortch@gmail.com>
- * 
+ *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
  * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
@@ -45,73 +45,37 @@ import org.jruby.runtime.builtin.Variable;
  * other modules. It inserts itself as the immediate superClass of the includer, but defers all
  * module methods to the actual superclass. Multiple of these intermediate superclasses can be
  * added for multiple included modules.
- * 
+ *
  * This allows the normal superclass-based searches (searchMethod, getConstant, etc) to traverse
  * the superclass ancestors as normal while the included modules do not actually show up in
  * direct inheritance traversal.
- * 
+ *
  * @see org.jruby.RubyModule
  */
-public class IncludedModuleWrapper extends RubyClass {
-    public IncludedModuleWrapper(Ruby runtime, RubyClass superClass, RubyModule delegate) {
-        super(runtime, superClass, false);
-        this.delegate = delegate;
-        this.metaClass = delegate.metaClass;
-        delegate.addIncludingHierarchy(this);
+public class IncludedModuleWrapper extends IncludedModule {
+    public IncludedModuleWrapper(Ruby runtime, RubyClass superClass, RubyModule origin) {
+        super(runtime, superClass, origin);
+        origin.addIncludingHierarchy(this);
+        if (origin.methodLocation != origin) this.methodLocation = origin.methodLocation;
     }
 
     /**
      * Overridden newIncludeClass implementation to allow attaching future includes to the correct module
      * (i.e. the one to which this is attached)
-     * 
+     *
      * @see org.jruby.RubyModule#newIncludeClass(RubyClass)
      */
     @Override
     @Deprecated
     public IncludedModuleWrapper newIncludeClass(RubyClass superClass) {
         IncludedModuleWrapper includedModule = new IncludedModuleWrapper(getRuntime(), superClass, getNonIncludedClass());
-        
+
         // include its parent (and in turn that module's parents)
         if (getSuperClass() != null) {
             includedModule.includeModule(getSuperClass());
         }
-        
+
         return includedModule;
-    }
-
-    @Override
-    public boolean isModule() {
-        return false;
-    }
-
-    @Override
-    public boolean isClass() {
-        return false;
-    }
-
-    @Override
-    public boolean isIncluded() {
-        return true;
-    }
-    
-    @Override
-    public boolean isImmediate() {
-        return true;
-    }
-
-    @Override
-    public void setMetaClass(RubyClass newRubyClass) {
-        throw new UnsupportedOperationException("An included class is only a wrapper for a module");
-    }
-
-    @Override
-    public Map<String, DynamicMethod> getMethods() {
-        return delegate.getMethods();
-    }
-
-    @Override
-    public Map<String, DynamicMethod> getMethodsForWrite() {
-        return delegate.getMethodsForWrite();
     }
 
     @Override
@@ -123,117 +87,142 @@ public class IncludedModuleWrapper extends RubyClass {
         throw new UnsupportedOperationException("An included class is only a wrapper for a module");
     }
 
-    @Override
-    public String getName() {
-        return delegate.getName();
+    public RubyModule getDelegate() {
+        return origin;
     }
 
     @Override
-    public RubyModule getNonIncludedClass() {
-        return delegate;
+    public boolean isIncluded() {
+        return true;
+    }
+
+    @Override
+    public boolean isPrepended() {
+        return origin.hasPrepends();
     }
 
     @Override
     protected boolean isSame(RubyModule module) {
-        return delegate.isSame(module);
+        return origin.isSame(module.getDelegate());
     }
-    
-   /**
-    * We don't want to reveal ourselves to Ruby code, so delegate this
-    * operation.
-    */    
+
     @Override
-    public IRubyObject id() {
-        return delegate.id();
+    public Map<String, DynamicMethod> getMethods() {
+        return origin.getMethods();
+    }
+
+    @Override
+    public Map<String, DynamicMethod> getMethodsForWrite() {
+        return origin.getMethodsForWrite();
     }
 
     @Override
     protected synchronized Map<String, IRubyObject> getClassVariables() {
-        return delegate.getClassVariables();
+        return origin.getClassVariables();
     }
 
     @Override
     protected Map<String, IRubyObject> getClassVariablesForRead() {
-        return delegate.getClassVariablesForRead();
+        return origin.getClassVariablesForRead();
     }
 
     @Override
     protected boolean variableTableContains(String name) {
-        return delegate.variableTableContains(name);
+        return origin.variableTableContains(name);
     }
 
     @Override
     protected Object variableTableFetch(String name) {
-        return delegate.variableTableFetch(name);
+        return origin.variableTableFetch(name);
     }
 
     @Override
     protected Object variableTableStore(String name, Object value) {
-        return delegate.variableTableStore(name, value);
+        return origin.variableTableStore(name, value);
     }
 
     @Override
     protected Object variableTableRemove(String name) {
-        return delegate.variableTableRemove(name);
+        return origin.variableTableRemove(name);
     }
 
     @Override
     protected void variableTableSync(List<Variable<Object>> vars) {
-        delegate.variableTableSync(vars);
+        origin.variableTableSync(vars);
     }
 
     //
-    // CONSTANT TABLE METHODS - pass to delegate
+    // CONSTANT TABLE METHODS - pass to origin
     //
 
     @Override
     protected boolean constantTableContains(String name) {
-        return delegate.constantTableContains(name);
+        return origin.constantTableContains(name);
     }
 
     @Override
     protected IRubyObject constantTableFetch(String name) {
-        return delegate.constantTableFetch(name);
+        return origin.constantTableFetch(name);
     }
 
     @Override
     protected ConstantEntry constantEntryFetch(String name) {
-        return delegate.constantEntryFetch(name);
+        return origin.constantEntryFetch(name);
     }
 
     @Override
     protected IRubyObject constantTableStore(String name, IRubyObject value) {
         // FIXME: legal here? may want UnsupportedOperationException
-        return delegate.constantTableStore(name, value);
+        return origin.constantTableStore(name, value);
+    }
+
+    protected IRubyObject constantTableStore(String name, IRubyObject value, boolean hidden) {
+        // FIXME: legal here? may want UnsupportedOperationException
+        return origin.constantTableStore(name, value, hidden);
     }
 
     @Override
     protected IRubyObject constantTableRemove(String name) {
         // this _is_ legal (when removing an undef)
-        return delegate.constantTableRemove(name);
+        return origin.constantTableRemove(name);
     }
-    
+
     @Override
     @Deprecated
     public List<String> getStoredConstantNameList() {
-        return delegate.getStoredConstantNameList();
+        return origin.getStoredConstantNameList();
     }
-    
+
     @Override
     public Collection<String> getConstantNames() {
-        return delegate.getConstantNames();
+        return origin.getConstantNames();
     }
 
     @Override
     public Collection<String> getConstantNames(boolean includePrivate) {
-        return delegate.getConstantNames(includePrivate);
+        return origin.getConstantNames(includePrivate);
     }
 
     @Override
-    public IRubyObject getAutoloadConstant(String name) {
-        return delegate.getAutoloadConstant(name);
+    protected IRubyObject getAutoloadConstant(String name, boolean forceLoad) {
+        return origin.getAutoloadConstant(name, forceLoad);
     }
 
-    /** The module to which this include delegates. */
-    private final RubyModule delegate;
+    @Override
+    protected DynamicMethod searchMethodCommon(String name) {
+        // IncludedModuleWrapper needs to search prepended modules too, so search until we find methodLocation
+        RubyModule module = origin;
+        RubyModule methodLoc = origin.getMethodLocation();
+
+        for (; module != methodLoc; module = module.getSuperClass()) {
+            DynamicMethod method = module.getMethods().get(name);
+            if (method != null) return method.isNull() ? null : method;
+        }
+
+        // one last search for method location
+        DynamicMethod method = module.getMethods().get(name);
+        if (method != null) return method.isNull() ? null : method;
+
+        return null;
+    }
 }

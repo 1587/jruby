@@ -4,9 +4,9 @@ require File.expand_path('../fixtures/classes.rb', __FILE__)
 
 describe "String#center with length, padding" do
   it "returns a new string of specified length with self centered and padded with padstr" do
-    "one".center(9, '.').should       == "...one..."
-    "hello".center(20, '123').should  == "1231231hello12312312"
-    "middle".center(13, '-').should   == "---middle----"
+    "one".center(9, '.').should == "...one..."
+    "hello".center(20, '123').should == "1231231hello12312312"
+    "middle".center(13, '-').should == "---middle----"
 
     "".center(1, "abcd").should == "a"
     "".center(2, "abcd").should == "aa"
@@ -34,7 +34,7 @@ describe "String#center with length, padding" do
   end
 
   it "pads with whitespace if no padstr is given" do
-    "two".center(5).should    == " two "
+    "two".center(5).should == " two "
     "hello".center(20).should == "       hello        "
   end
 
@@ -90,12 +90,12 @@ describe "String#center with length, padding" do
   end
 
   it "returns subclass instances when called on subclasses" do
-    StringSpecs::MyString.new("").center(10).should be_kind_of(StringSpecs::MyString)
-    StringSpecs::MyString.new("foo").center(10).should be_kind_of(StringSpecs::MyString)
-    StringSpecs::MyString.new("foo").center(10, StringSpecs::MyString.new("x")).should be_kind_of(StringSpecs::MyString)
+    StringSpecs::MyString.new("").center(10).should be_an_instance_of(StringSpecs::MyString)
+    StringSpecs::MyString.new("foo").center(10).should be_an_instance_of(StringSpecs::MyString)
+    StringSpecs::MyString.new("foo").center(10, StringSpecs::MyString.new("x")).should be_an_instance_of(StringSpecs::MyString)
 
-    "".center(10, StringSpecs::MyString.new("x")).should be_kind_of(String)
-    "foo".center(10, StringSpecs::MyString.new("x")).should be_kind_of(String)
+    "".center(10, StringSpecs::MyString.new("x")).should be_an_instance_of(String)
+    "foo".center(10, StringSpecs::MyString.new("x")).should be_an_instance_of(String)
   end
 
   it "when padding is tainted and self is untainted returns a tainted string if and only if length is longer than self" do

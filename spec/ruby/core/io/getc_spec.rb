@@ -9,24 +9,14 @@ describe "IO#getc" do
   end
 
   after :each do
-    @io.close unless @io.closed?
+    @io.close if @io
     $KCODE = @kcode
   end
 
-  ruby_version_is ''...'1.9' do
-    it "returns the next byte from the stream" do
-      @io.readline.should == "Voici la ligne une.\n"
-      bytes = @io.getc, @io.getc, @io.getc, @io.getc, @io.getc
-      bytes.should == [81, 117, 105, 32, 195]
-    end
-  end
-
-  ruby_version_is '1.9' do
-    it "returns the next character from the stream" do
-      @io.readline.should == "Voici la ligne une.\n"
-      letters = @io.getc, @io.getc, @io.getc, @io.getc, @io.getc
-      letters.should == ["Q", "u", "i", " ", "è"]
-    end
+  it "returns the next character from the stream" do
+    @io.readline.should == "Voici la ligne une.\n"
+    letters = @io.getc, @io.getc, @io.getc, @io.getc, @io.getc
+    letters.should == ["Q", "u", "i", " ", "è"]
   end
 
   it "returns nil when invoked at the end of the stream" do
@@ -45,7 +35,7 @@ describe "IO#getc" do
   end
 
   after :each do
-    @io.close unless @io.closed?
+    @io.close if @io
   end
 
   it "returns nil on empty stream" do

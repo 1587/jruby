@@ -44,6 +44,7 @@ import org.jruby.RubyHash;
 import org.jruby.RubyInteger;
 import org.jruby.RubyString;
 import org.jruby.runtime.Block;
+import org.jruby.runtime.JavaSites;
 import org.jruby.runtime.ThreadContext;
 
 /** Object is the parent class of all classes in Ruby. Its methods are
@@ -68,6 +69,8 @@ public interface IRubyObject {
     public IRubyObject callMethod(ThreadContext context, int methodIndex, String name, IRubyObject arg);
 
     public IRubyObject checkCallMethod(ThreadContext context, String name);
+
+    public IRubyObject checkCallMethod(ThreadContext context, JavaSites.CheckedSites sites);
     
     /**
      * RubyMethod isNil.
@@ -129,7 +132,13 @@ public interface IRubyObject {
      * @return
      */
     boolean isImmediate();
-    
+
+    /**
+     *
+     * @return
+     */
+    boolean isSpecialConst();
+
     /**
      * RubyMethod getRubyClass.
      * @return

@@ -1,33 +1,21 @@
 package org.jruby.ir.dataflow.analyses;
 
+import org.jruby.dirgra.Edge;
+import org.jruby.ir.IRClosure;
+import org.jruby.ir.IRScope;
+import org.jruby.ir.Operation;
+import org.jruby.ir.dataflow.FlowGraphNode;
+import org.jruby.ir.instructions.*;
+import org.jruby.ir.operands.*;
+import org.jruby.ir.representations.BasicBlock;
+
 import java.util.HashSet;
 import java.util.ListIterator;
 import java.util.Map;
 import java.util.Set;
-import org.jruby.ir.IRClosure;
-import org.jruby.ir.IREvalScript;
-import org.jruby.ir.IRScope;
-import org.jruby.ir.Operation;
-import org.jruby.ir.dataflow.DataFlowConstants;
-import org.jruby.ir.dataflow.DataFlowProblem;
-import org.jruby.ir.dataflow.FlowGraphNode;
-import org.jruby.ir.instructions.BreakInstr;
-import org.jruby.ir.instructions.CallBase;
-import org.jruby.ir.instructions.ReturnInstr;
-import org.jruby.ir.instructions.Instr;
-import org.jruby.ir.instructions.ResultInstr;
-import org.jruby.ir.instructions.StoreLocalVarInstr;
-import org.jruby.ir.operands.ClosureLocalVariable;
-import org.jruby.ir.operands.LocalVariable;
-import org.jruby.ir.operands.Operand;
-import org.jruby.ir.operands.TemporaryVariable;
-import org.jruby.ir.operands.Variable;
-import org.jruby.ir.operands.WrappedIRClosure;
-import org.jruby.ir.representations.BasicBlock;
-import org.jruby.ir.util.Edge;
 
-public class StoreLocalVarPlacementNode extends FlowGraphNode {
-    public StoreLocalVarPlacementNode(DataFlowProblem prob, BasicBlock n) {
+public class StoreLocalVarPlacementNode extends FlowGraphNode<StoreLocalVarPlacementProblem, StoreLocalVarPlacementNode> {
+    public StoreLocalVarPlacementNode(StoreLocalVarPlacementProblem prob, BasicBlock n) {
         super(prob, n);
     }
 
@@ -39,105 +27,148 @@ public class StoreLocalVarPlacementNode extends FlowGraphNode {
         if (getBB().isRescueEntry()) inDirtyVars = new HashSet<LocalVariable>();
     }
 
+    @Override
     public void buildDataFlowVars(Instr i) {
         // Nothing to do -- because we are going to simply use non-closure, non-self, non-block LocalVariables as our data flow variables
         // rather than build a new data flow type for it
     }
 
-    public void initSolnForNode() {
+    @Override
+    public void applyPreMeetHandler() {
+        BasicBlock bb = getBB();
+
         // For rescue entries, <in> is handled specially
-        if (!getBB().isRescueEntry()) inDirtyVars = new HashSet<LocalVariable>();
+        if (!bb.isRescueEntry()) {
+            inDirtyVars = new HashSet<LocalVariable>();
+
+            // If this is the exit BB, we need a binding store on exit only for vars that are both:
+            //
+            //   (a) dirty,
+            //   (b) live on exit from the closure
+            //       condition reqd. because the variable could be dirty but not used outside.
+            //         Ex: s=0; a.each { |i| j = i+1; sum += j; }; puts sum
+            //       i,j are dirty inside the block, but not used outside
+            if (bb.isExitBB()) {
+                LiveVariablesProblem lvp = problem.getScope().getLiveVariablesProblem();
+                java.util.Collection<LocalVariable> liveVars = lvp.getLocalVarsLiveOnScopeEntry();
+                if (liveVars != null) {
+                    inDirtyVars.retainAll(liveVars); // Intersection with variables live on exit from the scope
+                } else {
+                    inDirtyVars.clear();
+                }
+            }
+        }
     }
 
-    public void compute_MEET(Edge e, BasicBlock source, FlowGraphNode pred) {
-        StoreLocalVarPlacementNode n = (StoreLocalVarPlacementNode) pred;
-
+    @Override
+    public void compute_MEET(Edge e, StoreLocalVarPlacementNode pred) {
         // Ignore rescue entries -- dirty vars are handled specially for these
-        if (!source.isRescueEntry()) inDirtyVars.addAll(n.outDirtyVars);
+        if (!pred.basicBlock.isRescueEntry()) inDirtyVars.addAll(pred.outDirtyVars);
     }
 
-    public boolean applyTransferFunction() {
+    @Override
+    public void initSolution() {
+        dirtyVars = new HashSet<LocalVariable>(inDirtyVars);
+    }
+
+    @Override
+    public void applyTransferFunction(Instr i) {
         IRScope scope = problem.getScope();
         boolean scopeBindingHasEscaped = scope.bindingHasEscaped();
 
-        // Rescue node, if any
-        StoreLocalVarPlacementNode rescueNode = (StoreLocalVarPlacementNode)getNonExitBBExceptionTargetNode();
+        // Process closure accepting instrs specially -- these are the sites of binding stores!
+        if (i instanceof ClosureAcceptingInstr) {
+            Operand o = ((ClosureAcceptingInstr)i).getClosureArg();
+            // At this site, a binding will get allocated if it has not been already!
+            if (o != null && o instanceof WrappedIRClosure) {
+                // In this first pass, the current scope and the call's closure are considered
+                // independent of each other which means any variable that is used by the closure
+                // will get spilled into the binding. This is clearly conservative, but simplifies
+                // the analysis.
+                IRClosure cl = ((WrappedIRClosure) o).getClosure();
 
-        Set<LocalVariable> dirtyVars = new HashSet<LocalVariable>(inDirtyVars);
+                // If the call is a dataflow barrier, we have to spill everything here
+                boolean spillAllVars = scopeBindingHasEscaped;
 
-        for (Instr i : basicBlock.getInstrs()) {
-            // Process calls specially -- these are the sites of binding stores!
-            if (i instanceof CallBase) {
-                CallBase call = (CallBase) i;
-                // At this call site, a binding will get allocated if it has not been already!
-                Operand o = call.getClosureArg(null);
-                if (o != null && o instanceof WrappedIRClosure) {
-                    // In this first pass, the current scope and the call's closure are considered
-                    // independent of each other which means any variable that is used by the variable
-                    // will get spilled into the binding.  This is clearly conservative, but simplifies
-                    // the analysis.
-                    IRClosure cl = ((WrappedIRClosure) o).getClosure();
-
-                    // If the call is a dataflow barrier, we have to spill everything here
-                    boolean spillAllVars = scopeBindingHasEscaped || call.targetRequiresCallersBinding();
-
-                    // - If all variables have to be spilled, then those variables will no longer be dirty after the call site
-                    // - If a variable is used in the closure (FIXME: Strictly only those vars that are live at the call site --
-                    //   but we dont have this info!), it has to be spilt. So, these variables are no longer dirty after the call site.
-                    // - If a variable is (re)defined in the closure, it will always be loaded after the call. So, we have to always
-                    //   spill it before the call in the scenario that the closure never gets executed! So, it won't be dirty after
-                    //   the call site.
-                    Set<LocalVariable> newDirtyVars = new HashSet<LocalVariable>(dirtyVars);
-                    for (LocalVariable v : dirtyVars) {
-                        if (spillAllVars || cl.usesLocalVariable(v) || cl.definesLocalVariable(v)) {
-                            newDirtyVars.remove(v);
-                        }
+                // - If all variables have to be spilled, then those variables will no longer be dirty after the call site
+                // - If a variable is used in the closure (FIXME: Strictly only those vars that are live at the call site --
+                //   but we dont have this info!), it has to be spilt. So, these variables are no longer dirty after the call site.
+                // - If a variable is (re)defined in the closure, it will always be loaded after the call. So, we have to always
+                //   spill it before the call in the scenario that the closure never gets executed! So, it won't be dirty after
+                //   the call site.
+                Set<LocalVariable> newDirtyVars = new HashSet<LocalVariable>(dirtyVars);
+                for (LocalVariable v : dirtyVars) {
+                    if (spillAllVars || cl.usesLocalVariable(v) || cl.definesLocalVariable(v)) {
+                        newDirtyVars.remove(v);
                     }
-                    dirtyVars = newDirtyVars;
-                } else if (scopeBindingHasEscaped || call.targetRequiresCallersBinding()) { // Call has no closure && it requires stores
-                    dirtyVars.clear();
+                }
+                dirtyVars = newDirtyVars;
+            } else if (scopeBindingHasEscaped) { // Call has no closure && it requires stores
+                dirtyVars.clear();
+            } else {
+                // All variables not local to the current scope have to be always spilled because of
+                // multi-threading scenarios where some other scope could load this variable concurrently.
+                //
+                // Allocate a new hash-set and modify it to get around ConcurrentModificationException on dirtyVars
+                Set<LocalVariable> newDirtyVars = new HashSet<LocalVariable>(dirtyVars);
+                for (LocalVariable v : dirtyVars) {
+                    if ((v instanceof ClosureLocalVariable) && !((ClosureLocalVariable)v).isDefinedLocally()) {
+                        newDirtyVars.remove(v);
+                    }
+                }
+                dirtyVars = newDirtyVars;
+            }
+        } else if (i instanceof ReturnBase || i instanceof BreakInstr) {
+            // Wherever control leaves the scope (returns, breaks)
+            // we need a binding store on exit only for vars that are both:
+            //
+            //   (a) dirty,
+            //   (b) live on exit.
+            //       condition useful because the variable could be dirty but not used outside.
+            //         Ex: s=0; a.each { |i| j = i+1; sum += j; return if j < 5; sum += 1; }; puts sum
+            //       i,j are dirty inside the block, but not used outside
+            //
+            // If this also happens to be exit BB, we would have intersected already earlier -- so no need to do it again!
+
+            if (!getBB().isExitBB()) {
+                LiveVariablesProblem lvp = scope.getLiveVariablesProblem();
+                java.util.Collection<LocalVariable> liveVars = lvp.getLocalVarsLiveOnScopeEntry();
+                if (liveVars != null) {
+                    dirtyVars.retainAll(liveVars); // Intersection with variables live on exit from the scope
                 } else {
-                    // All variables not local to the current scope have to be always spilled because of
-                    // multi-threading scenarios where some other scope could load this variable concurrently.
-                    //
-                    // Allocate a new hash-set and modify it to get around ConcurrentModificationException on dirtyVars
-                    Set<LocalVariable> newDirtyVars = new HashSet<LocalVariable>(dirtyVars);
-                    for (LocalVariable v : dirtyVars) {
-                        if ((v instanceof ClosureLocalVariable) && ((ClosureLocalVariable)v).definingScope != scope) {
-                            newDirtyVars.remove(v);
-                        }
-                    }
-                    dirtyVars = newDirtyVars;
+                    dirtyVars.clear();
                 }
             }
-
-            if (scopeBindingHasEscaped && (i.getOperation() == Operation.PUT_GLOBAL_VAR)) {
-                // global-var tracing can execute closures set up in previous trace-var calls
-                // in which case we would have the 'scopeBindingHasEscaped' flag set to true
-                dirtyVars.clear();
-            }
-
-            // If this instruction can raise an exception and we are going to be rescued,
-            // spill all dirty vars before the instruction!
-            if (i.canRaiseException() && (rescueNode != null)) {
-                dirtyVars.clear();
-            }
-
-            if (i instanceof ResultInstr) {
-                Variable v = ((ResultInstr) i).getResult();
-
-                // %self is local to every scope and never crosses scope boundaries and need not be spilled/refilled
-                if (v instanceof LocalVariable && !((LocalVariable) v).isSelf()) dirtyVars.add((LocalVariable) v);
-            }
-
-            if (i.getOperation().isReturn()) dirtyVars.clear();
         }
 
-        if (outDirtyVars.equals(dirtyVars)) return false;
+        if (scopeBindingHasEscaped && (i.getOperation() == Operation.PUT_GLOBAL_VAR)) {
+            // global-var tracing can execute closures set up in previous trace-var calls
+            // in which case we would have the 'scopeBindingHasEscaped' flag set to true
+            dirtyVars.clear();
+        }
 
+        // If this instruction can raise an exception and we are going to be rescued,
+        // spill all dirty vars before the instruction!
+        if (i.canRaiseException() && hasExceptionsRescued()) {
+            dirtyVars.clear();
+        }
+
+        if (i instanceof ResultInstr) {
+            Variable v = ((ResultInstr) i).getResult();
+
+            // %self is local to every scope and never crosses scope boundaries and need not be spilled/refilled
+            if (v instanceof LocalVariable && !v.isSelf()) dirtyVars.add((LocalVariable) v);
+        }
+    }
+
+    @Override
+    public boolean solutionChanged() {
+        return !outDirtyVars.equals(dirtyVars);
+    }
+
+    @Override
+    public void finalizeSolution() {
         outDirtyVars = dirtyVars;
-
-        return true;
     }
 
     @Override
@@ -145,68 +176,23 @@ public class StoreLocalVarPlacementNode extends FlowGraphNode {
         return "";
     }
 
-    private TemporaryVariable getLocalVarReplacement(LocalVariable v, IRScope scope, Map<Operand, Operand> varRenameMap) {
-         TemporaryVariable value = (TemporaryVariable)varRenameMap.get(v);
-         if (value == null) {
-             value = scope.getNewTemporaryVariable("%t_" + v.getName());
-             varRenameMap.put(v, value);
-         }
-         return value;
-    }
-
-    private boolean addClosureExitStoreLocalVars(IRScope scope, ListIterator<Instr> instrs, Set<LocalVariable> dirtyVars, Map<Operand, Operand> varRenameMap) {
-        boolean addedStores  = false;
-        boolean isEvalScript = scope instanceof IREvalScript;
-        for (LocalVariable v : dirtyVars) {
-            if (isEvalScript || !(v instanceof ClosureLocalVariable) || (scope != ((ClosureLocalVariable)v).definingScope)) {
-                addedStores = true;
-                instrs.add(new StoreLocalVarInstr(getLocalVarReplacement(v, scope, varRenameMap), scope, v));
-            }
-        }
-        return addedStores;
-    }
-
     public boolean addStores(Map<Operand, Operand> varRenameMap, Set<LocalVariable> excTargetDirtyVars) {
-        StoreLocalVarPlacementProblem bsp = (StoreLocalVarPlacementProblem) problem;
-        IRScope scope = bsp.getScope();
+        IRScope scope = problem.getScope();
 
         boolean addedStores            = false;
         boolean isClosure              = scope instanceof IRClosure;
-        boolean isEvalScript           = scope instanceof IREvalScript;
         boolean scopeBindingHasEscaped = scope.bindingHasEscaped();
 
         ListIterator<Instr> instrs    = basicBlock.getInstrs().listIterator();
-        Set<LocalVariable>  dirtyVars = new HashSet<LocalVariable>(inDirtyVars);
 
-        // Rescue node, if any
-        StoreLocalVarPlacementNode rescueNode = (StoreLocalVarPlacementNode)getNonExitBBExceptionTargetNode();
-
-        // If this is the exit BB, we need a binding store on exit only for vars that are both:
-        //
-        //   (a) dirty,
-        //   (b) live on exit from the closure
-        //       condition reqd. because the variable could be dirty but not used outside.
-        //         Ex: s=0; a.each { |i| j = i+1; sum += j; }; puts sum
-        //       i,j are dirty inside the block, but not used outside
-
-        boolean amExitBB = basicBlock == scope.cfg().getExitBB();
-
-        if (amExitBB) {
-            LiveVariablesProblem lvp = (LiveVariablesProblem)scope.getDataFlowSolution(DataFlowConstants.LVP_NAME);
-            java.util.Collection<LocalVariable> liveVars = lvp.getVarsLiveOnScopeExit();
-            if (liveVars != null) {
-                dirtyVars.retainAll(liveVars); // Intersection with variables live on exit from the scope
-            } else {
-                dirtyVars.clear();
-            }
-        }
+        initSolution();
 
         while (instrs.hasNext()) {
             Instr i = instrs.next();
 
-            if (i instanceof CallBase) {
-                CallBase call = (CallBase) i;
-                Operand o = call.getClosureArg(null);
+            // Process closure accepting instrs specially -- these are the sites of binding stores!
+            if (i instanceof ClosureAcceptingInstr) {
+                Operand o = ((ClosureAcceptingInstr)i).getClosureArg();
                 if (o != null && o instanceof WrappedIRClosure) {
                     IRClosure cl = ((WrappedIRClosure) o).getClosure();
 
@@ -214,7 +200,7 @@ public class StoreLocalVarPlacementNode extends FlowGraphNode {
                     instrs.previous();
 
                     // If the call is a dataflow barrier, we have to spill everything here
-                    boolean spillAllVars = scopeBindingHasEscaped || call.targetRequiresCallersBinding();
+                    boolean spillAllVars = scopeBindingHasEscaped;
 
                     // Unless we have to spill everything, spill only those dirty variables that are:
                     // - used in the closure (FIXME: Strictly only those vars that are live at the call site -- but we dont have this info!)
@@ -225,18 +211,18 @@ public class StoreLocalVarPlacementNode extends FlowGraphNode {
                         // we'll be in trouble in that scenario!
                         if (spillAllVars || cl.usesLocalVariable(v) || cl.definesLocalVariable(v)) {
                             addedStores = true;
-                            instrs.add(new StoreLocalVarInstr(getLocalVarReplacement(v, scope, varRenameMap), scope, v));
+                            instrs.add(new StoreLocalVarInstr(scope, problem.getLocalVarReplacement(v, varRenameMap), v));
                             newDirtyVars.remove(v);
                         }
                     }
                     dirtyVars = newDirtyVars;
                     instrs.next();
-                } else if (scopeBindingHasEscaped || call.targetRequiresCallersBinding()) { // Call has no closure && it requires stores
+                } else if (scopeBindingHasEscaped) { // Call has no closure && it requires stores
                     // Add before call -- hence instrs.previous & instrs.next
                     instrs.previous();
                     for (LocalVariable v : dirtyVars) {
                         addedStores = true;
-                        instrs.add(new StoreLocalVarInstr(getLocalVarReplacement(v, scope, varRenameMap), scope, v));
+                        instrs.add(new StoreLocalVarInstr(scope, problem.getLocalVarReplacement(v, varRenameMap), v));
                     }
                     instrs.next();
                     dirtyVars.clear();
@@ -249,30 +235,36 @@ public class StoreLocalVarPlacementNode extends FlowGraphNode {
                     // Allocate a new hash-set and modify it to get around ConcurrentModificationException on dirtyVars
                     Set<LocalVariable> newDirtyVars = new HashSet<LocalVariable>(dirtyVars);
                     for (LocalVariable v : dirtyVars) {
-                        if ((v instanceof ClosureLocalVariable) && ((ClosureLocalVariable)v).definingScope != scope) {
+                        // SSS FIXME: I guess we cannot use v.getScopeDepth() > 0 because the variable could be a cloned
+                        // instance from a different depth and that could mislead us. See if there is a way to fix this.
+                        // If we introduced 'definingScope' in all local variables, we could simply check for scope match
+                        // without the instanceof check here.
+                        if (   (v instanceof ClosureLocalVariable && !((ClosureLocalVariable)v).isDefinedLocally())
+                            || (!(v instanceof ClosureLocalVariable) && scope.getScopeType().isClosureType()))
+                        {
                             addedStores = true;
-                            instrs.add(new StoreLocalVarInstr(getLocalVarReplacement(v, scope, varRenameMap), scope, v));
+                            instrs.add(new StoreLocalVarInstr(scope, problem.getLocalVarReplacement(v, varRenameMap), v));
                             newDirtyVars.remove(v);
                         }
                     }
                     dirtyVars = newDirtyVars;
                     instrs.next();
                 }
-            } else if ((isClosure && (i instanceof ReturnInstr)) || (i instanceof BreakInstr)) {
-                // At closure return and break instructions (both of which are exits from the closure),
+            } else if (i instanceof ReturnBase || i instanceof BreakInstr) {
+                // Wherever control leaves the scope (returns, breaks)
                 // we need a binding store on exit only for vars that are both:
                 //
                 //   (a) dirty,
-                //   (b) live on exit from the closure
-                //       condition reqd. because the variable could be dirty but not used outside.
+                //   (b) live on exit.
+                //       condition useful because the variable could be dirty but not used outside.
                 //         Ex: s=0; a.each { |i| j = i+1; sum += j; return if j < 5; sum += 1; }; puts sum
                 //       i,j are dirty inside the block, but not used outside
                 //
                 // If this also happens to be exit BB, we would have intersected already earlier -- so no need to do it again!
 
-                if (!amExitBB) {
-                    LiveVariablesProblem lvp = (LiveVariablesProblem)scope.getDataFlowSolution(DataFlowConstants.LVP_NAME);
-                    java.util.Collection<LocalVariable> liveVars = lvp.getVarsLiveOnScopeExit();
+                if (!basicBlock.isExitBB()) {
+                    LiveVariablesProblem lvp = scope.getLiveVariablesProblem();
+                    java.util.Collection<LocalVariable> liveVars = lvp.getLocalVarsLiveOnScopeEntry();
                     if (liveVars != null) {
                         dirtyVars.retainAll(liveVars); // Intersection with variables live on exit from the scope
                     } else {
@@ -282,7 +274,7 @@ public class StoreLocalVarPlacementNode extends FlowGraphNode {
 
                 // Add before call
                 instrs.previous();
-                boolean f = addClosureExitStoreLocalVars(scope, instrs, dirtyVars, varRenameMap);
+                boolean f = problem.addScopeExitStoreLocalVars(instrs, dirtyVars, varRenameMap);
                 addedStores = addedStores || f;
                 instrs.next();
 
@@ -290,26 +282,28 @@ public class StoreLocalVarPlacementNode extends FlowGraphNode {
                 dirtyVars.clear();
             }
 
-            if (scopeBindingHasEscaped && (i.getOperation() == Operation.PUT_GLOBAL_VAR)) {
-                // global-var tracing can execute closures set up in previous trace-var calls
-                // in which case we would have the 'scopeBindingHasEscaped' flag set to true
+            if ((scopeBindingHasEscaped && i.getOperation() == Operation.PUT_GLOBAL_VAR)
+                || i.getOperation() == Operation.THREAD_POLL) {
+                // 1. Global-var tracing can execute closures set up in previous trace-var calls
+                // in which case we would have the 'scopeBindingHasEscaped' flag set to true.
+                // 2. Threads can update bindings, so we treat thread poll boundaries the same way.
                 instrs.previous();
                 for (LocalVariable v : dirtyVars) {
                     addedStores = true;
-                    instrs.add(new StoreLocalVarInstr(getLocalVarReplacement(v, scope, varRenameMap), scope, v));
+                    instrs.add(new StoreLocalVarInstr(scope, problem.getLocalVarReplacement(v, varRenameMap), v));
                 }
                 instrs.next();
                 dirtyVars.clear();
             }
 
             if (i.canRaiseException()) {
-                if (rescueNode != null) {
+                if (hasExceptionsRescued()) {
                     // If exceptions will be rescued, spill every dirty var here
                     // Add before excepting instr -- hence instrs.previous & instrs.next
                     instrs.previous();
                     for (LocalVariable v : dirtyVars) {
                         addedStores = true;
-                        instrs.add(new StoreLocalVarInstr(getLocalVarReplacement(v, scope, varRenameMap), scope, v));
+                        instrs.add(new StoreLocalVarInstr(scope, problem.getLocalVarReplacement(v, varRenameMap), v));
                     }
                     instrs.next();
                     dirtyVars.clear();
@@ -323,21 +317,21 @@ public class StoreLocalVarPlacementNode extends FlowGraphNode {
                 Variable v = ((ResultInstr) i).getResult();
 
                 // %self is local to every scope and never crosses scope boundaries and need not be spilled/refilled
-                if (v instanceof LocalVariable && !((LocalVariable) v).isSelf()) {
+                if (v instanceof LocalVariable && !v.isSelf()) {
                     LocalVariable lv = (LocalVariable) v;
                     dirtyVars.add(lv);
 
                     // Make sure there is a replacement tmp-var allocated for lv
-                    getLocalVarReplacement(lv, scope, varRenameMap);
+                    problem.getLocalVarReplacement(lv, varRenameMap);
                 }
             }
         }
 
         // If this is the exit BB, add binding stores for all vars that are still dirty
-        if (amExitBB) {
+        if (basicBlock.isExitBB()) {
             // Last instr could be a return -- so, move iterator one position back
             if (instrs.hasPrevious()) instrs.previous();
-            boolean f = addClosureExitStoreLocalVars(scope, instrs, dirtyVars, varRenameMap);
+            boolean f = problem.addScopeExitStoreLocalVars(instrs, dirtyVars, varRenameMap);
             addedStores = addedStores || f;
         }
 
@@ -346,4 +340,5 @@ public class StoreLocalVarPlacementNode extends FlowGraphNode {
 
     Set<LocalVariable> inDirtyVars;   // On entry to flow graph node:  Variables that need to be stored to the heap binding
     Set<LocalVariable> outDirtyVars;  // On exit from flow graph node: Variables that need to be stored to the heap binding
+    Set<LocalVariable> dirtyVars;     // Temporary state while applying transfer function
 }

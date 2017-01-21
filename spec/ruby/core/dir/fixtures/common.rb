@@ -1,3 +1,5 @@
+# encoding: utf-8
+
 module DirSpecs
   def self.mock_dir(dirs = ['dir_specs_mock'])
     @mock_dir ||= tmp("")
@@ -7,7 +9,7 @@ module DirSpecs
   def self.nonexistent
     name = File.join mock_dir, "nonexistent00"
     name = name.next while File.exist? name
-    File.join mock_dir, name
+    name
   end
 
   # TODO: make these relative to the mock_dir
@@ -90,6 +92,8 @@ module DirSpecs
           special/?
 
           special/|
+
+          special/こんにちは.txt
         ]
       end
     end
@@ -98,17 +102,20 @@ module DirSpecs
   end
 
   def self.create_mock_dirs
-    umask = File.umask 0
     mock_dir_files.each do |name|
       file = File.join mock_dir, name
       mkdir_p File.dirname(file)
       touch file
     end
-    File.umask umask
   end
 
   def self.delete_mock_dirs
-    rm_r mock_dir
+    begin
+      rm_r mock_dir
+    rescue Errno::ENOTEMPTY => e
+      puts Dir["#{mock_dir}/**/*"]
+      raise e
+    end
   end
 
   def self.mock_rmdir(*dirs)
@@ -128,7 +135,7 @@ module DirSpecs
 
     dirs.reverse_each do |d|
       dir = File.join base_dir, d
-      if File.exists? dir
+      if File.exist? dir
         File.chmod 0777, dir
         rm_r dir
       end
@@ -138,7 +145,7 @@ module DirSpecs
     if create
       dirs.each do |d|
         dir = File.join base_dir, d
-        unless File.exists? dir
+        unless File.exist? dir
           mkdir_p dir
           File.chmod 0777, dir
         end

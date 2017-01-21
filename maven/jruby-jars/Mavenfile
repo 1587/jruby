@@ -3,13 +3,14 @@ require 'fileutils'
 
 gemspec
 
-version = File.read( File.join( basedir, '..', '..', 'VERSION' ) ).strip
+version = ENV['JRUBY_VERSION'] ||
+  File.read( File.join( basedir, '..', '..', 'VERSION' ) ).strip
+
+# maven does treats prereleased version as snapshot - undo it here
+ruby_version = model.version.sub( /-SNAPSHOT/, '' )
+self.version nil
 
 inherit "org.jruby:jruby-artifacts:#{version}"
-
-ruby_version = model.version
-
-model.version = nil
 
 name "JRuby Jars Gem"
 
@@ -28,16 +29,22 @@ properties( 'tesla.dump.pom' => 'pom.xml',
             'tesla.dump.readonly' => true,
             'jruby.plugins.version' => '1.0.7',
             # we share the already installed gems
-            'gem.home' => '${jruby.home}/lib/ruby/gems/shared',
-            'jruby.home' => '${basedir}/../../' )
+            'gem.home' => '${jruby_home}/lib/ruby/gems/shared',
+            # need jruby_home but not jruby.home as name otherwise
+            # polyglot-plugin will pick the jruby from jruby.home
+            'jruby_home' => '${basedir}/../../' )
+
+  unless version =~ /-SNAPSHOT/
+    properties 'jruby.home' => '${basedir}/../..'
+  end
 
 execute 'copy jruby.jar', 'prepare-package' do |ctx|
-  FileUtils.cp( File.join( ctx.project.properties[ 'jruby.home' ],
+  source = File.expand_path( ctx.project.properties[ 'jruby_home' ].to_pathname )
+  # TODO somehow the lib/jruby.jar gets moved away to avoid conflicts
+  FileUtils.cp( Dir[ File.join( source, "lib/jruby.jar" ) ].first,
+                File.join( ctx.project.basedir.to_pathname, 
                            'lib',
-                           'jruby.jar' ),
-                File.join( ctx.project.basedir.to_s, 
-                           'lib',
-                           "jruby-core-#{ctx.project.version}.jar" ) )
+                           "jruby-core-#{ctx.project.version}-complete.jar" ) )
 end
 
 # do not push the gem during deploy phase

@@ -11,16 +11,28 @@ describe "Socket::Constants" do
   end
 
   it "defines protocol families" do
-    consts = ["PF_INET6", "PF_INET", "PF_IPX", "PF_UNIX", "PF_UNSPEC"]
+    consts = ["PF_INET6", "PF_INET", "PF_UNIX", "PF_UNSPEC"]
     consts.each do |c|
       Socket::Constants.should have_constant(c)
     end
   end
 
+  platform_is_not :aix do
+    it "defines PF_IPX protocol" do
+      Socket::Constants.should have_constant("PF_IPX")
+    end
+  end
+
   it "defines address families" do
-    consts = ["AF_INET6", "AF_INET", "AF_IPX", "AF_UNIX", "AF_UNSPEC"]
+    consts = ["AF_INET6", "AF_INET", "AF_UNIX", "AF_UNSPEC"]
     consts.each do |c|
       Socket::Constants.should have_constant(c)
+    end
+  end
+
+  platform_is_not :aix do
+    it "defines AF_IPX address" do
+      Socket::Constants.should have_constant("AF_IPX")
     end
   end
 
@@ -44,19 +56,33 @@ describe "Socket::Constants" do
     consts.each do |c|
       Socket::Constants.should have_constant(c)
     end
-
   end
 
   it "defines multicast options" do
-    consts = ["IP_ADD_MEMBERSHIP", "IP_DEFAULT_MULTICAST_LOOP", "IP_DEFAULT_MULTICAST_TTL",
-              "IP_MAX_MEMBERSHIPS", "IP_MULTICAST_LOOP", "IP_MULTICAST_TTL"]
+    consts = ["IP_ADD_MEMBERSHIP",
+              "IP_MULTICAST_LOOP", "IP_MULTICAST_TTL"]
+    platform_is_not :windows do
+      consts += ["IP_DEFAULT_MULTICAST_LOOP", "IP_DEFAULT_MULTICAST_TTL"]
+    end
     consts.each do |c|
       Socket::Constants.should have_constant(c)
     end
   end
 
+  platform_is_not :solaris, :windows, :aix do
+    it "defines multicast options" do
+      consts = ["IP_MAX_MEMBERSHIPS"]
+      consts.each do |c|
+        Socket::Constants.should have_constant(c)
+      end
+    end
+  end
+
   it "defines TCP options" do
-    consts = ["TCP_MAXSEG", "TCP_NODELAY"]
+    consts = ["TCP_NODELAY"]
+    platform_is_not :windows do
+      consts << "TCP_MAXSEG"
+    end
     consts.each do |c|
       Socket::Constants.should have_constant(c)
     end

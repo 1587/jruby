@@ -34,11 +34,12 @@ import org.jruby.RubyClass;
 import org.jruby.RubyFixnum;
 import org.jruby.anno.JRubyClass;
 import org.jruby.anno.JRubyMethod;
+import org.jruby.ast.util.ArgsUtil;
 import org.jruby.common.IRubyWarnings;
 import org.jruby.runtime.ObjectAllocator;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.util.io.ChannelDescriptor;
+import org.jruby.util.io.ChannelFD;
 import org.jruby.util.io.ModeFlags;
 import org.jruby.util.io.Sockaddr;
 
@@ -46,6 +47,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.SocketException;
+import java.net.StandardSocketOptions;
 import java.net.UnknownHostException;
 import java.nio.channels.Channel;
 import java.nio.channels.IllegalBlockingModeException;
@@ -95,16 +97,22 @@ public class RubyServerSocket extends RubySocket {
 
     @JRubyMethod()
     public IRubyObject bind(ThreadContext context, IRubyObject addr) {
-        InetSocketAddress iaddr = Sockaddr.addressFromArg(context, addr);
-        doBind(context, getChannel(), iaddr, 0);
-
-        return RubyFixnum.zero(context.runtime);
+        return bind(context, addr, RubyFixnum.zero(context.runtime));
     }
 
     @JRubyMethod()
     public IRubyObject bind(ThreadContext context, IRubyObject addr, IRubyObject backlog) {
-        InetSocketAddress iaddr = Sockaddr.addressFromArg(context, addr);
+        final InetSocketAddress iaddr;
 
+        if (addr instanceof Addrinfo) {
+            Addrinfo addrInfo = (Addrinfo) addr;
+            if (!addrInfo.ip_p(context).isTrue()) {
+                throw context.runtime.newTypeError("not an INET or INET6 address: " + addrInfo);
+            }
+            iaddr = new InetSocketAddress(addrInfo.getInetAddress().getHostAddress(), addrInfo.getPort());
+        } else {
+            iaddr = Sockaddr.addressFromSockaddr_in(context, addr);
+        }
         doBind(context, getChannel(), iaddr, RubyFixnum.fix2int(backlog));
 
         return RubyFixnum.zero(context.runtime);
@@ -112,38 +120,41 @@ public class RubyServerSocket extends RubySocket {
 
     @JRubyMethod()
     public IRubyObject accept(ThreadContext context) {
-        return doAccept(context, getChannel());
+        return doAccept(this, context, true);
     }
 
     @JRubyMethod()
     public IRubyObject accept_nonblock(ThreadContext context) {
-        return doAcceptNonblock(context, getChannel());
+        return accept_nonblock(context, context.nil);
     }
 
-    protected ChannelDescriptor initChannel(Ruby runtime) {
+    @JRubyMethod()
+    public IRubyObject accept_nonblock(ThreadContext context, IRubyObject opts) {
+        return doAcceptNonblock(this, context, ArgsUtil.extractKeywordArg(context, "exception", opts) != context.runtime.getFalse());
+    }
+
+    @Override
+    protected ChannelFD initChannelFD(Ruby runtime) {
         Channel channel;
 
         try {
-            if(soType == Sock.SOCK_STREAM) {
+            if (soType == Sock.SOCK_STREAM) {
                 channel = ServerSocketChannel.open();
-
-            } else {
+            }
+            else {
                 throw runtime.newArgumentError("unsupported server socket type `" + soType + "'");
-
             }
 
-            ModeFlags modeFlags = newModeFlags(runtime, ModeFlags.RDWR);
-
-            return new ChannelDescriptor(channel, modeFlags);
-
-        } catch(IOException e) {
-            throw SocketUtils.sockerr(runtime, "initialize: " + e.toString());
-
+            return newChannelFD(runtime, channel);
+        }
+        catch (IOException e) {
+            throw sockerr(runtime, "initialize: " + e.toString(), e);
         }
     }
 
-    private RubyArray doAcceptNonblock(ThreadContext context, Channel channel) {
+    public static IRubyObject doAcceptNonblock(RubySocket sock, ThreadContext context, boolean ex) {
         try {
+            Channel channel = sock.getChannel();
             if (channel instanceof SelectableChannel) {
                 SelectableChannel selectable = (SelectableChannel)channel;
 
@@ -153,8 +164,9 @@ public class RubyServerSocket extends RubySocket {
                     try {
                         selectable.configureBlocking(false);
 
-                        RubySocket socket = doAccept(context, channel);
-                        SocketChannel socketChannel = (SocketChannel)socket.getChannel();
+                        IRubyObject socket = doAccept(sock, context, ex);
+                        if (!(socket instanceof RubySocket)) return socket;
+                        SocketChannel socketChannel = (SocketChannel)((RubySocket)socket).getChannel();
                         InetSocketAddress addr = (InetSocketAddress)socketChannel.socket().getRemoteSocketAddress();
 
                         return context.runtime.newArray(
@@ -164,23 +176,24 @@ public class RubyServerSocket extends RubySocket {
                         selectable.configureBlocking(oldBlocking);
                     }
                 }
-            } else {
-                throw getRuntime().newErrnoENOPROTOOPTError();
-
             }
-
-        } catch(IOException e) {
-            throw SocketUtils.sockerr(context.runtime, e.getLocalizedMessage());
-
+            else {
+                throw context.runtime.newErrnoENOPROTOOPTError();
+            }
+        }
+        catch (IOException e) {
+            throw sockerr(context.runtime, e.getLocalizedMessage(), e);
         }
     }
 
-    private RubySocket doAccept(ThreadContext context, Channel channel) {
+    public static IRubyObject doAccept(RubySocket sock, ThreadContext context, boolean ex) {
         Ruby runtime = context.runtime;
+
+        Channel channel = sock.getChannel();
 
         try {
             if (channel instanceof ServerSocketChannel) {
-                ServerSocketChannel serverChannel = (ServerSocketChannel)getChannel();
+                ServerSocketChannel serverChannel = (ServerSocketChannel)sock.getChannel();
 
                 SocketChannel socket = serverChannel.accept();
 
@@ -188,25 +201,24 @@ public class RubyServerSocket extends RubySocket {
                     // This appears to be undocumented in JDK; null as a sentinel value
                     // for a nonblocking accept with nothing available. We raise for Ruby.
                     // indicates that no connection is available in non-blocking mode
+                    if (!ex) return runtime.newSymbol("wait_readable");
                     throw runtime.newErrnoEAGAINReadableError("accept(2) would block");
                 }
 
                 RubySocket rubySocket = new RubySocket(runtime, runtime.getClass("Socket"));
-                rubySocket.initFromServer(runtime, this, socket);
+                rubySocket.initFromServer(runtime, sock, socket);
 
-                return rubySocket;
-
-            } else {
-                throw runtime.newErrnoENOPROTOOPTError();
+                return runtime.newArray(rubySocket, new Addrinfo(runtime, runtime.getClass("Addrinfo"), socket.getRemoteAddress()));
             }
-
-        } catch (IllegalBlockingModeException ibme) {
+            throw runtime.newErrnoENOPROTOOPTError();
+        }
+        catch (IllegalBlockingModeException e) {
             // indicates that no connection is available in non-blocking mode
+            if (!ex) return runtime.newSymbol("wait_readable");
             throw runtime.newErrnoEAGAINReadableError("accept(2) would block");
-
-        } catch(IOException e) {
-            throw SocketUtils.sockerr(runtime, e.getLocalizedMessage());
-
+        }
+        catch (IOException e) {
+            throw sockerr(runtime, e.getLocalizedMessage(), e);
         }
     }
 
@@ -217,23 +229,22 @@ public class RubyServerSocket extends RubySocket {
             if (channel instanceof ServerSocketChannel) {
                 ServerSocket socket = ((ServerSocketChannel)channel).socket();
                 socket.bind(iaddr, backlog);
-
-            } else {
+            }
+            else {
                 throw runtime.newErrnoENOPROTOOPTError();
             }
-
-        } catch(UnknownHostException e) {
+        }
+        catch (UnknownHostException e) {
             throw SocketUtils.sockerr(runtime, "bind(2): unknown host");
-
-        } catch(SocketException e) {
-            handleSocketException(runtime, "bind", e);
-
-        } catch(IOException e) {
-            throw SocketUtils.sockerr(runtime, "bind(2): name or service not known");
-
-        } catch (IllegalArgumentException iae) {
-            throw SocketUtils.sockerr(runtime, iae.getMessage());
-
+        }
+        catch (SocketException e) {
+            handleSocketException(runtime, e, "bind(2)", iaddr);
+        }
+        catch (IOException e) {
+            throw sockerr(runtime, "bind(2): name or service not known", e);
+        }
+        catch (IllegalArgumentException e) {
+            throw sockerr(runtime, e.getMessage(), e);
         }
     }
 }// RubySocket

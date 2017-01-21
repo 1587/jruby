@@ -29,16 +29,30 @@
 package org.jruby.parser;
 
 import java.io.Serializable;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.util.Arrays;
 
 import org.jruby.RubyModule;
 import org.jruby.RubyObject;
 import org.jruby.ast.AssignableNode;
+import org.jruby.ast.DAsgnNode;
+import org.jruby.ast.DVarNode;
+import org.jruby.ast.IScopedNode;
+import org.jruby.ast.LocalAsgnNode;
+import org.jruby.ast.LocalVarNode;
 import org.jruby.ast.Node;
+import org.jruby.ast.VCallNode;
+import org.jruby.ir.IRScope;
+import org.jruby.ir.IRScopeType;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Arity;
 import org.jruby.runtime.DynamicScope;
+import org.jruby.runtime.Helpers;
+import org.jruby.runtime.Signature;
+import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.runtime.scope.DummyDynamicScope;
+import org.jruby.runtime.scope.DynamicScopeGenerator;
+import org.jruby.runtime.scope.ManyVarsDynamicScope;
 
 /**
  * StaticScope represents lexical scoping of variables and module/class constants.
@@ -51,37 +65,82 @@ import org.jruby.runtime.scope.DummyDynamicScope;
  * will point to the previous scope of the enclosing module/class (cref).
  * 
  */
-public abstract class StaticScope implements Serializable {
-    private static final long serialVersionUID = 4843861446986961013L;
-    
+public class StaticScope implements Serializable {
+    private static final int MAX_SPECIALIZED_SIZE = 50;
+    private static final long serialVersionUID = 3423852552352498148L;
+    private static final MethodHandles.Lookup LOOKUP = MethodHandles.publicLookup();
+
     // Next immediate scope.  Variable and constant scoping rules make use of this variable
     // in different ways.
     final protected StaticScope enclosingScope;
-    
+
     // Live reference to module
     private transient RubyModule cref = null;
-    
+
     // Next CRef down the lexical structure
     private StaticScope previousCRefScope = null;
-    
-    // Our name holder (offsets are assigned as variables are added
+
+    // Our name holder (offsets are assigned as variables are added)
     private String[] variableNames;
-    
-    // number of variables in this scope representing required arguments
-    private int requiredArgs = 0;
-    
-    // number of variables in this scope representing optional arguments
-    private int optionalArgs = 0;
-    
-    // index of variable that represents a "rest" arg
-    private int restArg = -1;
-    
+
+    private int variableNamesLength;
+
+    // A list of booleans indicating which variables are named captures from regexp
+    private boolean[] namedCaptures;
+
+    // Arity of this scope if there is one
+    private Signature signature;
+
+    // File name where this static scope came from or null if a native or artificial scope
+    private String file;
+
     private DynamicScope dummyScope;
 
+    protected IRScopeType scopeType;
+
+    private static final String[] NO_NAMES = new String[0];
+
+    private Type type;
+    private boolean isBlockOrEval;
+    private boolean isArgumentScope; // Is this block and argument scope of a define_method.
+
+    private long commandArgumentStack;
+
+    private int firstKeywordIndex = -1;
+
+    // Method/Closure that this static scope corresponds to.  This is used to tell whether this
+    // scope refers to a method scope or to determined IRScope of the parent of a compiling eval.
+    private IRScope irScope;
+
+    private RubyModule overlayModule;
+
+    private MethodHandle constructor;
+
     public enum Type {
-        LOCAL,
-        BLOCK,
-        EVAL
+        LOCAL, BLOCK, EVAL;
+
+        public static Type fromOrdinal(int value) {
+            return value < 0 || value >= values().length ? null : values()[value];
+        }
+    }
+
+    /**
+     *
+     */
+    protected StaticScope(Type type, StaticScope enclosingScope, String file) {
+        this(type, enclosingScope, NO_NAMES);
+
+        this.file = file;
+    }
+
+    /**
+     * Construct a new static scope.
+     *
+     * @param type           the type of scope
+     * @param enclosingScope the lexically containing scope.
+     */
+    protected StaticScope(Type type, StaticScope enclosingScope) {
+        this(type, enclosingScope, NO_NAMES);
     }
 
     /**
@@ -89,15 +148,73 @@ public abstract class StaticScope implements Serializable {
      * interned versions, since several other optimizations depend on being
      * able to do object equality checks.
      *
-     * @param enclosingScope The lexically containing scope.
-     * @param names The list of interned String variable names.
+     * @param type           the type of scope
+     * @param enclosingScope the lexically containing scope.
+     * @param names          The list of interned String variable names.
      */
-    protected StaticScope(StaticScope enclosingScope, String[] names) {
+    protected StaticScope(Type type, StaticScope enclosingScope, String[] names, int firstKeywordIndex) {
         assert names != null : "names is not null";
         assert namesAreInterned(names);
-        
+
         this.enclosingScope = enclosingScope;
         this.variableNames = names;
+        this.variableNamesLength = names.length;
+        this.type = type;
+        this.irScope = null;
+        this.isBlockOrEval = (type != Type.LOCAL);
+        this.isArgumentScope = !isBlockOrEval;
+        this.firstKeywordIndex = firstKeywordIndex;
+    }
+
+    protected StaticScope(Type type, StaticScope enclosingScope, String[] names) {
+        this(type, enclosingScope, names, -1);
+    }
+
+    public int getFirstKeywordIndex() {
+        return firstKeywordIndex;
+    }
+
+    public DynamicScope construct(DynamicScope parent) {
+        MethodHandle constructor = this.constructor;
+
+        if (constructor == null) constructor = acquireConstructor();
+
+        try {
+            return (DynamicScope) constructor.invokeExact(this, parent);
+        } catch (Throwable e) {
+            Helpers.throwException(e);
+            return null; // not reached
+        }
+    }
+
+    private MethodHandle acquireConstructor() {
+        MethodHandle constructor;
+        int numberOfVariables = getNumberOfVariables();
+
+        if (numberOfVariables > MAX_SPECIALIZED_SIZE) {
+            constructor = ManyVarsDynamicScope.CONSTRUCTOR;
+        } else {
+            constructor = DynamicScopeGenerator.generate(numberOfVariables);
+        }
+        this.constructor = constructor;
+        return constructor;
+    }
+
+    public IRScope getIRScope() {
+        return irScope;
+    }
+
+    public IRScopeType getScopeType() {
+        return scopeType;
+    }
+
+    public void setScopeType(IRScopeType scopeType) {
+        this.scopeType = scopeType;
+    }
+
+    public void setIRScope(IRScope irScope) {
+        this.irScope = irScope;
+        this.scopeType = irScope.getScopeType();
     }
 
     /**
@@ -120,9 +237,16 @@ public abstract class StaticScope implements Serializable {
      * current scope.
      *
      * @param name of new variable
-     * @return index+depth merged location of scope
+     * @return index of variable
      */
     public int addVariableThisScope(String name) {
+        // Ignore duplicate "_" args in blocks
+        // (duplicate _ args are named "_$0")
+        // Dont allocate slots for them.
+        if (name.equals("_$0")) {
+            return -1;
+        }
+
         int slot = exists(name);
 
         if (slot >= 0) return slot;
@@ -135,6 +259,20 @@ public abstract class StaticScope implements Serializable {
     }
 
     /**
+     * Add a new named capture variable to this (current) scope.
+     *
+     * @param name name of variable.
+     * @return index of variable
+     */
+    public int addNamedCaptureVariable(String name) {
+        int index = addVariableThisScope(name);
+
+        growNamedCaptures(index);
+
+        return index;
+    }
+
+    /**
      * Add a new variable to this (current) scope unless it is already defined in any
      * reachable scope.
      *
@@ -142,44 +280,53 @@ public abstract class StaticScope implements Serializable {
      * @return index+depth merged location of scope
      */
     public int addVariable(String name) {
-        int slot = isDefined(name); 
+        int slot = isDefined(name);
 
         if (slot >= 0) return slot;
-            
+
         // This is perhaps innefficient timewise?  Optimal spacewise
         growVariableNames(name);
-        
+
         // Returns slot of variable
         return variableNames.length - 1;
     }
-    
+
     public String[] getVariables() {
         return variableNames;
     }
-    
+
     public int getNumberOfVariables() {
-        return variableNames.length;
+        return variableNamesLength;
     }
-    
+
     public void setVariables(String[] names) {
         assert names != null : "names is not null";
-        
+        assert namesAreInterned(names);
+
         variableNames = new String[names.length];
+        variableNamesLength = names.length;
         System.arraycopy(names, 0, variableNames, 0, names.length);
     }
 
-    /* Note: Only used by compiler until it can use getConstant again or use some other refactoring */
-    public IRubyObject getConstantWithConstMissing(String internedName) {
-        IRubyObject result = getConstantInner(internedName);
+    /**
+     * Gets a constant back from lexical search from the cref in this scope.
+     * As it is for defined? we will not forced resolution of autoloads nor
+     * call const_defined
+     */
+    public IRubyObject getConstantDefined(String internedName) {
+        IRubyObject result = cref.fetchConstant(internedName);
 
-        // If we could not find the constant from cref..then try getting from inheritence hierarchy
-        return result == null ? cref.getConstant(internedName) : result;        
+        if (result != null) return result;
+
+        return previousCRefScope == null ? null : previousCRefScope.getConstantDefinedNoObject(internedName);
     }
 
-    public boolean isConstantDefined(String internedName) {
-        return getConstant(internedName) != null;
+    public IRubyObject getConstantDefinedNoObject(String internedName) {
+        if (previousCRefScope == null) return null;
+
+        return getConstantDefined(internedName);
     }
-    
+
     public IRubyObject getConstant(String internedName) {
         IRubyObject result = getConstantInner(internedName);
 
@@ -196,69 +343,57 @@ public abstract class StaticScope implements Serializable {
 
         return previousCRefScope == null ? null : previousCRefScope.getConstantInnerNoObject(internedName);
     }
-    
+
     private IRubyObject getConstantInnerNoObject(String internedName) {
         if (previousCRefScope == null) return null;
 
         return getConstantInner(internedName);
     }
 
-    public IRubyObject setConstant(String internedName, IRubyObject result) {
-        RubyModule module;
-
-        if ((module = getModule()) != null) {
-            module.setConstant(internedName, result);
-            return result;
-        }
-
-        // TODO: wire into new exception handling mechanism
-        throw result.getRuntime().newTypeError("no class/module to define constant");
-    }
-    
     /**
      * Next outer most scope in list of scopes.  An enclosing scope may have no direct scoping
      * relationship to its child.  If I am in a localScope and then I enter something which
      * creates another localScope the enclosing scope will be the first scope, but there are
      * no valid scoping relationships between the two.  Methods which walk the enclosing scopes
      * are responsible for enforcing appropriate scoping relationships.
-     * 
+     *
      * @return the parent scope
      */
     public StaticScope getEnclosingScope() {
         return enclosingScope;
     }
-    
+
     /**
      * Does the variable exist?
-     * 
+     *
      * @param name of the variable to find
      * @return index of variable or -1 if it does not exist
      */
     public int exists(String name) {
         return findVariableName(name);
     }
-    
+
     private int findVariableName(String name) {
         for (int i = 0; i < variableNames.length; i++) {
             if (name == variableNames[i]) return i;
         }
         return -1;
     }
-    
+
     /**
      * Is this name in the visible to the current scope
-     * 
+     *
      * @param name to be looked for
      * @return a location where the left-most 16 bits of number of scopes down it is and the
-     *   right-most 16 bits represents its index in that scope
+     * right-most 16 bits represents its index in that scope
      */
     public int isDefined(String name) {
         return isDefined(name, 0);
     }
-    
+
     /**
      * Make a DASgn or LocalAsgn node based on scope logic
-     * 
+     *
      * @param position
      * @param name
      * @param value
@@ -267,25 +402,107 @@ public abstract class StaticScope implements Serializable {
     public AssignableNode assign(ISourcePosition position, String name, Node value) {
         return assign(position, name, value, this, 0);
     }
-    
+
+    /**
+     * Register a keyword argument with this staticScope.  It additionally will track
+     * where the first keyword argument started so we can test and tell whether we have
+     * a kwarg or an ordinary variable during live execution (See keywordExists).
+     * @param position
+     * @param name
+     * @param value
+     * @return
+     */
+    public AssignableNode assignKeyword(ISourcePosition position, String name, Node value) {
+        AssignableNode assignment = assign(position, name, value, this, 0);
+
+        // register first keyword index encountered
+        if (firstKeywordIndex == -1) firstKeywordIndex = ((IScopedNode) assignment).getIndex();
+
+        return assignment;
+    }
+
+    public boolean keywordExists(String name) {
+        int slot = exists(name);
+
+        return slot >= 0 && firstKeywordIndex != -1 && slot >= firstKeywordIndex;
+    }
+
     /**
      * Get all visible variables that we can see from this scope that have been assigned
      * (e.g. seen so far)
-     * 
+     *
      * @return a list of all names (sans $~ and $_ which are special names)
      */
-    public abstract String[] getAllNamesInScope();
-    
-    protected abstract int isDefined(String name, int depth);
-    protected abstract AssignableNode assign(ISourcePosition position, String name, Node value, 
-            StaticScope topScope, int depth);
-    protected abstract Node declare(ISourcePosition position, String name, int depth);
-    
+    public String[] getAllNamesInScope() {
+        String[] names = getVariables();
+        if (isBlockOrEval) {
+            String[] ourVariables = names;
+            String[] variables = enclosingScope.getAllNamesInScope();
+
+            // we know variables cannot be null since this IRStaticScope always returns a non-null array
+            names = new String[variables.length + ourVariables.length];
+
+            System.arraycopy(variables, 0, names, 0, variables.length);
+            System.arraycopy(ourVariables, 0, names, variables.length, ourVariables.length);
+        }
+
+        return names;
+    }
+
+    public int isDefined(String name, int depth) {
+        if (isBlockOrEval) {
+            int slot = exists(name);
+            if (slot >= 0) return (depth << 16) | slot;
+
+            return enclosingScope.isDefined(name, depth + 1);
+        } else {
+            return (depth << 16) | exists(name);
+        }
+    }
+
+    public AssignableNode addAssign(ISourcePosition position, String name, Node value) {
+        int slot = addVariable(name);
+        // No bit math to store level since we know level is zero for this case
+        return new DAsgnNode(position, name, slot, value);
+    }
+
+    public AssignableNode assign(ISourcePosition position, String name, Node value,
+                                 StaticScope topScope, int depth) {
+        int slot = exists(name);
+
+        // We can assign if we already have variable of that name here or we are the only
+        // scope in the chain (which Local scopes always are).
+        if (slot >= 0) {
+            return isBlockOrEval ? new DAsgnNode(position, name, ((depth << 16) | slot), value)
+                    : new LocalAsgnNode(position, name, ((depth << 16) | slot), value);
+        } else if (!isBlockOrEval && (topScope == this)) {
+            slot = addVariable(name);
+
+            return new LocalAsgnNode(position, name, slot, value);
+        }
+
+        // If we are not a block-scope and we go there, we know that 'topScope' is a block scope
+        // because a local scope cannot be within a local scope
+        // If topScope was itself it would have created a LocalAsgnNode above.
+        return isBlockOrEval ? enclosingScope.assign(position, name, value, topScope, depth + 1)
+                : topScope.addAssign(position, name, value);
+    }
+
+    public Node declare(ISourcePosition position, String name, int depth) {
+        int slot = exists(name);
+
+        if (slot >= 0) {
+            return isBlockOrEval ? new DVarNode(position, ((depth << 16) | slot), name) : new LocalVarNode(position, ((depth << 16) | slot), name);
+        }
+
+        return isBlockOrEval ? enclosingScope.declare(position, name, depth + 1) : new VCallNode(position, name);
+    }
+
     /**
      * Make a DVar or LocalVar node based on scoping logic
-     * 
+     *
      * @param position the location that in the source that the new node will come from
-     * @param name of the variable to be created is named
+     * @param name     of the variable to be created is named
      * @return a DVarNode or LocalVarNode
      */
     public Node declare(ISourcePosition position, String name) {
@@ -295,20 +512,23 @@ public abstract class StaticScope implements Serializable {
     /**
      * Gets the Local Scope relative to the current Scope.  For LocalScopes this will be itself.
      * Blocks will contain the LocalScope it contains.
-     * 
+     *
      * @return localScope
      */
-    public abstract StaticScope getLocalScope();
-    
+
+    public StaticScope getLocalScope() {
+        return (type != Type.BLOCK) ? this : enclosingScope.getLocalScope();
+    }
+
     /**
      * Get the live CRef module associated with this scope.
-     * 
+     *
      * @return the live module
      */
     public RubyModule getModule() {
         return cref;
     }
-    
+
     public StaticScope getPreviousCRefScope() {
         return previousCRefScope;
     }
@@ -319,7 +539,7 @@ public abstract class StaticScope implements Serializable {
 
     public void setModule(RubyModule module) {
         this.cref = module;
-        
+
         for (StaticScope scope = getEnclosingScope(); scope != null; scope = scope.getEnclosingScope()) {
             if (scope.cref != null) {
                 previousCRefScope = scope;
@@ -339,92 +559,121 @@ public abstract class StaticScope implements Serializable {
     public RubyModule determineModule() {
         if (cref == null) {
             cref = getEnclosingScope().determineModule();
-            
+
             assert cref != null : "CRef is always created before determine happens";
-            
+
             previousCRefScope = getEnclosingScope().previousCRefScope;
         }
-        
+
         return cref;
     }
 
-    public int getOptionalArgs() {
-        return optionalArgs;
-    }
-
-    public int getRequiredArgs() {
-        return requiredArgs;
-    }
-
-    public void setRequiredArgs(int requiredArgs) {
-        this.requiredArgs = requiredArgs;
-    }
-
-    public int getRestArg() {
-        return restArg;
-    }
-
-    public void setRestArg(int restArg) {
-        this.restArg = restArg;
+    public boolean isBlockScope() {
+        return isBlockOrEval;
     }
 
     /**
      * Argument scopes represent scopes which contain arguments for zsuper.  All LocalStaticScopes
      * are argument scopes and BlockStaticScopes can be when they are used by define_method.
      */
-    public abstract boolean isArgumentScope();
-    public abstract void makeArgumentScope();
+    public boolean isArgumentScope() {
+        return isArgumentScope;
+    }
 
-    public boolean isBlockScope() {
-        return false;
+    public void makeArgumentScope() {
+        this.isArgumentScope = true;
     }
-    
-    public Arity getArity() {
-        if (optionalArgs > 0) {
-            if (restArg >= 0) {
-                return Arity.optional();
-            }
-            return Arity.required(requiredArgs);
-        } else {
-            if (restArg >= 0) {
-                return Arity.optional();
-            }
-            return Arity.fixed(requiredArgs);
-        }
+
+    /**
+     * For all block or method associated with static scopes this will return the signature for that
+     * signature-providing scope.  module bodies and other non-arity specific code will return null.
+     */
+    public Signature getSignature() {
+        return signature;
     }
-    
-    public void setArities(int required, int optional, int rest) {
-        this.requiredArgs = required;
-        this.optionalArgs = optional;
-        this.restArg = rest;
+
+    /**
+     * This happens in when first defining ArgsNodes or when reifying a method from AOT.
+     */
+    public void setSignature(Signature signature) {
+        this.signature = signature;
     }
-    
+
     public DynamicScope getDummyScope() {
-        return dummyScope == null ? dummyScope = new DummyDynamicScope(this) : dummyScope;
+        return dummyScope == null ? dummyScope = DynamicScope.newDynamicScope(this) : dummyScope;
+    }
+
+    public void setCommandArgumentStack(long commandArgumentStack) {
+        this.commandArgumentStack = commandArgumentStack;
+    }
+
+    public long getCommandArgumentStack() {
+        return commandArgumentStack;
     }
 
     private void growVariableNames(String name) {
+        assert name == name.intern();
         String[] newVariableNames = new String[variableNames.length + 1];
         System.arraycopy(variableNames, 0, newVariableNames, 0, variableNames.length);
         variableNames = newVariableNames;
+        variableNamesLength = newVariableNames.length;
         variableNames[variableNames.length - 1] = name;
+    }
+
+    private void growNamedCaptures(int index) {
+        boolean[] namedCaptures = this.namedCaptures;
+        boolean[] newNamedCaptures;
+        if (namedCaptures != null) {
+            newNamedCaptures = new boolean[Math.max(index + 1, namedCaptures.length)];
+            System.arraycopy(namedCaptures, 0, newNamedCaptures, 0, namedCaptures.length);
+        } else {
+            newNamedCaptures = new boolean[index + 1];
+        }
+        newNamedCaptures[index] = true;
+        this.namedCaptures = newNamedCaptures;
+    }
+
+    public boolean isNamedCapture(int index) {
+        boolean[] namedCaptures = this.namedCaptures;
+        return namedCaptures != null && index < namedCaptures.length && namedCaptures[index];
     }
 
     @Override
     public String toString() {
-        StringBuilder buf = new StringBuilder("[");
-            
-        for (int i = 0; i < variableNames.length - 1; i++) {
-            buf.append(variableNames[i]).append(", ");
-        }
-        if (variableNames.length > 0) {
-            buf.append(variableNames[variableNames.length - 1]);
-        }
-        buf.append("]");
-        buf.append(", cref = ").append(cref);
-            
-        return buf.toString();
+        // FIXME: Do we need to persist cref as well?
+        return "StaticScope(" + type + "):" + Arrays.toString(variableNames);
     }
 
-    public abstract Type getType();
+    public Type getType() {
+        return type;
+    }
+
+    public String getFile() {
+        return file;
+    }
+
+    public StaticScope duplicate() {
+        StaticScope dupe = new StaticScope(type, enclosingScope, variableNames == null ? NO_NAMES : variableNames);
+        // irScope is not guaranteed to be set onto StaticScope until it is executed for the first time.
+        // We can call duplicate before its first execution.
+        if (irScope != null) dupe.setIRScope(irScope);
+        dupe.setScopeType(scopeType);
+        dupe.setPreviousCRefScope(previousCRefScope);
+        dupe.setModule(cref);
+        dupe.setSignature(signature);
+
+        return dupe;
+    }
+
+    public RubyModule getOverlayModuleForRead() {
+        return overlayModule;
+    }
+
+    public RubyModule getOverlayModuleForWrite(ThreadContext context) {
+        RubyModule omod = overlayModule;
+        if (omod == null) {
+            overlayModule = omod = RubyModule.newModule(context.runtime);
+        }
+        return omod;
+    }
 }

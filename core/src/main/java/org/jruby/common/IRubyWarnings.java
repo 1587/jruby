@@ -15,7 +15,7 @@
  * Copyright (C) 2002-2004 Anders Bengtsson <ndrsbngtssn@yahoo.se>
  * Copyright (C) 2002-2004 Jan Arne Petersen <jpetersen@uni-bonn.de>
  * Copyright (C) 2004 Thomas E Enebo <enebo@acm.org>
- * 
+ *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
  * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
@@ -40,6 +40,7 @@ public interface IRubyWarnings {
     public enum ID {
         AMBIGUOUS_ARGUMENT,
         ACCESSOR_NOT_INITIALIZED,
+        ACCESSOR_MODULE_FUNCTION,
         ARGUMENT_AS_PREFIX,
         ARGUMENT_EXTRA_SPACE,
         ASSIGNMENT_IN_CONDITIONAL,
@@ -48,6 +49,7 @@ public interface IRubyWarnings {
         BLOCK_NOT_ACCEPTED,
         BLOCK_UNUSED,
         CONSTANT_ALREADY_INITIALIZED,
+        CONSTANT_DEPRECATED,
         CONSTANT_BAD_REFERENCE,
         CVAR_FROM_TOPLEVEL_SINGLETON_METHOD,
         DECLARING_SCLASS_VARIABLE,
@@ -73,7 +75,7 @@ public interface IRubyWarnings {
         OBSOLETE_ARGUMENT,
         PARENTHISE_ARGUMENTS,
         PROXY_EXTENDED_LATE,
-        STATEMENT_NOT_REACHED, 
+        STATEMENT_NOT_REACHED,
         LITERAL_IN_CONDITIONAL_RANGE,
         REDEFINING_DANGEROUS,
         REGEXP_IGNORED_FLAGS,
@@ -96,8 +98,10 @@ public interface IRubyWarnings {
         UNSUPPORTED_SUBPROCESS_OPTION,
         GC_STRESS_UNIMPLEMENTED,
         GC_ENABLE_UNIMPLEMENTED,
-        GC_DISABLE_UNIMPLEMENTED;
-        
+        GC_DISABLE_UNIMPLEMENTED,
+        TRUFFLE,
+        RATIONAL_OUT_OF_RANGE,; // TODO(CS): divide up the Truffle warnings
+
         public String getID() {
             return name();
         }
@@ -105,24 +109,12 @@ public interface IRubyWarnings {
 
     public abstract Ruby getRuntime();
     public abstract boolean isVerbose();
-    
+
     public abstract void warn(ID id, ISourcePosition position, String message);
     public abstract void warn(ID id, String fileName, int lineNumber, String message);
+    public abstract void warn(ID id, String fileName, String message);
     public abstract void warn(ID id, String message);
     public abstract void warning(ID id, String message);
     public abstract void warning(ID id, ISourcePosition position, String message);
     public abstract void warning(ID id, String fileName, int lineNumber, String message);
-    
-    @Deprecated
-    public abstract void warn(ID id, String message, Object... data);
-    @Deprecated
-    public abstract void warning(ID id, String message, Object... data);
-    @Deprecated
-    public abstract void warn(ID id, ISourcePosition position, String message, Object... data);
-    @Deprecated
-    public abstract void warn(ID id, String fileName, int lineNumber, String message, Object... data);
-    @Deprecated
-    public abstract void warning(ID id, ISourcePosition position, String message, Object... data);
-    @Deprecated
-    public abstract void warning(ID id, String fileName, int lineNumber, String message, Object...data);
 }

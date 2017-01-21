@@ -30,13 +30,16 @@
 package org.jruby.util.io;
 
 import java.io.IOException;
+import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
+import java.util.ArrayList;
 import java.util.List;
 
 import java.nio.channels.spi.SelectorProvider;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
+import java.util.Iterator;
 
 /**
  * This is a simple implementation of a hard-referenced java.nio.channels.Selector
@@ -52,6 +55,7 @@ import java.util.Map;
  */
 public class SelectorPool {
     private final Map<SelectorProvider, List<Selector>> pool = new HashMap<SelectorProvider, List<Selector>>();
+    private final List<Selector> openSelectors = new ArrayList<Selector>();
 
     /**
      * Get a selector from the pool (or create a new one). Selectors come from
@@ -80,14 +84,24 @@ public class SelectorPool {
      *
      * @param selector the selector to put back
      */
-    public synchronized void put(Selector selector) {
+    public void put(Selector selector) {
+        Iterator<SelectionKey> key_iterator = selector.keys().iterator();
+        while(key_iterator.hasNext()) key_iterator.next().cancel();
+
+        try {
+            selector.selectNow();
+        } catch (Exception e) {
+            //ignore
+        }
+
         returnToPool(selector);
     }
     
     /**
      * Clean up a pool.
      * 
-     * All selectors in a pool are closed and the pool gets empty.
+     * All selectors in a pool or handed out from the pool are closed
+     * and the pool gets emptied.
      * 
      */
     public synchronized void cleanup() {
@@ -103,24 +117,40 @@ public class SelectorPool {
             }
         }
         pool.clear();
+
+        for (Selector selector : openSelectors) {
+            try {
+                selector.close();
+            } catch (IOException ioe) {
+                // ignore IOException at termination.
+            }
+        }
+        openSelectors.clear();
     }
 
     private Selector retrieveFromPool(SelectorProvider provider) throws IOException {
         List<Selector> providerPool = pool.get(provider);
+        Selector selector;
         if (providerPool != null && !providerPool.isEmpty()) {
-            return providerPool.remove(providerPool.size() - 1);
+            selector = providerPool.remove(providerPool.size() - 1);
+        } else {
+            selector = SelectorFactory.openWithRetryFrom(null, provider);
         }
 
-        return SelectorFactory.openWithRetryFrom(null, provider);
+        openSelectors.add(selector);
+        return selector;
     }
 
-    private void returnToPool(Selector selector) {
-        SelectorProvider provider = selector.provider();
-        List<Selector> providerPool = pool.get(provider);
-        if (providerPool == null) {
-            providerPool = new LinkedList<Selector>();
-            pool.put(provider, providerPool);
+    private synchronized void returnToPool(Selector selector) {
+        openSelectors.remove(selector);
+        if (selector.isOpen()) {
+            SelectorProvider provider = selector.provider();
+            List<Selector> providerPool = pool.get(provider);
+            if (providerPool == null) {
+                providerPool = new LinkedList<Selector>();
+                pool.put(provider, providerPool);
+            }
+            providerPool.add(selector);
         }
-        providerPool.add(selector);
     }
 }

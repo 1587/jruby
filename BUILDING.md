@@ -1,39 +1,36 @@
 Building JRuby from Source
 ==========================
 
-NOTE: needs maven-3.x
+Prerequisites:
+
+* A Java 7-compatible (or higher) Java development kit (JDK).
+  * If `JAVA_HOME` is not set on Mac OS X: `export JAVA_HOME=$(/usr/libexec/java_home)`
+* Maven 3+
+* Apache Ant 1.8+ (see https://github.com/jruby/jruby/issues/2236)
+* make and a C++ compiler for installing the jruby-launcher gem
 
 JRuby uses Maven for building and bootstrapping itself, along with Rake,
 RSpec, and MSpec for running integration tests.
 
-Bootstrapping JRuby
--------------------
+Building Commandline JRuby
+--------------------------
 
 The first time you enter a new source dump of JRuby (from a src zip or
-from a git clone), you will want to fully bootstrap the environment. The
+from a git clone), you need to build the lib/jruby.jar. The
 command to execute is:
 
 ```
-mvn
+./mvnw
 ```
 
-Or if you prefer to be more explicit, the default "package" goal can
-be specified:
-
-```
-mvn package
-```
-
-This will do all of the following:
+This will run the default "install" goal (```mvn install```) and will do all of the following:
 
 * Compile JRuby
+* Compile JRuby-Truffle and place it in `lib/jruby-truffle.jar`
 * Build `lib/jruby.jar`, needed for running at command line
-* Install the jruby-launcher gem to provide a native 'jruby' executable.
+* It will install the default gems specifications `lib/ruby/gems/shared/specifications/default/` and the ruby files of those gems in `lib/ruby/stdlib/`.
 
 The environment is now suitable for running Ruby applications.
-
-Bootstrapping only needs to be done once at first entry into a JRuby
-source dump or if you are updating JRuby from a git repository.
 
 Running JRuby
 -------------
@@ -46,22 +43,9 @@ rvm use system
 
 *to make sure you do not use another Ruby's gems or execute another Ruby implementation.*
 
-Once bootstrapped, JRuby can be run with the `bin/jruby` executable. If
-the `jruby-launcher` gem installed successfully, this will be a native
+After building lib/jruby.jar, JRuby can be run with the `bin/jruby` executable. If the `jruby-launcher` gem installed successfully, this will be a native
 executable for your platform; otherwise, it will be a copy of the
 `bin/jruby.bash` bash script.
-
-Bootstrapping will install the following gems:
-
-* `rake`
-* `rspec`
-* `jruby-launcher`
-* `minitest`
-* `minitest-excludes`
-* `rdoc`
-
-and dependencies of these gems. A list of the gem versions can be found in
-`test/pom.xml` in the `dependencies` section.
 
 RubyGems is installed by default, and available in `bin/gem`. It will
 attempt to locate the `jruby` executable using `/usr/bin/env`, so you
@@ -78,7 +62,15 @@ Developing and Testing
 JRuby employs a large suite of tests, so there are many ways you can
 verify that JRuby is still fully functional.
 
-### Bootstrapping
+### Hacking the Build System
+
+for a general overview of the different directories and maven artifacts see [JRuby Build)](https://github.com/jruby/jruby/wiki/JRuby-Build----Some-Inside-Info)
+
+For this only  the ***pom.rb*** needs to edited. using mvn-3.3.x or the maven wrapper `./mvnw` will generate the pom.xml file where needed. For the jar files of the build those pom.xml will be generated for some use-cases, i.e. some IDEs need them.
+
+To regenerate the pom.xml just run `./mvnw` which will create them.
+
+### Setup Testing
 
 In order to prepare JRuby for testing, you must bootstrap the dev
 environment. This will do the following:
@@ -90,28 +82,63 @@ environment. This will do the following:
 mvn -Pbootstrap
 ```
 
+In case there is a problem with installing the jruby-launcher (due to missing compiler or so) use
+
+```
+mvn -Pbootstrap-no-launcher
+```
+
 This only needs to be run once to install these gems or if you update
 one of the gems to a newer version or clean out all installed gems.
 
 ### Incremental compiling
 
-After changing Java code, you can recompile quickly by running:
+After changing Java code, you can recompile quickly by running one of the
+jar files by
 
 ```
-mvn package
+mvn -pl core
+mvn -pl truffle
 ```
+
 
 ### Day to Day Testing
 
-For normal day-to-day testing, we recommend running the Ruby 1.9 tests
+For normal day-to-day testing, we recommend running the Ruby (MRI) tests
 via the following rake command:
 
 ```
-rake test:mri19
+bin/jruby -S rake test:mri
 ```
 
-This is a reasonably good suite that does not take too long to run. For
-more complete assurance, you can also run 1.9 RubySpecs via the
+This suite takes a while to complete, so if you want to run an individual file
+from MRI's tests (under test/mri), use one of the following commands:
+
+# Run a specific test method in a specific file
+```
+jruby <test file> -n <specific test method>
+```
+
+# Run a test file with known-failing tests excluded
+```
+EXCLUDES=test/mri/excludes bin/jruby -r test/mri_test_env.rb test/mri/runner.rb -q -- <test file>
+```
+#### Run a single spec
+```
+bin/jruby spec/mspec/bin/mspec run spec/ruby/core/symbol/length_spec.rb
+```
+
+#### Run a single spec with remote debugging
+```
+bin/jruby spec/mspec/bin/mspec run -T-J-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5005 spec/ruby/core/symbol/length_spec.rb
+```
+
+Additional tests may be run through mspec.
+```
+bin/jruby -S mspec -B spec/jruby.2.2.mspec -t bin/jruby -G fails ci <test files>
+```
+
+For more complete assurance, you can also run 1.9 RubySpecs via the
 following command:
 
 ```
@@ -122,7 +149,24 @@ And if you are making changes that would affect JRuby's core runtime
 or embedding APIs, you should run JRuby's Java-based unit tests via
 
 ```
-mvn -Ptest test
+mvn -Ptest
+```
+
+On travis the following tests will run
+
+```
+mvn -Ptest
+mvn -Prake -Dtask=test:extended
+mvn -Prake -Dtask=spec:ci\_interpreted\_travis
+mvn -Ptruffle
+```
+
+There are some maven integration tests (i.e. consistency test if all gems are included, osgi test, etc) for the various distributions of JRuby which can be invoked with
+
+```
+mvn -Pmain -Dinvoker.skip=false
+mvn -Pcomplete -Dinvoker.skip=false
+mvn -Pdist -Dinvoker.skip=false
 ```
 
 ### Just Like CI
@@ -194,10 +238,12 @@ mvn -Pclean
 Distribution Packages
 ---------------------
 
+all distribution packages need maven-3.3.x or the use of supplied maven wrapper. all examples below will show the use of the maven wrapper.
+
 ###the tar.gz and zip distribution packages###
 
 ```
-mvn -Pdist
+./mvnw -Pdist
 ```
 
 the files will be found in ./maven/jruby-dist/target
@@ -205,7 +251,7 @@ the files will be found in ./maven/jruby-dist/target
 ###jruby-complete.jar###
 
 ```
-mvn -Pcomplete
+./mvnw -Pcomplete
 ```
 
 the file will be in ./maven/jruby-complete/target
@@ -213,7 +259,7 @@ the file will be in ./maven/jruby-complete/target
 ###jruby maven artifacts###
 
 ```
-mvn -Pmain
+./mvnw -Pmain
 ```
 
 and those files will be installed in you maven local-repository ready to use with maven, ivy, buildr, etc
@@ -221,36 +267,31 @@ and those files will be installed in you maven local-repository ready to use wit
 ###jruby jars gem###
 
 ```
-mvn -Pjruby-jars
+./mvnw -Pjruby-jars
 ```
 
 the gem will be in ./maven/jruby-jars/pkg
 
-
 ### building ALL packages ###
 
 ```
-mvn -Pall
+./mvnw -Pall
+```
+
+### cleaning the build ###
+
+this will also clean the **ext** directories, i.e. a new build will then use the latest code from there for **lib/ruby**
+
+```
+./mvnw -Pclean
 ```
 
 ## release ##
 
-first set the new version in the file *VERSION* inside the root directory and then
+first set the new version in the file *VERSION* inside the root directory and then to deploy the maven artifact to sonatype oss execute:
 
 ```
-rake maven:dump_poms
-```
-or
-```
-rmvn validate -Pall
-```
-
-manually rollback the poms in ./ext/ if their main versions have been changed
-and then commit and tag averything respectively.  Now deploy the maven 
-artifact to sonatype oss.
-
-```
-mvn clean deploy -Psonatype-oss-release -Prelease
+./mvnw clean deploy -Psonatype-oss-release
 ```
 
 go to oss.sonatype.org and close the deployment which will check if all 'required' files are in place and then finally push the release to maven central and . . . 
@@ -260,9 +301,5 @@ go to oss.sonatype.org and close the deployment which will check if all 'require
 After the release set the new development version in *VERSION* and generate the pom.xml files
 
 ```
-rake maven:dump_poms
-```
-or
-```
-rmvn validate -Pall
+./mvnw
 ```

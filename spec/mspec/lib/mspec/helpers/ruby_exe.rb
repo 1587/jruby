@@ -1,18 +1,19 @@
 require 'mspec/utils/ruby_name'
 require 'mspec/guards/platform'
+require 'mspec/helpers/tmp'
 
 # The ruby_exe helper provides a wrapper for invoking the
-# same Ruby interpreter as the one running the specs and
-# getting the output from running the code. If +code+ is a
-# file that exists, it will be run. Otherwise, +code+ should
-# be Ruby code that will be run with the -e command line
-# option. For example:
+# same Ruby interpreter with the same falgs as the one running
+# the specs and getting the output from running the code.
+# If +code+ is a file that exists, it will be run.
+# Otherwise, +code+ should be Ruby code that will be run with
+# the -e command line option. For example:
 #
 #   ruby_exe('path/to/some/file.rb')
 #
 # will be executed as
 #
-#   `#{RUBY_EXE} #{'path/to/some/file.rb'}`
+#   `#{RUBY_EXE} 'path/to/some/file.rb'`
 #
 # while
 #
@@ -20,7 +21,7 @@ require 'mspec/guards/platform'
 #
 # will be executed as
 #
-#   `#{RUBY_EXE} -e #{'puts "hello, world."'}`
+#   `#{RUBY_EXE} -e 'puts "hello, world."'`
 #
 # The ruby_exe helper also accepts an options hash with three
 # keys: :options, :args and :env. For example:
@@ -38,8 +39,8 @@ require 'mspec/guards/platform'
 # If +nil+ is passed for the first argument, the command line
 # will be built only from the options hash.
 #
-# The RUBY_EXE constant can be set explicitly since the value
-# is used each time ruby_exe is invoked. The mspec runner script
+# The RUBY_EXE constant is setup by mspec automatically
+# and is used by ruby_exe and ruby_cmd. The mspec runner script
 # will set ENV['RUBY_EXE'] to the name of the executable used
 # to invoke the mspec-run script. The value of RUBY_EXE will be
 # constructed as follows:
@@ -50,6 +51,7 @@ require 'mspec/guards/platform'
 #   4. $(bindir)/$(RUBY_INSTALL_NAME)
 #
 # The value will only be used if the file exists and is executable.
+# The flags will then be appended to the resulting value.
 #
 # These 4 ways correspond to the following scenarios:
 #
@@ -68,6 +70,11 @@ require 'mspec/guards/platform'
 #      some implementation. (E.g. a local build directory.)
 #   4. Running the specs against some installed Ruby
 #      implementation.
+#
+# Additionally, the flags passed to mspec
+# (with -T on the command line or in the config with set :flags)
+# will be appended to RUBY_EXE so that the interpreter
+# is always called with those flags.
 
 class Object
   def ruby_exe_options(option)
@@ -77,22 +84,22 @@ class Object
     when :engine
       case RUBY_NAME
       when 'rbx'
-        if SpecGuard.ruby_version < "1.9"
-          "bin/rbx"
-        else
-          "bin/rbx -X19"
-        end
+        "bin/rbx"
       when 'jruby'
         "bin/jruby"
       when 'maglev'
         "maglev-ruby"
+      when 'topaz'
+        "topaz"
       when 'ironruby'
         "ir"
       end
     when :name
+      require 'rbconfig'
       bin = RUBY_NAME + (RbConfig::CONFIG['EXEEXT'] || RbConfig::CONFIG['exeext'] || '')
       File.join(".", bin)
     when :install_name
+      require 'rbconfig'
       bin = RbConfig::CONFIG["RUBY_INSTALL_NAME"] || RbConfig::CONFIG["ruby_install_name"]
       bin << (RbConfig::CONFIG['EXEEXT'] || RbConfig::CONFIG['exeext'] || '')
       File.join(RbConfig::CONFIG['bindir'], bin)
@@ -101,17 +108,20 @@ class Object
 
   def resolve_ruby_exe
     [:env, :engine, :name, :install_name].each do |option|
-      next unless cmd = ruby_exe_options(option)
-      exe, *rest = cmd.split(" ")
+      next unless exe = ruby_exe_options(option)
 
-      # It has been reported that File.executable is not reliable
-      # on Windows platforms (see commit 56bc555c). So, we check the
-      # platform. 
-      if File.exists?(exe) and (PlatformGuard.windows? or File.executable?(exe))
-        return [File.expand_path(exe), *rest].join(" ")
+      if File.file?(exe) and File.executable?(exe)
+        exe = File.expand_path(exe)
+        exe = exe.tr('/', '\\') if PlatformGuard.windows?
+        flags = ENV['RUBY_FLAGS']
+        if flags and !flags.empty?
+          return exe + ' ' + flags
+        else
+          return exe
+        end
       end
     end
-    nil
+    raise Exception, "Unable to find a suitable ruby executable."
   end
 
   def ruby_exe(code, opts = {})
@@ -125,14 +135,24 @@ class Object
         ENV[key] = value
       end
 
+      escape = opts.delete(:escape)
+      if code and not File.exist?(code) and escape != false
+        tmpfile = tmp("rubyexe.rb")
+        File.open(tmpfile, "w") { |f| f.write(code) }
+        code = tmpfile
+      end
+
       begin
-        `#{ruby_cmd(code, opts)}`
+        platform_is_not :opal do
+          `#{ruby_cmd(code, opts)}`
+        end
       ensure
         saved_env.each { |key, value| ENV[key] = value }
         env.keys.each do |key|
           key = key.to_s
           ENV.delete key unless saved_env.key? key
         end
+        File.delete tmpfile if tmpfile
       end
     end
   end
@@ -140,22 +160,18 @@ class Object
   def ruby_cmd(code, opts = {})
     body = code
 
-    if code and not File.exists?(code)
-      if opts[:escape]
-        code = "'#{code}'"
-      else
-        code = code.inspect
-      end
-      body = "-e #{code}"
+    if opts[:escape]
+      raise "escape: true is no longer supported in ruby_cmd, use ruby_exe or a fixture"
     end
 
-    [RUBY_EXE, ENV['RUBY_FLAGS'], opts[:options], body, opts[:args]].compact.join(' ')
+    if code and not File.exist?(code)
+      body = "-e #{code.inspect}"
+    end
+
+    [RUBY_EXE, opts[:options], body, opts[:args]].compact.join(' ')
   end
 
   unless Object.const_defined?(:RUBY_EXE) and RUBY_EXE
-    require 'rbconfig'
-
-    RUBY_EXE = resolve_ruby_exe or
-      raise Exception, "Unable to find a suitable ruby executable."
+    RUBY_EXE = resolve_ruby_exe
   end
 end

@@ -1,207 +1,168 @@
 package org.jruby.runtime;
 
-import org.jruby.Ruby;
-import org.jruby.RubyArray;
 import org.jruby.RubyModule;
-import org.jruby.common.IRubyWarnings.ID;
+import org.jruby.EvalType;
+import org.jruby.compiler.Compilable;
 import org.jruby.ir.IRClosure;
+import org.jruby.ir.IRScope;
 import org.jruby.ir.interpreter.Interpreter;
-import org.jruby.runtime.Block.Type;
+import org.jruby.ir.interpreter.InterpreterContext;
+import org.jruby.ir.persistence.IRDumper;
+import org.jruby.ir.runtime.IRRuntimeHelpers;
 import org.jruby.runtime.builtin.IRubyObject;
+import org.jruby.util.cli.Options;
+import org.jruby.util.log.Logger;
+import org.jruby.util.log.LoggerFactory;
 
-public class InterpretedIRBlockBody extends ContextAwareBlockBody {
-    protected final IRClosure closure;
+import java.io.ByteArrayOutputStream;
 
-    public InterpretedIRBlockBody(IRClosure closure, Arity arity, int argumentType) {
-        super(closure.getStaticScope(), arity, argumentType);
-        this.closure = closure;
+public class InterpretedIRBlockBody extends IRBlockBody implements Compilable<InterpreterContext> {
+    private static final Logger LOG = LoggerFactory.getLogger(InterpretedIRBlockBody.class);
+    protected boolean pushScope;
+    protected boolean reuseParentScope;
+    private boolean displayedCFG = false; // FIXME: Remove when we find nicer way of logging CFG
+    private int callCount = 0;
+    private InterpreterContext interpreterContext;
+    private InterpreterContext fullInterpreterContext;
+
+    public InterpretedIRBlockBody(IRClosure closure, Signature signature) {
+        super(closure, signature);
+        this.pushScope = true;
+        this.reuseParentScope = false;
+
+        // JIT currently JITs blocks along with their method and no on-demand by themselves.  We only
+        // promote to full build here if we are -X-C.
+        if (closure.getManager().getInstanceConfig().getCompileMode().shouldJIT() || Options.JIT_THRESHOLD.load() == -1) {
+            callCount = -1;
+        }
     }
 
     @Override
-    public IRubyObject call(ThreadContext context, Binding binding, Block.Type type) {
-        return call(context, IRubyObject.NULL_ARRAY, binding, type, Block.NULL_BLOCK);
+    public void setCallCount(int callCount) {
+        this.callCount = callCount;
     }
 
     @Override
-    public IRubyObject call(ThreadContext context, IRubyObject arg0, Binding binding, Block.Type type) {
-        return call(context, new IRubyObject[] {arg0}, binding, type, Block.NULL_BLOCK);
+    public void completeBuild(InterpreterContext interpreterContext) {
+        this.fullInterpreterContext = interpreterContext;
+        // This enables IR & CFG to be dumped in debug mode
+        // when this updated code starts executing.
+        this.displayedCFG = false;
     }
 
     @Override
-    public IRubyObject call(ThreadContext context, IRubyObject arg0, IRubyObject arg1, Binding binding, Block.Type type) {
-        return call(context, new IRubyObject[] {arg0, arg1}, binding, type, Block.NULL_BLOCK);
+    public IRScope getIRScope() {
+        return closure;
     }
 
     @Override
-    public IRubyObject call(ThreadContext context, IRubyObject arg0, IRubyObject arg1, IRubyObject arg2, Binding binding, Block.Type type) {
-        return call(context, new IRubyObject[] {arg0, arg1, arg2}, binding, type, Block.NULL_BLOCK);
+    public ArgumentDescriptor[] getArgumentDescriptors() {
+        return closure.getArgumentDescriptors();
     }
 
-    @Override
-    public IRubyObject call(ThreadContext context, IRubyObject[] args, Binding binding, Block.Type type) {
-        return call(context, args, binding, type, Block.NULL_BLOCK);
-    }
-
-    @Override
-    public IRubyObject call(ThreadContext context, IRubyObject[] args, Binding binding, Block.Type type, Block block) {
-        return commonYieldPath(context, prepareArgumentsForCall(context, args, type), null, null, binding, type, block);
-    }
-
-    @Override
-    public IRubyObject yield(ThreadContext context, IRubyObject value, Binding binding, Type type) {
-        return yield(context, value, null, null, false, binding, type);
-    }
-
-    @Override
-    public IRubyObject yield(ThreadContext context, IRubyObject value, IRubyObject self, RubyModule klass, boolean isArray, Binding binding, Type type) {
-        IRubyObject[] args;
-        if (isArray) {
-            if (arity().getValue() > 1) {
-                args = value == null ? IRubyObject.NULL_ARRAY : prepareArgumentsForYield(context, ((RubyArray)value).toJavaArray(), type);
-            } else {
-                args = assignArrayToBlockArgs(context.runtime, value);
-            }
-        } else {
-            args = prepareArgumentsForYield(context, value == null ? IRubyObject.NULL_ARRAY : new IRubyObject[] { value }, type);
+    public InterpreterContext ensureInstrsReady() {
+        if (IRRuntimeHelpers.isDebug() && !displayedCFG) {
+            LOG.info("Executing '" + closure + "' (pushScope=" + pushScope + ", reuseParentScope=" + reuseParentScope);
+            LOG.info(closure.debugOutput());
+            displayedCFG = true;
         }
 
-        return commonYieldPath(context, args, self, klass, binding, type, Block.NULL_BLOCK);
+        if (interpreterContext == null) {
+            if (Options.IR_PRINT.load()) {
+                ByteArrayOutputStream baos = IRDumper.printIR(closure, false);
+
+                LOG.info("Printing simple IR for " + closure.getName() + ":\n" + new String(baos.toByteArray()));
+            }
+
+            interpreterContext = closure.getInterpreterContext();
+            fullInterpreterContext = interpreterContext;
+        }
+        return interpreterContext;
     }
 
-    protected IRubyObject prepareSelf(Binding binding) {
-        IRubyObject self = binding.getSelf();
-        binding.getFrame().setSelf(self);
-
-        return self;
+    @Override
+    public String getClassName(ThreadContext context) {
+        return null;
     }
 
-    protected IRubyObject commonYieldPath(ThreadContext context, IRubyObject[] args, IRubyObject self, RubyModule klass, Binding binding, Type type, Block block) {
-        // SSS: Important!  Use getStaticScope() to use a copy of the static-scope stored in the block-body.
-        // Do not use 'closure.getStaticScope()' -- that returns the original copy of the static scope.
-        // This matters because blocks created for Thread bodies modify the static-scope field of the block-body
-        // that records additional state about the block body.
-        //
-        // FIXME: Rather than modify static-scope, it seems we ought to set a field in block-body which is then
-        // used to tell dynamic-scope that it is a dynamic scope for a thread body.  Anyway, to be revisited later!
+    @Override
+    public String getName() {
+        return null;
+    }
+
+    @Override
+    public boolean canCallDirect() {
+        return interpreterContext != null && interpreterContext.hasExplicitCallProtocol();
+    }
+
+    @Override
+    protected IRubyObject callDirect(ThreadContext context, Block block, IRubyObject[] args, Block blockArg) {
+        context.setCurrentBlockType(Block.Type.PROC);
+        InterpreterContext ic = ensureInstrsReady(); // so we get debugging output
+        return Interpreter.INTERPRET_BLOCK(context, block, null, ic, args, block.getBinding().getMethod(), blockArg);
+    }
+
+    @Override
+    protected IRubyObject yieldDirect(ThreadContext context, Block block, IRubyObject[] args, IRubyObject self) {
+        context.setCurrentBlockType(Block.Type.NORMAL);
+        InterpreterContext ic = ensureInstrsReady(); // so we get debugging output
+        return Interpreter.INTERPRET_BLOCK(context, block, self, ic, args, block.getBinding().getMethod(), Block.NULL_BLOCK);
+    }
+
+    @Override
+    protected IRubyObject commonYieldPath(ThreadContext context, Block block, Block.Type type, IRubyObject[] args, IRubyObject self, Block blockArg) {
+        if (callCount >= 0) promoteToFullBuild(context);
+
+        InterpreterContext ic = ensureInstrsReady();
+
+        // Update interpreter context for next time this block is executed
+        // This ensures that if we had determined canCallDirect() is false
+        // based on the old IC, we continue to execute with it.
+        interpreterContext = fullInterpreterContext;
+
+        Binding binding = block.getBinding();
         Visibility oldVis = binding.getFrame().getVisibility();
-        RubyModule currentModule = getStaticScope().getModule();
+        Frame prevFrame = context.preYieldNoScope(binding);
 
-        Frame prevFrame = context.preYieldNoScope(binding, klass);
-        if (klass == null) self = prepareSelf(binding);
+        // SSS FIXME: Maybe, we should allocate a NoVarsScope/DummyScope for for-loop bodies because the static-scope here
+        // probably points to the parent scope? To be verified and fixed if necessary. There is no harm as it is now. It
+        // is just wasteful allocation since the scope is not used at all.
+        DynamicScope actualScope = binding.getDynamicScope();
+        if (ic.pushNewDynScope()) {
+            context.pushScope(block.allocScope(actualScope));
+        } else if (ic.reuseParentDynScope()) {
+            // Reuse! We can avoid the push only if surrounding vars aren't referenced!
+            context.pushScope(actualScope);
+        }
+
+        self = IRRuntimeHelpers.updateBlockState(block, self);
+
         try {
-            DynamicScope prevScope = binding.getDynamicScope();
-            DynamicScope newScope  = closure.isForLoopBody() ? prevScope : DynamicScope.newDynamicScope(getStaticScope(), prevScope);
-            context.pushScope(newScope);
-            return Interpreter.INTERPRET_BLOCK(context, self, closure, args, binding.getMethod(), block, type);
+            return Interpreter.INTERPRET_BLOCK(context, block, self, ic, args, binding.getMethod(), blockArg);
         }
         finally {
+            // IMPORTANT: Do not clear eval-type in case this is reused in bindings!
+            // Ex: eval("...", foo.instance_eval { binding })
+            // The dyn-scope used for binding needs to have its eval-type set to INSTANCE_EVAL
             binding.getFrame().setVisibility(oldVis);
-            context.postYield(binding, prevFrame);
-        }
-    }
-
-    protected void blockArgWarning(Ruby ruby, int length) {
-        ruby.getWarnings().warn(ID.MULTIPLE_VALUES_FOR_BLOCK, "multiple values for a block parameter (" +
-                    length + " for 1)");
-    }
-    
-    private IRubyObject prepareArrayArgsForCall(Ruby ruby, IRubyObject value) {
-        int length = (value instanceof RubyArray) ? ((RubyArray)value).getLength() : 0;
-        switch (length) {
-        case 0: return ruby.getNil();
-        case 1: return ((RubyArray)value).eltInternal(0);
-        default: blockArgWarning(ruby, length);
-        }
-        return value;
-    }
-
-    private IRubyObject[] assignArrayToBlockArgs(Ruby ruby, IRubyObject value) {
-        switch (argumentType) {
-        case ZERO_ARGS:
-            return IRubyObject.NULL_ARRAY;
-        case MULTIPLE_ASSIGNMENT:
-        case SINGLE_RESTARG:
-            return (value == null) ? IRubyObject.NULL_ARRAY : ((value instanceof RubyArray) ? ((RubyArray)value).toJavaArrayMaybeUnsafe() : new IRubyObject[] { value } );
-        default:
-            return new IRubyObject[] {prepareArrayArgsForCall(ruby, value)};
-        }
-    }
-
-    protected IRubyObject[] convertToRubyArray(ThreadContext context, IRubyObject[] args) {
-        return (args.length == 0) ? context.runtime.getSingleNilArray()
-                                  : new IRubyObject[] {context.runtime.newArrayNoCopy(args)};
-    }
-
-    protected IRubyObject[] prepareArgumentsForYield(ThreadContext context, IRubyObject[] args, Block.Type type) {
-        // SSS FIXME: Hmm .. yield can yield to blocks other than NORMAL block type as well.
-        int blockArity = arity().getValue();
-
-        if (args.length == 1) {
-            IRubyObject soleArg = args[0];
-            if (soleArg instanceof RubyArray) {
-                if (argumentType == MULTIPLE_ASSIGNMENT) args = ((RubyArray) soleArg).toJavaArray();
-            } else if (blockArity > 1) {
-                IRubyObject toAryArg = Helpers.aryToAry(soleArg);
-                if (toAryArg instanceof RubyArray) args = ((RubyArray)toAryArg).toJavaArray();
-                else {
-                    throw context.runtime.newTypeError(soleArg.getType().getName() + "#to_ary should return Array");
-                }
-            }
-        } else if (argumentType == ARRAY) {
-            args = convertToRubyArray(context, args);
-        }
-
-        return args;
-    }
-
-    @Override
-    public IRubyObject[] prepareArgumentsForCall(ThreadContext context, IRubyObject[] args, Block.Type type) {
-        int blockArity = arity().getValue();
-        switch (type) {
-        // SSS FIXME: How is it even possible to "call" a block?  
-        // I thought only procs & lambdas can be called, and blocks are yielded to.
-        case NORMAL: 
-        case PROC: {
-            if (args.length == 1) {
-                IRubyObject soleArg = args[0];
-                if (soleArg instanceof RubyArray) {
-                    if ((argumentType == MULTIPLE_ASSIGNMENT) || ((argumentType == SINGLE_RESTARG) && (type == Block.Type.NORMAL))) {
-                        args = ((RubyArray) soleArg).toJavaArray();
-                    }
-                } else if (blockArity > 1) {
-                    IRubyObject toAryArg = Helpers.aryToAry(soleArg);
-                    if (toAryArg instanceof RubyArray) args = ((RubyArray)toAryArg).toJavaArray();
-                    else {
-                        throw context.runtime.newTypeError(soleArg.getType().getName() + "#to_ary should return Array");
-                    }
-                }
-            } else if (argumentType == ARRAY) {
-                args = convertToRubyArray(context, args);
-            }
-            break;
-        }
-        case LAMBDA:
-            if (argumentType == ARRAY && args.length != 1) {
-                if (blockArity != args.length) {
-                    context.runtime.getWarnings().warn(ID.MULTIPLE_VALUES_FOR_BLOCK, "multiple values for a block parameter (" + args.length + " for " + blockArity + ")");
-                }
-                args = convertToRubyArray(context, args);
+            if (ic.popDynScope()) {
+                context.postYield(binding, prevFrame);
             } else {
-                arity().checkArity(context.runtime, args);
+                context.postYieldNoScope(prevFrame);
             }
-            break;
         }
-
-        return args;
     }
 
-    @Override
-    public String getFile() {
-        return closure.getFileName();
+    // Unlike JIT in MixedMode this will always successfully build but if using executor pool it may take a while
+    // and replace interpreterContext asynchronously.
+    protected void promoteToFullBuild(ThreadContext context) {
+        if (context.runtime.isBooting() && !Options.JIT_KERNEL.load()) return; // don't Promote to full build during runtime boot
+
+        if (callCount++ >= Options.JIT_THRESHOLD.load()) context.runtime.getJITCompiler().buildThresholdReached(context, this);
     }
 
-    @Override
-    public int getLine() {
-        return closure.getLineNumber();
+    public RubyModule getImplementationClass() {
+        return null;
     }
+
 }

@@ -1,83 +1,146 @@
 package org.jruby.ir.instructions;
 
-import java.util.Arrays;
-
+import org.jruby.RubyModule;
+import org.jruby.ir.runtime.IRReturnJump;
+import org.jruby.ir.runtime.IRBreakJump;
 import org.jruby.ir.IRScope;
 import org.jruby.ir.IRVisitor;
 import org.jruby.ir.Operation;
-import org.jruby.ir.operands.Operand;
-import org.jruby.ir.operands.Variable;
+import org.jruby.ir.operands.Boolean;
+import org.jruby.ir.operands.*;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
 import org.jruby.ir.runtime.IRRuntimeHelpers;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.parser.StaticScope;
 import org.jruby.runtime.Block;
 import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 
-import java.util.Map;
+import static org.jruby.ir.IRFlags.REQUIRES_FRAME;
 
-public class RuntimeHelperCall extends Instr implements ResultInstr {
-    Variable  result;
-    String    helperMethod;
-    Operand[] args;
+public class RuntimeHelperCall extends NOperandResultBaseInstr {
+    public enum Methods {
+        HANDLE_PROPAGATED_BREAK, HANDLE_NONLOCAL_RETURN, HANDLE_BREAK_AND_RETURNS_IN_LAMBDA,
+        IS_DEFINED_BACKREF, IS_DEFINED_NTH_REF, IS_DEFINED_GLOBAL, IS_DEFINED_INSTANCE_VAR,
+        IS_DEFINED_CLASS_VAR, IS_DEFINED_SUPER, IS_DEFINED_METHOD, IS_DEFINED_CALL,
+        IS_DEFINED_CONSTANT_OR_METHOD, MERGE_KWARGS, RESTORE_EXCEPTION_VAR;
 
-    public RuntimeHelperCall(Variable result, String helperMethod, Operand[] args) {
-        super(Operation.RUNTIME_HELPER);
-        this.result = result;
+        public static Methods fromOrdinal(int value) {
+            return value < 0 || value >= values().length ? null : values()[value];
+        }
+    }
+
+    Methods    helperMethod;
+
+    public RuntimeHelperCall(Variable result, Methods helperMethod, Operand[] args) {
+        super(Operation.RUNTIME_HELPER, result, args);
         this.helperMethod = helperMethod;
-        this.args = args;
     }
 
+    public Operand[] getArgs() {
+        return getOperands();
+    }
+
+    public Methods getHelperMethod() {
+        return helperMethod;
+    }
+
+    /**
+     * Does this instruction do anything the scope is interested in?
+     *
+     * @param scope to be updated
+     * @return true if it modified the scope.
+     */
     @Override
-    public Operand[] getOperands() {
-        return args;
-    }
+    public boolean computeScopeFlags(IRScope scope) {
+        boolean modifiedScope = false;
 
-    public Variable getResult() {
-        return result;
-    }
-
-    public void updateResult(Variable v) {
-        this.result = v;
-    }
-
-    @Override
-    public void simplifyOperands(Map<Operand, Operand> valueMap, boolean force) {
-        for (int i = 0; i < args.length; i++) {
-            args[i] = args[i].getSimplifiedOperand(valueMap, force);
+        // FIXME: Impl of this helper uses frame class.  Determine if we can do this another way.
+        if (helperMethod == Methods.IS_DEFINED_SUPER) {
+            modifiedScope = true;
+            scope.getFlags().add(REQUIRES_FRAME);
         }
+
+        return modifiedScope;
     }
 
     @Override
-    public Instr cloneForInlining(InlinerInfo ii) {
-        // SSS FIXME: array of args cloning should be part of utility class
-        Operand[] clonedArgs = new Operand[args.length];
-        for (int i = 0; i < args.length; i++) {
-            clonedArgs[i] = args[i].cloneForInlining(ii);
-        }
+    public Instr clone(CloneInfo ii) {
         Variable var = getResult();
-        return new RuntimeHelperCall(var == null ? null : ii.getRenamedVariable(var), helperMethod, clonedArgs);
+        return new RuntimeHelperCall(var == null ? null : ii.getRenamedVariable(var), helperMethod, cloneOperands(ii));
     }
 
     @Override
-    public String toString() {
-        return (getResult() == null ? "" : (getResult() + " = ")) + getOperation()  + "(" + helperMethod + ", " + Arrays.toString(args) + ")";
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+        e.encode(getHelperMethod().ordinal());
+        e.encode(getArgs());
     }
 
-    public IRubyObject callHelper(ThreadContext context, DynamicScope currDynScope, IRubyObject self, Object[] temp, IRScope scope, Block.Type blockType) {
-        Object exc = args[0].retrieve(context, self, currDynScope, temp);
-        if (helperMethod.equals("handlePropagatedBreak")) {
-            return IRRuntimeHelpers.handlePropagatedBreak(context, scope, exc, blockType);
-        } else if (helperMethod.equals("handleNonlocalReturn")) {
-            return IRRuntimeHelpers.handleNonlocalReturn(scope, exc, blockType);
-        } else if (helperMethod.equals("catchUncaughtBreakInLambdas")) {
-            IRRuntimeHelpers.catchUncaughtBreakInLambdas(context, scope, exc, blockType);
-            // should not get here
-            return null;
-        } else {
-            // Unknown helper method!
-            return null;
+    public static RuntimeHelperCall decode(IRReaderDecoder d) {
+        return new RuntimeHelperCall(d.decodeVariable(), Methods.fromOrdinal(d.decodeInt()), d.decodeOperandArray());
+    }
+
+    @Override
+    public String[] toStringNonOperandArgs() {
+        return new String[] { "method: " + helperMethod};
+    }
+
+    public IRubyObject callHelper(ThreadContext context, StaticScope currScope, DynamicScope currDynScope, IRubyObject self, Object[] temp, Block.Type blockType) {
+        StaticScope scope = currDynScope.getStaticScope();
+
+        if (helperMethod == Methods.IS_DEFINED_BACKREF) return IRRuntimeHelpers.isDefinedBackref(context);
+        Operand[] operands = getOperands();
+
+        switch (helperMethod) {
+            case IS_DEFINED_NTH_REF:
+                return IRRuntimeHelpers.isDefinedNthRef(context, (int) ((Fixnum) operands[0]).getValue());
+            case IS_DEFINED_GLOBAL:
+                return IRRuntimeHelpers.isDefinedGlobal(context, ((Stringable) operands[0]).getString());
         }
+
+        Object arg1 = operands[0].retrieve(context, self, currScope, currDynScope, temp);
+
+        switch (helperMethod) {
+            case HANDLE_PROPAGATED_BREAK:
+                return IRRuntimeHelpers.handlePropagatedBreak(context, currDynScope, arg1, blockType);
+            case HANDLE_NONLOCAL_RETURN:
+                return IRRuntimeHelpers.handleNonlocalReturn(scope, currDynScope, arg1, blockType);
+            case HANDLE_BREAK_AND_RETURNS_IN_LAMBDA:
+                return IRRuntimeHelpers.handleBreakAndReturnsInLambdas(context, scope, currDynScope, arg1, blockType);
+            case IS_DEFINED_CALL:
+                return IRRuntimeHelpers.isDefinedCall(context, self, (IRubyObject) arg1, ((Stringable) operands[1]).getString());
+            case IS_DEFINED_CONSTANT_OR_METHOD:
+                return IRRuntimeHelpers.isDefinedConstantOrMethod(context, (IRubyObject) arg1,
+                        ((FrozenString) operands[1]).getString());
+            case IS_DEFINED_INSTANCE_VAR:
+                return IRRuntimeHelpers.isDefinedInstanceVar(context, (IRubyObject) arg1, ((Stringable) operands[1]).getString());
+            case IS_DEFINED_CLASS_VAR:
+                return IRRuntimeHelpers.isDefinedClassVar(context, (RubyModule) arg1, ((Stringable) operands[1]).getString());
+            case IS_DEFINED_SUPER:
+                return IRRuntimeHelpers.isDefinedSuper(context, (IRubyObject) arg1);
+            case IS_DEFINED_METHOD:
+                return IRRuntimeHelpers.isDefinedMethod(context, (IRubyObject) arg1,
+                        ((Stringable) operands[1]).getString(),
+                        ((Boolean) operands[2]).isTrue());
+            case MERGE_KWARGS:
+                return IRRuntimeHelpers.mergeKeywordArguments(context, (IRubyObject) arg1,
+                        (IRubyObject) getArgs()[1].retrieve(context, self, currScope, currDynScope, temp));
+            case RESTORE_EXCEPTION_VAR:
+                Object exc = getArgs()[0].retrieve(context, self, currScope, currDynScope, temp);
+                // SSS FIXME: These are non-local control-flow exit scenarios that just
+                // happen to use exceptions for exiting scopes and we should
+                // continue to clear $! for them.
+                if (exc instanceof IRReturnJump || exc instanceof IRBreakJump) {
+                    IRubyObject savedExc = (IRubyObject)getArgs()[1].retrieve(context, self, currScope, currDynScope, temp);
+                    context.runtime.getGlobalVariables().set("$!", savedExc);
+                }
+                return null;
+        }
+
+        throw new RuntimeException("Unknown IR runtime helper method: " + helperMethod + "; INSTR: " + this);
     }
 
     @Override

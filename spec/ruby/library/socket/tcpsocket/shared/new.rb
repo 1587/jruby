@@ -1,44 +1,29 @@
 require File.expand_path('../../../../../spec_helper', __FILE__)
 require File.expand_path('../../../fixtures/classes', __FILE__)
 
-describe :tcpsocket_new, :shared => true do
-  before :all do
-    SocketSpecs::SpecTCPServer.start
-  end
-
-  after :all do
-    SocketSpecs::SpecTCPServer.cleanup
-  end
-
-  before :each do
-    @hostname = SocketSpecs::SpecTCPServer.get.hostname
-  end
-
+describe :tcpsocket_new, shared: true do
   it "requires a hostname and a port as arguments" do
     lambda { TCPSocket.send(@method) }.should raise_error(ArgumentError)
   end
 
-  it "throws a type error if the port is not a fixnum or string" do
-    lambda { TCPSocket.send(@method, @hostname, {}) }.should raise_error(TypeError)
-  end
-
   it "refuses the connection when there is no server to connect to" do
     lambda do
-      TCPSocket.send(@method, @hostname, SocketSpecs.local_port)
+      TCPSocket.send(@method, SocketSpecs.hostname, SocketSpecs.local_port)
     end.should raise_error(Errno::ECONNREFUSED)
   end
 
   describe "with a running server" do
     before :each do
-      @socket = nil
+      @server = SocketSpecs::SpecTCPServer.new
+      @hostname = @server.hostname
     end
 
     after :each do
       if @socket
         @socket.write "QUIT"
-        @socket.shutdown
         @socket.close
       end
+      @server.shutdown
     end
 
     it "silently ignores 'nil' as the third parameter" do

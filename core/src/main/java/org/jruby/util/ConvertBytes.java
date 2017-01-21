@@ -21,9 +21,10 @@ public class ConvertBytes {
     private final boolean is19;
 
     public ConvertBytes(Ruby runtime, ByteList _str, int base, boolean badcheck) {
-        this(runtime, _str, base, badcheck, false);
+        this(runtime, _str, base, badcheck, true);
     }
 
+    @Deprecated
     public ConvertBytes(Ruby runtime, ByteList _str, int base, boolean badcheck, boolean is19) {
         this.runtime = runtime;
         this._str = _str;
@@ -229,12 +230,13 @@ public class ConvertBytes {
     /** rb_cstr_to_inum
      *
      */
+    @Deprecated
     public static RubyInteger byteListToInum(Ruby runtime, ByteList str, int base, boolean badcheck) {
-        return new ConvertBytes(runtime, str, base, badcheck).byteListToInum();
+        return new ConvertBytes(runtime, str, base, badcheck, false).byteListToInum();
     }
 
     public static RubyInteger byteListToInum19(Ruby runtime, ByteList str, int base, boolean badcheck) {
-        return new ConvertBytes(runtime, str, base, badcheck, true).byteListToInum();
+        return new ConvertBytes(runtime, str, base, badcheck).byteListToInum();
     }
 
     private final static byte[] conv_digit = new byte[128];
@@ -619,10 +621,13 @@ public class ConvertBytes {
             return runtime.newFixnum(0);
         }
 
-        len *= (end-str);
+        if (base <= 10) {
+            len *= (trailingLength());
+        } else {
+            len *= (end-str);
+        }
 
         //System.err.println(" main/len=" + len);
-
         if(len < Long.SIZE-1) {
             int[] endPlace = new int[]{str};
             long val = stringToLong(str, endPlace, base);
@@ -651,6 +656,15 @@ public class ConvertBytes {
             }
         }
         return bigParse(len, sign);
+    }
+
+    private int trailingLength() {
+        int newLen = 0;
+        for (int i=str; i < end; i++) {
+            if (Character.isDigit(data[i])) newLen++;
+            else return newLen;
+        }
+        return newLen;
     }
 
     private RubyInteger bigParse(int len, boolean sign) {

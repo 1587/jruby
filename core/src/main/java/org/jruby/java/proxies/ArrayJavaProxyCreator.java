@@ -27,7 +27,7 @@ import org.jruby.runtime.builtin.IRubyObject;
 public class ArrayJavaProxyCreator extends RubyObject {
     private static final int[] EMPTY = new int[0];
 
-    /* final */ Class<?> elementType;
+    final Class<?> elementType;
     int[] dimensions = EMPTY;
 
     public static RubyClass createArrayJavaProxyCreator(ThreadContext context) {
@@ -37,26 +37,19 @@ public class ArrayJavaProxyCreator extends RubyObject {
         return arrayJavaProxyCreator;
     }
 
-    @Deprecated
-    public ArrayJavaProxyCreator(final Ruby runtime) {
-        super(runtime, runtime.getJavaSupport().getArrayJavaProxyCreatorClass());
-    }
-
     ArrayJavaProxyCreator(final ThreadContext context, JavaClass elementType, final IRubyObject[] sizes) {
-        this(context.runtime);
-        this.elementType = elementType.javaClass();
+        this(context.runtime, elementType.javaClass());
         assert sizes.length > 0;
         aggregateDimensions(sizes);
     }
 
-    @Deprecated // no longer used
-    public void setup(ThreadContext context, IRubyObject javaClass, IRubyObject[] sizes) {
-        elementType = (Class) javaClass.toJava(Class.class);
-        aggregateDimensions(sizes);
+    private ArrayJavaProxyCreator(final Ruby runtime, Class<?> elementType) {
+        super(runtime, runtime.getJavaSupport().getArrayJavaProxyCreatorClass());
+        this.elementType = elementType;
     }
 
     @JRubyMethod(name = "[]", required = 1, rest = true)
-    public IRubyObject op_aref(ThreadContext context, IRubyObject[] sizes) {
+    public final IRubyObject op_aref(ThreadContext context, IRubyObject[] sizes) {
         Arity.checkArgumentCount(context.runtime, sizes, 1, -1);
         aggregateDimensions(sizes);
         return this;

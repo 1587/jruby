@@ -1,8 +1,9 @@
 require 'fileutils'
 
 project 'JRuby Complete' do
-
-  version = File.read( File.join( basedir, '..', '..', 'VERSION' ) ).strip
+  
+  version = ENV['JRUBY_VERSION'] ||
+    File.read( File.join( basedir, '..', '..', 'VERSION' ) ).strip
 
   model_version '4.0.0'
   id "org.jruby:jruby-complete:#{version}"
@@ -12,29 +13,32 @@ project 'JRuby Complete' do
   plugin_repository( :id => 'rubygems-releases',
                      :url => 'https://otto.takari.io/content/repositories/rubygems/maven/releases' )
 
-  properties( 'tesla.dump.pom' => 'pom.xml',
-              'tesla.dump.readonly' => true,
+  properties( 'polyglot.dump.pom' => 'pom.xml',
+              'polyglot.dump.readonly' => true,
               'jruby.home' => '${basedir}/../..',
               'main.basedir' => '${project.parent.parent.basedir}',
               'jruby.complete.home' => '${project.build.outputDirectory}/META-INF/jruby.home' )
 
   scope :provided do
-    jar( 'org.jruby:jruby-core:${project.version}:noasm',
-         :exclusions => [ 'com.github.jnr:jnr-ffi',
-                          'org.ow2.asm:asm',
-                          'org.ow2.asm:asm-commons',
-                          'org.ow2.asm:asm-analysis',
-                          'org.ow2.asm:asm-util' ] )
+    jar 'org.jruby:jruby-core:${project.version}' do
+      # this needs to match the Embed-Dependency on the maven-bundle-plugin
+      exclusion 'com.github.jnr:jnr-ffi'
+      exclusion 'me.qmx.jitescript:jitescript'
+      # HACK workaround a bug in maven + ruby-dsl + felix-plugin
+      ['asm', 'asm-commons', 'asm-tree', 'asm-analysis', 'asm-util' ].each do |e|
+        exclusion "org.ow2.asm:#{e}"
+      end
+    end
     jar 'org.jruby:jruby-stdlib:${project.version}'
   end
 
   plugin( 'org.apache.felix:maven-bundle-plugin',
           :archive => {
             :manifest => {
-              :mainClass =>  'org.jruby.Main'
+              :mainClass => 'org.jruby.Main'
             }
           },
-          :instructions => { 
+          :instructions => {
             'Export-Package' => 'org.jruby.*;version=${project.version}',
             'Import-Package' => '!org.jruby.*, *;resolution:=optional',
             'DynamicImport-Package' => 'javax.*',
@@ -42,7 +46,8 @@ project 'JRuby Complete' do
             'Bundle-Name' => 'JRuby ${project.version}',
             'Bundle-Description' => 'JRuby ${project.version} OSGi bundle',
             'Bundle-SymbolicName' => 'org.jruby.jruby',
-            'Embed-Dependency' => '*;type=jar;scope=provided;inline=true',
+            # the artifactId exclusion needs to match the jruby-core from above
+            'Embed-Dependency' => '*;type=jar;scope=provided;inline=true;artifactId=!jnr-ffi',
             'Embed-Transitive' => true
           } ) do
     # TODO fix DSL
@@ -51,7 +56,7 @@ project 'JRuby Complete' do
 
   plugin( :invoker )
 
-  # we have no sources and attach the sources and javadocs from jruby-core 
+  # we have no sources and attach the sources and javadocs from jruby-core
   # later in the build so IDE can use them
   plugin( :source, 'skipSource' =>  'true' )
 
@@ -77,31 +82,34 @@ project 'JRuby Complete' do
                    :failOnError => false )
   end
 
-  profile 'sonatype-oss-release' do
+  ['sonatype-oss-release', 'snapshots'].each do |name|
+    profile name do
 
-    # use the javadocs and sources from jruby-core !!!
-    phase :package do
-      plugin :dependency do
-        items = [ 'sources', 'javadoc' ].collect do |classifier|
-          { 'groupId' =>  '${project.groupId}',
-            'artifactId' =>  'jruby-core',
-            'version' =>  '${project.version}',
-            'classifier' =>  classifier,
-            'overWrite' =>  'false',
-            'outputDirectory' =>  '${project.build.directory}' }
+      # use the javadocs and sources from jruby-core !!!
+      phase :package do
+        set = ['sources', 'javadoc' ]
+        plugin :dependency do
+          items = set.collect do |classifier|
+            { 'groupId' =>  '${project.groupId}',
+              'artifactId' =>  'jruby-core',
+              'version' =>  '${project.version}',
+              'classifier' =>  classifier,
+              'overWrite' =>  'false',
+              'outputDirectory' =>  '${project.build.directory}' }
+          end
+          execute_goals( 'copy',
+                         :id => 'copy javadocs and sources from jruby-core',
+                         'artifactItems' => items )
         end
-        execute_goals( 'copy',
-                       :id => 'copy javadocs and sources from jruby-core',
-                       'artifactItems' => items )
-      end
 
-      plugin 'org.codehaus.mojo:build-helper-maven-plugin' do
-        execute_goals( 'attach-artifact',
-                       :id => 'attach-artifacts',
-                       'artifacts' => [ { 'file' =>  '${project.build.directory}/jruby-core-${project.version}-sources.jar',
-                                          'classifier' =>  'sources' },
-                                        { 'file' =>  '${project.build.directory}/jruby-core-${project.version}-javadoc.jar',
-                                          'classifier' =>  'javadoc' } ] )
+        plugin 'org.codehaus.mojo:build-helper-maven-plugin' do
+          artifacts = set.collect do |classifier|
+            { 'file' =>  "${project.build.directory}/jruby-core-${project.version}-#{classifier}.jar", 'classifier' =>  classifier }
+          end
+          execute_goals( 'attach-artifact',
+                         :id => 'attach-artifacts',
+                         'artifacts' => artifacts )
+        end
       end
     end
   end

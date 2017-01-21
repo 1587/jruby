@@ -5,14 +5,14 @@ require 'date'
 describe "DateTime.new" do
   it "sets all values to default if passed no arguments" do
     d = DateTime.new
-    d.year.should         == -4712
-    d.month.should        == 1
-    d.day.should          == 1
-    d.hour.should         == 0
-    d.min.should          == 0
-    d.sec.should          == 0
+    d.year.should == -4712
+    d.month.should == 1
+    d.day.should == 1
+    d.hour.should == 0
+    d.min.should == 0
+    d.sec.should == 0
     d.sec_fraction.should == 0
-    d.offset.should       == 0
+    d.offset.should == 0
   end
 
   it "takes the first argument as year" do
@@ -48,6 +48,6 @@ describe "DateTime.new" do
   end
 
   it "raises an error on invalid arguments" do
-    lambda { new_datetime(:minute => 999) }.should raise_error(ArgumentError)
+    lambda { new_datetime(minute: 999) }.should raise_error(ArgumentError)
   end
 end

@@ -1,7 +1,7 @@
 require File.expand_path('../../../spec_helper', __FILE__)
 require File.expand_path('../fixtures/classes', __FILE__)
 
-describe :kernel_float, :shared => true do
+describe :kernel_float, shared: true do
   it "returns the identical Float for numeric Floats" do
     float = 1.12
     float2 = @object.send(:Float, float)
@@ -11,6 +11,10 @@ describe :kernel_float, :shared => true do
 
   it "returns a Float for Fixnums" do
     @object.send(:Float, 1).should == 1.0
+  end
+
+  it "returns a Float for Complex with only a real part" do
+    @object.send(:Float, Complex(1)).should == 1.0
   end
 
   it "returns a Float for Bignums" do
@@ -139,6 +143,14 @@ describe :kernel_float, :shared => true do
     @object.send(:Float, "1 ").should == 1.0
   end
 
+  it "returns a value for a String with any leading whitespace" do
+    @object.send(:Float, "\t\n1").should == 1.0
+  end
+
+  it "returns a value for a String with any trailing whitespace" do
+    @object.send(:Float, "1\t\n").should == 1.0
+  end
+
   %w(e E).each do |e|
     it "raises an ArgumentError if #{e} is the trailing character" do
       lambda { @object.send(:Float, "2#{e}") }.should raise_error(ArgumentError)
@@ -149,7 +161,7 @@ describe :kernel_float, :shared => true do
     end
 
     it "returns Infinity for '2#{e}1000'" do
-      @object.send(:Float, "2#{e}1000").should == (1.0/0)
+      @object.send(:Float, "2#{e}1000").should == Float::INFINITY
     end
 
     it "returns 0 for '2#{e}-1000'" do
@@ -186,6 +198,63 @@ describe :kernel_float, :shared => true do
     end
   end
 
+  describe "for hexadecimal literals with binary exponent" do
+    %w(p P).each do |p|
+      it "interprets the fractional part (on the left side of '#{p}') in hexadecimal" do
+        @object.send(:Float, "0x10#{p}0").should == 16.0
+      end
+
+      it "interprets the exponent (on the right of '#{p}') in decimal" do
+        @object.send(:Float, "0x1#{p}10").should == 1024.0
+      end
+
+      it "raises an ArgumentError if #{p} is the trailing character" do
+        lambda { @object.send(:Float, "0x1#{p}") }.should raise_error(ArgumentError)
+      end
+
+      it "raises an ArgumentError if #{p} is the leading character" do
+        lambda { @object.send(:Float, "0x#{p}1") }.should raise_error(ArgumentError)
+      end
+
+      it "returns Infinity for '0x1#{p}10000'" do
+        @object.send(:Float, "0x1#{p}10000").should == Float::INFINITY
+      end
+
+      it "returns 0 for '0x1#{p}-10000'" do
+        @object.send(:Float, "0x1#{p}-10000").should == 0
+      end
+
+      it "allows embedded _ in a number on either side of the #{p}" do
+        @object.send(:Float, "0x1_0#{p}10").should == 16384.0
+        @object.send(:Float, "0x10#{p}1_0").should == 16384.0
+        @object.send(:Float, "0x1_0#{p}1_0").should == 16384.0
+      end
+
+      it "raises an exception if a space is embedded on either side of the '#{p}'" do
+        lambda { @object.send(:Float, "0x1 0#{p}10") }.should raise_error(ArgumentError)
+        lambda { @object.send(:Float, "0x10#{p}1 0") }.should raise_error(ArgumentError)
+      end
+
+      it "raises an exception if there's a leading _ on either side of the '#{p}'" do
+        lambda { @object.send(:Float, "0x_10#{p}10") }.should raise_error(ArgumentError)
+        lambda { @object.send(:Float, "0x10#{p}_10") }.should raise_error(ArgumentError)
+      end
+
+      it "raises an exception if there's a trailing _ on either side of the '#{p}'" do
+        lambda { @object.send(:Float, "0x10_#{p}10") }.should raise_error(ArgumentError)
+        lambda { @object.send(:Float, "0x10#{p}10_") }.should raise_error(ArgumentError)
+      end
+
+      it "allows hexadecimal points on the left side of the '#{p}'" do
+        @object.send(:Float, "0x1.8#{p}0").should == 1.5
+      end
+
+      it "raises an ArgumentError if there's a decimal point on the right side of the '#{p}'" do
+        lambda { @object.send(:Float, "0x1#{p}1.0") }.should raise_error(ArgumentError)
+      end
+    end
+  end
+
   it "returns a Float that can be a parameter to #Float again" do
     float = @object.send(:Float, "10")
     @object.send(:Float, float).should == 10.0
@@ -197,21 +266,12 @@ describe :kernel_float, :shared => true do
     @object.send(:Float, obj).should == 1.2
   end
 
-  ruby_version_is '' ... '1.8.7' do
-    it "raises an Argument Error if to_f is called and it returns NaN" do
-      (nan = mock('NaN')).should_receive(:to_f).once.and_return(nan_value)
-      lambda { @object.send(:Float, nan) }.should raise_error(ArgumentError)
-    end
-  end
-
-  ruby_version_is '1.8.7' do
-    it "returns the identical NaN if to_f is called and it returns NaN" do
-      nan = nan_value
-      (nan_to_f = mock('NaN')).should_receive(:to_f).once.and_return(nan)
-      nan2 = @object.send(:Float, nan_to_f)
-      nan2.nan?.should be_true
-      nan2.should equal(nan)
-    end
+  it "returns the identical NaN if to_f is called and it returns NaN" do
+    nan = nan_value
+    (nan_to_f = mock('NaN')).should_receive(:to_f).once.and_return(nan)
+    nan2 = @object.send(:Float, nan_to_f)
+    nan2.nan?.should be_true
+    nan2.should equal(nan)
   end
 
   it "returns the identical Infinity if to_f is called and it returns Infinity" do
@@ -233,6 +293,11 @@ describe :kernel_float, :shared => true do
   it "raises a TypeError if #to_f returns an Integer" do
     (obj = mock('123')).should_receive(:to_f).once.and_return(123)
     lambda { @object.send(:Float, obj) }.should raise_error(TypeError)
+  end
+
+  it "raises a RangeError when passed a Complex argument" do
+    c = Complex(2, 3)
+    lambda { @object.send(:Float, c) }.should raise_error(RangeError)
   end
 end
 

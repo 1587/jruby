@@ -1,7 +1,7 @@
-#include <string.h>
-
 #include "ruby.h"
 #include "rubyspec.h"
+
+#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -49,7 +49,7 @@ VALUE proc_spec_rb_Proc_new(VALUE self, VALUE scenario) {
   return Qnil;
 }
 
-void Init_proc_spec() {
+void Init_proc_spec(void) {
   VALUE cls;
   cls = rb_define_class("CApiProcSpecs", rb_cObject);
 

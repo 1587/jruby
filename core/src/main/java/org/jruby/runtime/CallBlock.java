@@ -12,7 +12,7 @@
  * rights and limitations under the License.
  *
  * Copyright (C) 2006 Ola Bini <ola@ologix.com>
- * 
+ *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
  * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
@@ -28,7 +28,6 @@
 package org.jruby.runtime;
 
 import org.jruby.RubyModule;
-import org.jruby.RubyProc;
 import org.jruby.parser.StaticScope;
 import org.jruby.runtime.builtin.IRubyObject;
 
@@ -37,90 +36,63 @@ import org.jruby.runtime.builtin.IRubyObject;
  * lightweight block logic within Java code.
  */
 public class CallBlock extends BlockBody {
-    private final Arity arity;
     private final BlockCallback callback;
     private final StaticScope dummyScope;
-    
-    public static Block newCallClosure(IRubyObject self, RubyModule imClass, Arity arity, BlockCallback callback, ThreadContext context) {
+
+    public static Block newCallClosure(IRubyObject self, RubyModule imClass, Signature signature, BlockCallback callback, ThreadContext context) {
         Binding binding = context.currentBinding(self, Visibility.PUBLIC);
-        BlockBody body = new CallBlock(arity, callback, context);
-        
+        BlockBody body = new CallBlock(signature, callback, context);
+
         return new Block(body, binding);
     }
 
-    private CallBlock(Arity arity, BlockCallback callback, ThreadContext context) {
-        super(BlockBody.SINGLE_RESTARG);
-        this.arity = arity;
+    @Deprecated
+    public static Block newCallClosure(IRubyObject self, RubyModule imClass, Arity arity, BlockCallback callback, ThreadContext context) {
+        return newCallClosure(self, imClass, Signature.from(arity), callback, context);
+    }
+
+    private CallBlock(Signature signature, BlockCallback callback, ThreadContext context) {
+        super(signature);
         this.callback = callback;
         this.dummyScope = context.runtime.getStaticScopeFactory().getDummyScope();
     }
 
     @Override
-    public IRubyObject call(ThreadContext context, IRubyObject[] args, Binding binding, Block.Type type) {
+    public IRubyObject call(ThreadContext context, Block block, IRubyObject[] args) {
         return callback.call(context, args, Block.NULL_BLOCK);
     }
 
     @Override
-    public IRubyObject call(ThreadContext context, IRubyObject[] args, Binding binding,
-            Block.Type type, Block block) {
-        return callback.call(context, args, block);
+    public IRubyObject call(ThreadContext context, Block block, IRubyObject[] args, Block blockArg) {
+        return callback.call(context, args, blockArg);
     }
 
     @Override
-    public IRubyObject yieldSpecific(ThreadContext context, Binding binding, Block.Type type) {
+    public IRubyObject yieldSpecific(ThreadContext context, Block block) {
         return callback.call(context, IRubyObject.NULL_ARRAY, Block.NULL_BLOCK);
     }
 
     @Override
-    public IRubyObject yieldSpecific(ThreadContext context, IRubyObject arg0, Binding binding, Block.Type type) {
-        return callback.call(context, new IRubyObject[] {arg0}, Block.NULL_BLOCK);
+    public IRubyObject yieldSpecific(ThreadContext context, Block block, IRubyObject arg0) {
+        return callback.call(context, new IRubyObject[]{arg0}, Block.NULL_BLOCK);
     }
 
     @Override
-    public IRubyObject yieldSpecific(ThreadContext context, IRubyObject arg0, IRubyObject arg1, Binding binding, Block.Type type) {
-        return yield(context, new IRubyObject[] {arg0, arg1}, Block.NULL_BLOCK);
+    protected IRubyObject doYield(ThreadContext context, Block block, IRubyObject value) {
+        return callback.call(context, new IRubyObject[]{value}, Block.NULL_BLOCK);
     }
 
     @Override
-    public IRubyObject yieldSpecific(ThreadContext context, IRubyObject arg0, IRubyObject arg1, IRubyObject arg2, Binding binding, Block.Type type) {
-        return yield(context, new IRubyObject[] {arg0, arg1, arg2}, Block.NULL_BLOCK);
-    }
-    
-    public IRubyObject yield(ThreadContext context, IRubyObject value, Binding binding, Block.Type type) {
-        return callback.call(context, new IRubyObject[] {value}, Block.NULL_BLOCK);
+    protected IRubyObject doYield(ThreadContext context, Block block, IRubyObject[] args, IRubyObject self) {
+        return callback.call(context, args, Block.NULL_BLOCK);
     }
 
-    /**
-     * Yield to this block, usually passed to the current call.
-     * 
-     * @param context represents the current thread-specific data
-     * @param value The value to yield, either a single value or an array of values
-     * @param self The current self
-     * @param klass
-     * @param aValue Should value be arrayified or not?
-     * @return
-     */
-    public IRubyObject yield(ThreadContext context, IRubyObject value, IRubyObject self, 
-            RubyModule klass, boolean aValue, Binding binding, Block.Type type) {
-        IRubyObject[] args = value.respondsTo("to_a") ? value.convertToArray().toJavaArray() : new IRubyObject[] {value};
-        return yield(context, args, Block.NULL_BLOCK);
-    }
-
-    private IRubyObject yield(ThreadContext context, IRubyObject[] args, Block block) {
-        IRubyObject[] preppedArgs = RubyProc.prepareProcArgs(context, arity(), args);
-        return callback.call(context, preppedArgs, Block.NULL_BLOCK);
-    }
-    
     public StaticScope getStaticScope() {
         return dummyScope;
     }
 
     public void setStaticScope(StaticScope newScope) {
         // ignore
-    }
-
-    public Arity arity() {
-        return arity;
     }
 
     public String getFile() {

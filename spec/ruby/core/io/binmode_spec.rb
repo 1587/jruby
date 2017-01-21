@@ -16,51 +16,45 @@ describe "IO#binmode" do
     @io.binmode.should equal(@io)
   end
 
-  ruby_bug "#2046", "1.8.7.174" do
-    it "raises an IOError on closed stream" do
-      lambda { IOSpecs.closed_io.binmode }.should raise_error(IOError)
-    end
+  it "raises an IOError on closed stream" do
+    lambda { IOSpecs.closed_io.binmode }.should raise_error(IOError)
   end
 
-  ruby_version_is "1.9" do
-    it "sets external encoding to binary" do
-      @io = new_io(@name, "w:utf-8")
-      @io.binmode
-      @io.external_encoding.should == Encoding::BINARY
-    end
+  it "sets external encoding to binary" do
+    @io = new_io(@name, "w:utf-8")
+    @io.binmode
+    @io.external_encoding.should == Encoding::BINARY
+  end
 
-    it "sets internal encoding to nil" do
-      @io = new_io(@name, "w:utf-8:ISO-8859-1")
-      @io.binmode
-      @io.internal_encoding.should == nil
-    end
+  it "sets internal encoding to nil" do
+    @io = new_io(@name, "w:utf-8:ISO-8859-1")
+    @io.binmode
+    @io.internal_encoding.should == nil
   end
 end
 
-ruby_version_is "1.9" do
-  describe "IO#binmode?" do
-    before :each do
-      @filename = tmp("IO_binmode_file")
-      @file = File.open(@filename, "w")
-      @duped = nil
-    end
+describe "IO#binmode?" do
+  before :each do
+    @filename = tmp("IO_binmode_file")
+    @file = File.open(@filename, "w")
+    @duped = nil
+  end
 
-    after :each do
-      @duped.close if @duped
-      @file.close
-      rm_r @filename
-    end
-    
-    it "is true after a call to IO#binmode" do
-      @file.binmode?.should be_false
-      @file.binmode
-      @file.binmode?.should be_true
-    end
-    
-    it "propagates to dup'ed IO objects" do
-      @file.binmode
-      @duped = @file.dup
-      @duped.binmode?.should == @file.binmode?
-    end
+  after :each do
+    @duped.close if @duped
+    @file.close
+    rm_r @filename
+  end
+
+  it "is true after a call to IO#binmode" do
+    @file.binmode?.should be_false
+    @file.binmode
+    @file.binmode?.should be_true
+  end
+
+  it "propagates to dup'ed IO objects" do
+    @file.binmode
+    @duped = @file.dup
+    @duped.binmode?.should == @file.binmode?
   end
 end

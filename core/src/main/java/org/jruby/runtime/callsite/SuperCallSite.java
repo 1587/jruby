@@ -3,10 +3,7 @@ package org.jruby.runtime.callsite;
 import org.jruby.RubyClass;
 import org.jruby.RubyFixnum;
 import org.jruby.RubyFloat;
-import org.jruby.RubyLocalJumpError;
 import org.jruby.RubyModule;
-import org.jruby.exceptions.JumpException;
-import org.jruby.exceptions.RaiseException;
 import org.jruby.internal.runtime.methods.DynamicMethod;
 import org.jruby.runtime.Helpers;
 import org.jruby.runtime.Block;
@@ -71,22 +68,12 @@ public class SuperCallSite extends CallSite {
     }
 
     public IRubyObject call(ThreadContext context, IRubyObject caller, IRubyObject self, IRubyObject[] args, Block block) {
-        try {
-            return callBlock(context, caller, self, args, block);
-        } catch (JumpException.BreakJump bj) {
-            return handleBreakJump(context, bj);
-        } catch (JumpException.RetryJump rj) {
-            throw retryJumpError(context);
-        }
+        return callBlock(context, caller, self, args, block);
     }
 
     public IRubyObject callIter(ThreadContext context, IRubyObject caller, IRubyObject self, IRubyObject[] args, Block block) {
         try {
             return callBlock(context, caller, self, args, block);
-        } catch (JumpException.BreakJump bj) {
-            return handleBreakJump(context, bj);
-        } catch (JumpException.RetryJump rj) {
-            throw retryJumpError(context);
         } finally {
             block.escape();
         }
@@ -147,22 +134,12 @@ public class SuperCallSite extends CallSite {
     }
 
     public IRubyObject call(ThreadContext context, IRubyObject caller, IRubyObject self, Block block) {
-        try {
-            return callBlock(context, caller, self, block);
-        } catch (JumpException.BreakJump bj) {
-            return handleBreakJump(context, bj);
-        } catch (JumpException.RetryJump rj) {
-            throw retryJumpError(context);
-        }
+        return callBlock(context, caller, self, block);
     }
 
     public IRubyObject callIter(ThreadContext context, IRubyObject caller, IRubyObject self, Block block) {
         try {
             return callBlock(context, caller, self, block);
-        } catch (JumpException.BreakJump bj) {
-            return handleBreakJump(context, bj);
-        } catch (JumpException.RetryJump rj) {
-            throw retryJumpError(context);
         } finally {
             block.escape();
         }
@@ -193,22 +170,12 @@ public class SuperCallSite extends CallSite {
     }
 
     public IRubyObject call(ThreadContext context, IRubyObject caller, IRubyObject self, IRubyObject arg1, Block block) {
-        try {
-            return callBlock(context, caller, self, arg1, block);
-        } catch (JumpException.BreakJump bj) {
-            return handleBreakJump(context, bj);
-        } catch (JumpException.RetryJump rj) {
-            throw retryJumpError(context);
-        }
+        return callBlock(context, caller, self, arg1, block);
     }
 
     public IRubyObject callIter(ThreadContext context, IRubyObject caller, IRubyObject self, IRubyObject arg1, Block block) {
         try {
             return callBlock(context, caller, self, arg1, block);
-        } catch (JumpException.BreakJump bj) {
-            return handleBreakJump(context, bj);
-        } catch (JumpException.RetryJump rj) {
-            throw retryJumpError(context);
         } finally {
             block.escape();
         }
@@ -239,22 +206,12 @@ public class SuperCallSite extends CallSite {
     }
 
     public IRubyObject call(ThreadContext context, IRubyObject caller, IRubyObject self, IRubyObject arg1, IRubyObject arg2, Block block) {
-        try {
-            return callBlock(context, caller, self, arg1, arg2, block);
-        } catch (JumpException.BreakJump bj) {
-            return handleBreakJump(context, bj);
-        } catch (JumpException.RetryJump rj) {
-            throw retryJumpError(context);
-        }
+        return callBlock(context, caller, self, arg1, arg2, block);
     }
 
     public IRubyObject callIter(ThreadContext context, IRubyObject caller, IRubyObject self, IRubyObject arg1, IRubyObject arg2, Block block) {
         try {
             return callBlock(context, caller, self, arg1, arg2, block);
-        } catch (JumpException.BreakJump bj) {
-            return handleBreakJump(context, bj);
-        } catch (JumpException.RetryJump rj) {
-            throw retryJumpError(context);
         } finally {
             block.escape();
         }
@@ -285,22 +242,12 @@ public class SuperCallSite extends CallSite {
     }
 
     public IRubyObject call(ThreadContext context, IRubyObject caller, IRubyObject self, IRubyObject arg1, IRubyObject arg2, IRubyObject arg3, Block block) {
-        try {
-            return callBlock(context, caller, self, arg1, arg2, arg3, block);
-        } catch (JumpException.BreakJump bj) {
-            return handleBreakJump(context, bj);
-        } catch (JumpException.RetryJump rj) {
-            throw retryJumpError(context);
-        }
+        return callBlock(context, caller, self, arg1, arg2, arg3, block);
     }
 
     public IRubyObject callIter(ThreadContext context, IRubyObject caller, IRubyObject self, IRubyObject arg1, IRubyObject arg2, IRubyObject arg3, Block block) {
         try {
             return callBlock(context, caller, self, arg1, arg2, arg3, block);
-        } catch (JumpException.BreakJump bj) {
-            return handleBreakJump(context, bj);
-        } catch (JumpException.RetryJump rj) {
-            throw retryJumpError(context);
         } finally {
             block.escape();
         }
@@ -451,29 +398,9 @@ public class SuperCallSite extends CallSite {
     }
 
     protected static RubyClass pollAndGetClass(ThreadContext context, IRubyObject self, RubyModule frameClass, String frameName) {
-        checkSuperDisabledOrOutOfMethod(context, frameClass, frameName);
-        RubyClass superClass = Helpers.findImplementerIfNecessary(self.getMetaClass(), frameClass).getSuperClass();
-        return superClass;
+        Helpers.checkSuperDisabledOrOutOfMethod(context, frameClass, frameName);
+
+        return Helpers.findImplementerIfNecessary(self.getMetaClass(), frameClass).getSuperClass();
     }
 
-    protected static void checkSuperDisabledOrOutOfMethod(ThreadContext context, RubyModule frameClass, String frameName) {
-        if (frameClass == null) {
-            if (frameName != null) {
-                throw context.runtime.newNameError("superclass method '" + frameName + "' disabled", frameName);
-            } else {
-                throw context.runtime.newNoMethodError("super called outside of method", null, context.runtime.getNil());
-            }
-        }
-    }
-
-    protected static IRubyObject handleBreakJump(ThreadContext context, JumpException.BreakJump bj) throws JumpException.BreakJump {
-        if (context.getFrameJumpTarget() == bj.getTarget()) {
-            return (IRubyObject) bj.getValue();
-        }
-        throw bj;
-    }
-
-    protected static RaiseException retryJumpError(ThreadContext context) {
-        return context.runtime.newLocalJumpError(RubyLocalJumpError.Reason.RETRY, context.runtime.getNil(), "retry outside of rescue not supported");
-    }
 }

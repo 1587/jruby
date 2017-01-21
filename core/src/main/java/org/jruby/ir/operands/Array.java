@@ -1,11 +1,17 @@
 package org.jruby.ir.operands;
 
+import org.jruby.RubyArray;
 import org.jruby.ir.IRVisitor;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.parser.StaticScope;
 import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 
+import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -14,20 +20,23 @@ import java.util.Map;
 // NOTE: This operand is only used in the initial stages of optimization.
 // Further down the line, this array operand could get converted to calls
 // that actually build a Ruby object
-public class Array extends Operand {
-    final public Operand[] elts;
+public class Array extends Operand implements Iterable<Operand> {
+    private final Operand[] elts;
 
     // SSS FIXME: Do we create a special-case for zero-length arrays?
     public Array() {
-        elts = new Operand[0];
-    }
-
-    public Array(List<Operand> elts) {
-        this(elts.toArray(new Operand[elts.size()]));
+        this(EMPTY_ARRAY);
     }
 
     public Array(Operand[] elts) {
-        this.elts = elts == null ? new Operand[0] : elts;
+        super();
+
+        this.elts = elts == null ? EMPTY_ARRAY : elts;
+    }
+
+    @Override
+    public OperandType getOperandType() {
+        return OperandType.ARRAY;
     }
 
     public boolean isBlank() {
@@ -67,25 +76,6 @@ public class Array extends Operand {
         return new Array(newElts);
     }
 
-    @Override
-    public Operand fetchCompileTimeArrayElement(int argIndex, boolean getSubArray) {
-        // FIXME: This appears to be unhooked and Nil.NIL is a problem for it atm
-        /*
-        if (!getSubArray) return argIndex < elts.length ? elts[argIndex] : Nil.NIL;
-
-        if (argIndex < elts.length) {
-            Operand[] newElts = new Operand[elts.length - argIndex];
-            System.arraycopy(elts, argIndex, newElts, 0, newElts.length);
-
-            return new Array(newElts);
-        }
-
-        return new Array();
-        *
-        */
-        return null;
-    }
-
     public Operand toArray() {
         return this;
     }
@@ -99,7 +89,7 @@ public class Array extends Operand {
     }
 
     @Override
-    public Operand cloneForInlining(InlinerInfo ii) {
+    public Operand cloneForInlining(CloneInfo ii) {
         if (hasKnownValue()) return this;
 
         Operand[] newElts = new Operand[elts.length];
@@ -111,14 +101,37 @@ public class Array extends Operand {
     }
 
     @Override
-    public Object retrieve(ThreadContext context, IRubyObject self, DynamicScope currDynScope, Object[] temp) {
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+        e.encode(getElts());
+    }
+
+    public static Array decode(IRReaderDecoder d) {
+        return new Array(d.decodeOperandArray());
+    }
+
+    public IRubyObject[] retrieveArrayElts(ThreadContext context, IRubyObject self, StaticScope currScope, DynamicScope currDynScope, Object[] temp) {
         IRubyObject[] elements = new IRubyObject[elts.length];
 
         for (int i = 0; i < elements.length; i++) {
-            elements[i] = (IRubyObject) elts[i].retrieve(context, self, currDynScope, temp);
+            elements[i] = (IRubyObject) elts[i].retrieve(context, self, currScope, currDynScope, temp);
         }
+        return elements;
+    }
 
-        return context.runtime.newArray(elements);
+    @Override
+    public Object retrieve(ThreadContext context, IRubyObject self, StaticScope currScope, DynamicScope currDynScope, Object[] temp) {
+        switch (elts.length) {
+            case 0:
+                return context.runtime.newEmptyArray();
+            case 1:
+                return context.runtime.newArray((IRubyObject) elts[0].retrieve(context, self, currScope, currDynScope, temp));
+            case 2:
+                return context.runtime.newArray((IRubyObject) elts[0].retrieve(context, self, currScope, currDynScope, temp),
+                        (IRubyObject) elts[1].retrieve(context, self, currScope, currDynScope, temp));
+            default:
+                return RubyArray.newArrayMayCopy(context.runtime, retrieveArrayElts(context, self, currScope, currDynScope, temp));
+        }
     }
 
     @Override
@@ -128,5 +141,10 @@ public class Array extends Operand {
 
     public Operand[] getElts() {
         return elts;
+    }
+
+    @Override
+    public Iterator<Operand> iterator() {
+        return Arrays.asList(elts).iterator();
     }
 }

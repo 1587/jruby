@@ -22,17 +22,8 @@ public class IOJavaAddons {
     @JRubyMethod
     public static IRubyObject to_inputstream(ThreadContext context, IRubyObject self) {
         RubyIO io = (RubyIO)self;
-        Ruby runtime = context.runtime;
 
-        try {
-            io.getOpenFile().checkReadable(context.runtime);
-        } catch (IOException ex) {
-            throw runtime.newIOErrorFromException(ex);
-        } catch (BadDescriptorException ex) {
-            throw runtime.newErrnoEBADFError();
-        } catch (InvalidValueException e) {
-            throw runtime.newErrnoEINVALError();
-        }
+        io.getOpenFile().checkReadable(context);
 
         return JavaUtil.convertJavaToUsableRubyObject(context.runtime, io.getInStream());
     }
@@ -40,17 +31,8 @@ public class IOJavaAddons {
     @JRubyMethod
     public static IRubyObject to_outputstream(ThreadContext context, IRubyObject self) {
         RubyIO io = (RubyIO)self;
-        Ruby runtime = context.runtime;
 
-        try {
-            io.getOpenFile().checkWritable(context.runtime);
-        } catch (IOException ex) {
-            throw runtime.newIOErrorFromException(ex);
-        } catch (BadDescriptorException ex) {
-            throw runtime.newErrnoEBADFError();
-        } catch (InvalidValueException e) {
-            throw runtime.newErrnoEINVALError();
-        }
+        io.getOpenFile().checkWritable(context);
 
         return JavaUtil.convertJavaToUsableRubyObject(context.runtime, io.getOutStream());
     }

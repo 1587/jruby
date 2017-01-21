@@ -2,21 +2,22 @@ package org.jruby.ir.instructions;
 
 import org.jruby.ir.IRVisitor;
 import org.jruby.ir.Operation;
-import org.jruby.ir.operands.Operand;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.parser.StaticScope;
 import org.jruby.runtime.Arity;
-import org.jruby.runtime.Block;
 import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 
-public class RaiseArgumentErrorInstr extends Instr {
+public class RaiseArgumentErrorInstr extends NoOperandInstr implements FixedArityInstr {
     private final int required;
     private final int opt;
-    private final int rest;
+    private final boolean rest;
     private final int numArgs;
 
-    public RaiseArgumentErrorInstr(int required, int opt, int rest, int numArgs) {
+    public RaiseArgumentErrorInstr(int required, int opt, boolean rest, int numArgs) {
         super(Operation.RAISE_ARGUMENT_ERROR);
 
         this.required = required;
@@ -25,23 +26,47 @@ public class RaiseArgumentErrorInstr extends Instr {
         this.numArgs = numArgs;
     }
 
-    @Override
-    public Operand[] getOperands() {
-        return EMPTY_OPERANDS;
+    public int getNumArgs() {
+        return numArgs;
+    }
+
+    public int getOpt() {
+        return opt;
     }
 
     @Override
-    public String toString() {
-        return super.toString() + "(" + required + ", " + opt + ", " + rest + ")";
+    public String[] toStringNonOperandArgs() {
+        return new String[] { "req: " + required, "o: " + opt, "*r: " + rest};
+    }
+
+    public int getRequired() {
+        return required;
+    }
+
+    public boolean getRest() {
+        return rest;
     }
 
     @Override
-    public Instr cloneForInlining(InlinerInfo ii) {
+    public Instr clone(CloneInfo ii) {
         return new RaiseArgumentErrorInstr(required, opt, rest, numArgs);
     }
 
     @Override
-    public Object interpret(ThreadContext context, DynamicScope currDynScope, IRubyObject self, Object[] temp, Block block) {
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+        e.encode(getRequired());
+        e.encode(getOpt());
+        e.encode(getRest());
+        e.encode(getNumArgs());
+    }
+
+    public static RaiseArgumentErrorInstr decode(IRReaderDecoder d) {
+        return new RaiseArgumentErrorInstr(d.decodeInt(), d.decodeInt(), d.decodeBoolean(), d.decodeInt());
+    }
+
+    @Override
+    public Object interpret(ThreadContext context, StaticScope currScope, DynamicScope currDynScope, IRubyObject self, Object[] temp) {
         Arity.raiseArgumentError(context.runtime, numArgs, required, required + opt);
         return null;
     }

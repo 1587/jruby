@@ -35,6 +35,7 @@ import org.jruby.RubyString;
 import org.jruby.anno.JRubyClass;
 import org.jruby.anno.JRubyMethod;
 import org.jruby.runtime.Arity;
+import org.jruby.runtime.Block;
 import org.jruby.runtime.ObjectAllocator;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
@@ -70,7 +71,7 @@ public class JZlibDeflate extends ZStream {
             checkLevel(runtime, level);
         }
 
-        RubyClass klass = (RubyClass) recv;
+        RubyClass klass = (RubyClass)(recv.isClass() ? recv : runtime.getClassFromPath("Zlib::Deflate"));
         JZlibDeflate deflate = (JZlibDeflate) klass.allocate();
         deflate.init(level, JZlib.DEF_WBITS, 8, JZlib.Z_DEFAULT_STRATEGY);
 
@@ -181,7 +182,7 @@ public class JZlibDeflate extends ZStream {
         int s = RubyNumeric.fix2int(strategy);
         checkStrategy(getRuntime(), s);
         
-        if (flater.next_out == null) flater.setOutput(new byte[0]);
+        if (flater.next_out == null) flater.setOutput(ByteList.NULL_ARRAY);
 
         int err = flater.params(l, s);
         if (err == com.jcraft.jzlib.JZlib.Z_STREAM_ERROR) {
@@ -267,7 +268,7 @@ public class JZlibDeflate extends ZStream {
     }
 
     @Override
-    protected IRubyObject internalFinish() {
+    protected IRubyObject internalFinish(Block block) {
         return finish();
     }
 

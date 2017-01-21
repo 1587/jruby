@@ -1,3 +1,5 @@
+# encoding: utf-8
+
 require File.expand_path('../../../spec_helper', __FILE__)
 require File.expand_path('../fixtures/common', __FILE__)
 require File.expand_path('../shared/open', __FILE__)
@@ -5,6 +7,7 @@ require File.expand_path('../shared/open', __FILE__)
 describe "File.open" do
   before :all do
     @file = tmp("file_open.txt")
+    @unicode_path = tmp("こんにちは.txt")
     @nonexistent = tmp("fake.txt")
     rm_r @file, @nonexistent
   end
@@ -19,7 +22,7 @@ describe "File.open" do
 
   after :each do
     @fh.close if @fh and not @fh.closed?
-    rm_r @file, @nonexistent
+    rm_r @file, @unicode_path, @nonexistent
   end
 
   describe "with a block" do
@@ -42,8 +45,16 @@ describe "File.open" do
       ScratchPad.recorded.should == [:file_opened, :file_closed]
     end
 
-    it "does not propagate StandardErrors produced by close" do
-      File.open(@file, 'r') { |f| FileSpecs.make_closer f, IOError }
+    it "propagates StandardErrors produced by close" do
+      lambda {
+        File.open(@file, 'r') { |f| FileSpecs.make_closer f, StandardError }
+      }.should raise_error(StandardError)
+
+      ScratchPad.recorded.should == [:file_opened, :file_closed]
+    end
+
+    it "does not propagate IOError with 'closed stream' message produced by close" do
+      File.open(@file, 'r') { |f| FileSpecs.make_closer f, IOError.new('closed stream') }
 
       ScratchPad.recorded.should == [:file_opened, :file_closed]
     end
@@ -53,6 +64,12 @@ describe "File.open" do
     @fh = File.open(@file)
     @fh.should be_kind_of(File)
     File.exist?(@file).should == true
+  end
+
+  it "opens the file with unicode characters" do
+    @fh = File.open(@unicode_path, "w")
+    @fh.should be_kind_of(File)
+    File.exist?(@unicode_path).should == true
   end
 
   it "opens a file when called with a block" do
@@ -114,17 +131,19 @@ describe "File.open" do
     # it should be possible to write to such a file via returned descriptior,
     # even though the file permissions are r-r-r.
 
-    File.open(@file, "w", 0444) { |f| f.puts("test") }
-    @file.should have_data("test\n")
+    File.open(@file, "w", 0444) { |f| f.write("test") }
+    @file.should have_data("test")
   end
 
-  it "opens the existing file, does not change permissions even when they are specified" do
-    File.chmod(0664, @file)
-    orig_perms = File.stat(@file).mode.to_s(8)
-    File.open(@file, "w", 0444) { |f| f.puts("test") }
+  platform_is_not :windows do
+    it "opens the existing file, does not change permissions even when they are specified" do
+      File.chmod(0664, @file)
+      orig_perms = File.stat(@file).mode.to_s(8)
+      File.open(@file, "w", 0444) { |f| f.write("test") }
 
-    File.stat(@file).mode.to_s(8).should == orig_perms
-    @file.should have_data("test\n")
+      File.stat(@file).mode.to_s(8).should == orig_perms
+      @file.should have_data("test")
+    end
   end
 
   platform_is_not :windows do
@@ -134,6 +153,29 @@ describe "File.open" do
       File.readable?(@file).should == false
       File.writable?(@file).should == true
     end
+  end
+
+  it "opens the file when call with fd" do
+    @fh = File.open(@file)
+    fh_copy = File.open(@fh.fileno)
+    fh_copy.autoclose = false
+    fh_copy.should be_kind_of(File)
+    File.exist?(@file).should == true
+  end
+
+  it "opens a file with a file descriptor d and a block" do
+    @fh = File.open(@file)
+    @fh.should be_kind_of(File)
+
+    lambda {
+      File.open(@fh.fileno) do |fh|
+        @fd = fh.fileno
+        @fh.close
+      end
+    }.should raise_error(Errno::EBADF)
+    lambda { File.open(@fd) }.should raise_error(Errno::EBADF)
+
+    File.exist?(@file).should == true
   end
 
   it "opens a file that no exists when use File::WRONLY mode" do
@@ -156,20 +198,22 @@ describe "File.open" do
     lambda { File.open(@nonexistent, File::NONBLOCK) }.should raise_error(Errno::ENOENT)
   end
 
-  platform_is_not :openbsd do
+  platform_is_not :openbsd, :windows do
     it "opens a file that no exists when use File::TRUNC mode" do
       lambda { File.open(@nonexistent, File::TRUNC) }.should raise_error(Errno::ENOENT)
     end
   end
 
-  platform_is :openbsd do
-    it "opens a file that no exists when use File::TRUNC mode" do
+  platform_is :openbsd, :windows do
+    it "does not open a file that does no exists when using File::TRUNC mode" do
       lambda { File.open(@nonexistent, File::TRUNC) }.should raise_error(Errno::EINVAL)
     end
   end
 
-  it "opens a file that no exists when use File::NOCTTY mode" do
-    lambda { File.open(@nonexistent, File::NOCTTY) }.should raise_error(Errno::ENOENT)
+  platform_is_not :windows do
+    it "opens a file that no exists when use File::NOCTTY mode" do
+      lambda { File.open(@nonexistent, File::NOCTTY) }.should raise_error(Errno::ENOENT)
+    end
   end
 
   it "opens a file that no exists when use File::CREAT mode" do
@@ -283,14 +327,12 @@ describe "File.open" do
     end
   end
 
-  ruby_bug "#", "1.8.7.299" do
-    it "raises an IOError when read in a block opened with File::RDONLY|File::APPEND mode" do
-      lambda {
-        File.open(@file, File::RDONLY|File::APPEND ) do |f|
-          f.puts("writing")
-        end
-      }.should raise_error(IOError)
-    end
+  it "raises an IOError when read in a block opened with File::RDONLY|File::APPEND mode" do
+    lambda {
+      File.open(@file, File::RDONLY|File::APPEND ) do |f|
+        f.puts("writing")
+      end
+    }.should raise_error(IOError)
   end
 
   it "can read and write in a block when call open with RDWR mode" do
@@ -333,7 +375,7 @@ describe "File.open" do
     }.should raise_error(Errno::EEXIST)
   end
 
-  it "create a new file when use File::WRONLY|File::APPEND mode" do
+  it "creates a new file when use File::WRONLY|File::APPEND mode" do
     @fh = File.open(@file, File::WRONLY|File::APPEND)
     @fh.should be_kind_of(File)
     File.exist?(@file).should == true
@@ -352,18 +394,15 @@ describe "File.open" do
     end
   end
 
-  ruby_bug "#", "1.8.7.299" do
-    it "raises an IOError if the file exists when open with File::RDONLY|File::APPEND" do
-      lambda {
-        File.open(@file, File::RDONLY|File::APPEND) do |f|
-          f.puts("writing").should == nil
-        end
-      }.should raise_error(IOError)
-    end
+  it "raises an IOError if the file exists when open with File::RDONLY|File::APPEND" do
+    lambda {
+      File.open(@file, File::RDONLY|File::APPEND) do |f|
+        f.puts("writing").should == nil
+      end
+    }.should raise_error(IOError)
   end
 
-  platform_is_not :openbsd do
-
+  platform_is_not :openbsd, :windows do
     it "truncates the file when passed File::TRUNC mode" do
       File.open(@file, File::RDWR) { |f| f.puts "hello file" }
       @fh = File.open(@file, File::TRUNC)
@@ -375,7 +414,6 @@ describe "File.open" do
         f.gets.should == nil
       end
     end
-
   end
 
   it "opens a file when use File::WRONLY|File::TRUNC mode" do
@@ -389,7 +427,7 @@ describe "File.open" do
     end
   end
 
-  platform_is_not :openbsd do
+  platform_is_not :openbsd, :windows do
     it "can't write in a block when call open with File::TRUNC mode" do
       lambda {
         File.open(@file, File::TRUNC) do |f|
@@ -407,7 +445,7 @@ describe "File.open" do
     end
   end
 
-  platform_is :openbsd do
+  platform_is :openbsd, :windows do
     it "can't write in a block when call open with File::TRUNC mode" do
       lambda {
         File.open(@file, File::TRUNC) do |f|
@@ -498,60 +536,56 @@ describe "File.open" do
     lambda { File.open(@file, 'fake') }.should raise_error(ArgumentError)
   end
 
-  ruby_version_is "1.9.2" do
-    it "defaults external_encoding to ASCII-8BIT for binary modes" do
-      File.open(@file, 'rb') {|f| f.external_encoding.should == Encoding::ASCII_8BIT}
-      File.open(@file, 'wb+') {|f| f.external_encoding.should == Encoding::ASCII_8BIT}
-    end
-
-    it "uses the second argument as an options Hash" do
-      @fh = File.open(@file, :mode => "r")
-      @fh.should be_an_instance_of(File)
-    end
-
-    it "calls #to_hash to convert the second argument to a Hash" do
-      options = mock("file open options")
-      options.should_receive(:to_hash).and_return({ :mode => "r" })
-
-      @fh = File.open(@file, options)
-    end
+  it "defaults external_encoding to ASCII-8BIT for binary modes" do
+    File.open(@file, 'rb') {|f| f.external_encoding.should == Encoding::ASCII_8BIT}
+    File.open(@file, 'wb+') {|f| f.external_encoding.should == Encoding::ASCII_8BIT}
   end
 
-  ruby_version_is "1.9" do
-    it "needs to be completed for hash argument"
+  it "uses the second argument as an options Hash" do
+    @fh = File.open(@file, mode: "r")
+    @fh.should be_an_instance_of(File)
+  end
+
+  it "calls #to_hash to convert the second argument to a Hash" do
+    options = mock("file open options")
+    options.should_receive(:to_hash).and_return({ mode: "r" })
+
+    @fh = File.open(@file, options)
   end
 
   platform_is_not :windows do
-    ruby_bug '#7908', '1.8.7' do
-      if `which mkfifo`.chomp != ""
-        describe "on a FIFO" do
-          before :each do
-            @fifo = tmp("File_open_fifo")
-            system "mkfifo #{@fifo}"
-          end
+    describe "on a FIFO" do
+      before :each do
+        @fifo = tmp("File_open_fifo")
+        system "mkfifo #{@fifo}"
+      end
 
-          after :each do
-            rm_r @fifo
-          end
+      after :each do
+        rm_r @fifo
+      end
 
-          it "opens it as a normal file" do
-            file_w, file_r, read_bytes, written_length = nil
+      it "opens it as a normal file" do
+        file_w, file_r, read_bytes, written_length = nil
 
-            # open in threads, due to blocking open and writes
-            Thread.new do
-              file_w = File.open(@fifo, 'w')
-              written_length = file_w.syswrite('hello')
-            end
-            Thread.new do
-              file_r = File.open(@fifo, 'r')
-              read_bytes = file_r.sysread(5)
-            end
+        # open in threads, due to blocking open and writes
+        writer = Thread.new do
+          file_w = File.open(@fifo, 'w')
+          written_length = file_w.syswrite('hello')
+        end
+        reader = Thread.new do
+          file_r = File.open(@fifo, 'r')
+          read_bytes = file_r.sysread(5)
+        end
 
-            Thread.pass until read_bytes && written_length
+        begin
+          writer.join
+          reader.join
 
-            written_length.should == 5
-            read_bytes.should == 'hello'
-          end
+          written_length.should == 5
+          read_bytes.should == 'hello'
+        ensure
+          file_w.close if file_w
+          file_r.close if file_r
         end
       end
     end
@@ -568,14 +602,12 @@ describe "File.open when passed a file descriptor" do
   end
 
   after do
-    @file.close unless @file.closed?
+    @file.close if @file and not @file.closed?
     rm_r @name
   end
 
   it "opens a file" do
-    # This leaks one file descriptor. Do NOT write this spec to
-    # call IO.new with the fd of an existing IO instance.
-    @file = File.open @fd
+    @file = File.open(@fd, "w")
     @file.should be_an_instance_of(File)
     @file.fileno.should equal(@fd)
     @file.write @content
@@ -584,7 +616,7 @@ describe "File.open when passed a file descriptor" do
   end
 
   it "opens a file when passed a block" do
-    @file = File.open(@fd) do |f|
+    @file = File.open(@fd, "w") do |f|
       f.should be_an_instance_of(File)
       f.fileno.should equal(@fd)
       f.write @content
@@ -594,6 +626,8 @@ describe "File.open when passed a file descriptor" do
   end
 end
 
-describe "File.open" do
-  it_behaves_like :open_directory, :open
+platform_is_not :windows do
+  describe "File.open" do
+    it_behaves_like :open_directory, :open
+  end
 end

@@ -51,7 +51,6 @@ public class SyntaxException extends RuntimeException {
         STRING_MARKER_MISSING("STRING_MARKER_MISSING"), 
         STRING_UNKNOWN_TYPE("STRING_UNKNOWN_TYPE"), 
         TRAILING_UNDERSCORE_IN_NUMBER("TRAILING_UNDERSCORE_IN_NUMBER"),
-        DUBY_EXTENSIONS_OFF("DUBY_EXTENSIONS_OFF"),
         BLOCK_GIVEN_TO_YIELD("BLOCK_GIVEN_TO_YIELD"),
         VOID_VALUE_EXPRESSION("VOID_VALUE_EXPRESSION"),
         UNKNOWN_ENCODING("UNKNOWN_ENCODING"),
@@ -59,7 +58,8 @@ public class SyntaxException extends RuntimeException {
         MIXED_ENCODING("MIXED_ENCODNIG"),
         NUL_IN_SYMBOL("NUL_IN_SYMBOL"),
         REGEXP_ENCODING_MISMATCH("REGEXP_ENCODING_MISMATCH"),
-        INVALID_MULTIBYTE_CHAR("INVALID_MULTIBYTE_CHAR")
+        INVALID_MULTIBYTE_CHAR("INVALID_MULTIBYTE_CHAR"),
+        RATIONAL_OUT_OF_RANGE("RATIONAL_OUT_OF_RANGE")
         ;
         
         private String id;
@@ -75,15 +75,23 @@ public class SyntaxException extends RuntimeException {
     
 	private static final long serialVersionUID = -2130930815167932274L;
 	
-    private ISourcePosition position;
+    private String file;
+    private int line;
     private PID pid;
 
+    @Deprecated
     public SyntaxException(PID pid, ISourcePosition position, String lastLine, String message, Object... data) {
+        this(pid, position.getFile(), position.getLine(), lastLine, message, data);
+    }
+
+    public SyntaxException(PID pid, String file, int line, String lastLine, String message, Object... data) {
         super(prepareMessage(message, lastLine));
 
         this.pid = pid;
-        this.position = position;
+        this.file = file;
+        this.line = line;
     }
+
 
     private static String prepareMessage(String message, String line) {
         if (line != null && line.length() > 5) {
@@ -94,8 +102,17 @@ public class SyntaxException extends RuntimeException {
         return message;
     }
 
+    @Deprecated
     public ISourcePosition getPosition() {
-        return position;
+        return new SimpleSourcePosition(file, line);
+    }
+
+    public String getFile() {
+        return file;
+    }
+
+    public int getLine() {
+        return line;
     }
     
     public PID getPid() {

@@ -123,11 +123,10 @@ public class Struct extends MemoryObject implements StructLayout.Storage {
         }
     }
 
+    @Override
     @JRubyMethod(name = "initialize", visibility = PRIVATE)
     public IRubyObject initialize(ThreadContext context) {
-
         memory = MemoryPointer.allocate(context.runtime, layout.getSize(), 1, true);
-
         return this;
     }
 
@@ -154,18 +153,20 @@ public class Struct extends MemoryObject implements StructLayout.Storage {
         return this;
     }
 
-    @JRubyMethod(name = "initialize", visibility = PRIVATE, required = 1, rest = true)
+    @JRubyMethod(name = "initialize", visibility = PRIVATE, rest = true)
     public IRubyObject initialize(ThreadContext context, IRubyObject[] args) {
-        if (args.length > 1) {
-            IRubyObject result = getMetaClass().callMethod(context, "layout", args[1] instanceof RubyArray
-                ? ((RubyArray) args[1]).toJavaArrayUnsafe()
-                : java.util.Arrays.copyOfRange(args, 1, args.length));
-            if (!(result instanceof StructLayout)) {
-                throw context.runtime.newTypeError("Struct.layout did not return a FFI::StructLayout instance");
-            }
-            layout = (StructLayout) result;
+        switch (args.length) {
+            default: // > 1
+                IRubyObject result = getMetaClass().callMethod(context, "layout", args[1] instanceof RubyArray
+                        ? ((RubyArray) args[1]).toJavaArrayUnsafe()
+                        : java.util.Arrays.copyOfRange(args, 1, args.length));
+                if (!(result instanceof StructLayout)) {
+                    throw context.runtime.newTypeError("Struct.layout did not return a FFI::StructLayout instance");
+                }
+                layout = (StructLayout) result;
+            case 1: return initialize(context, args[0]);
+            case 0: return initialize(context);
         }
-        return initialize(context, args[0]);
     }
 
     @JRubyMethod(name = "initialize_copy", visibility = PRIVATE)
@@ -319,7 +320,7 @@ public class Struct extends MemoryObject implements StructLayout.Storage {
             values[i++] = m.get(context, this, getMemory());
         }
 
-        return RubyArray.newArrayNoCopy(context.runtime, values);
+        return RubyArray.newArrayMayCopy(context.runtime, values);
     }
 
     @JRubyMethod(name = "offsets")

@@ -63,16 +63,6 @@ describe "Date#strptime" do
     Date.strptime("69", "%g").should == Date.civil(1968, 12, 30)
   end
 
-  it "parses a second number since the Unix Epoch" do
-    DateTime.strptime("-1", "%s").should == DateTime.civil(1969, 12, 31, 23, 59, 59)
-    DateTime.strptime("-86400", "%s").should == DateTime.civil(1969, 12, 31, 0, 0, 0)
-  end
-
-  it "parses a millisecond number since the Unix Epoch" do
-    DateTime.strptime("-999", "%Q").should == DateTime.civil(1969, 12, 31, 23, 59, 59 + 1.to_r/10**3)
-    DateTime.strptime("-1000", "%Q").should == DateTime.civil(1969, 12, 31, 23, 59, 59)
-  end
-
   it "parses a year day with leading zeroes" do
     d = Date.today
     if Date.gregorian_leap?(Date.today.year)
@@ -92,10 +82,8 @@ describe "Date#strptime" do
   end
 
   # See http://redmine.ruby-lang.org/repositories/diff/ruby-19?rev=24500
-  ruby_bug "http://redmine.ruby-lang.org/issues/show/2556", "1.8" do
-    it "parses a week number for a week starting on Monday" do
-      Date.strptime("2010/1", "%Y/%W").should == Date.civil(2010, 1, 4)
-    end
+  it "parses a week number for a week starting on Monday" do
+    Date.strptime("2010/1", "%Y/%W").should == Date.civil(2010, 1, 4)
   end
 
   it "parses a commercial week day" do
@@ -109,7 +97,6 @@ describe "Date#strptime" do
   end
 
   it "parses a week day" do
-    d = Date.today
     Date.strptime("2007 4", "%Y %w").should == Date.civil(2007, 1, 4)
   end
 

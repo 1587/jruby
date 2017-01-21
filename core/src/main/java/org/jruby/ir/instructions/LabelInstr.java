@@ -3,32 +3,36 @@ package org.jruby.ir.instructions;
 import org.jruby.ir.IRVisitor;
 import org.jruby.ir.Operation;
 import org.jruby.ir.operands.Label;
-import org.jruby.ir.operands.Operand;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
+import org.jruby.ir.transformations.inlining.CloneInfo;
 
-public class LabelInstr extends Instr {
-    public final Label label;
-
+public class LabelInstr extends OneOperandInstr implements FixedArityInstr {
     public LabelInstr(Label label) {
-        super(Operation.LABEL);
-
-        this.label = label;
+        super(Operation.LABEL, label);
     }
 
-    public Operand[] getOperands() {
-        return EMPTY_OPERANDS;
+    public Label getLabel() {
+        return (Label) getOperand1();
     }
 
     @Override
-    public String toString() {
-        return label + ":";
+    public Instr clone(CloneInfo ii) {
+        return new LabelInstr(ii.getRenamedLabel(getLabel()));
+    }
+
+    @Override
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+        e.encode(getLabel());
+    }
+
+    public static LabelInstr decode(IRReaderDecoder d) {
+        return new LabelInstr(d.decodeLabel());
     }
 
     @Override
     public void visit(IRVisitor visitor) {
         visitor.LabelInstr(this);
-    }
-
-    public Label getLabel() {
-        return label;
     }
 }

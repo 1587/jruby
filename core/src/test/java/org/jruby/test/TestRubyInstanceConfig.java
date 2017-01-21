@@ -29,14 +29,12 @@ package org.jruby.test;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
-import java.net.URLClassLoader;
 import java.util.Locale;
 
 import org.jruby.exceptions.MainExitException;
 import org.jruby.Ruby;
 import org.jruby.RubyInstanceConfig;
 import org.jruby.runtime.load.LoadService;
-import org.jruby.util.ClassCache;
 
 /**
  * This should be filled up with more tests for RubyInstanceConfig later
@@ -80,16 +78,6 @@ public class TestRubyInstanceConfig extends TestRubyBase {
         Ruby ruby = Ruby.newInstance(config);
         assertTrue(called[0]);
         assertEquals(NullLoadService.class, ruby.getLoadService().getClass());
-    }
-
-    public void testSettingNewLoaderWillCreateNewClassLoader() throws Exception {
-        ClassLoader beforeCL = config.getLoader();
-        ClassCache beforeCC = config.getClassCache();
-        config.setLoader(beforeCL);
-        assertTrue("setting a new classloader that is the same, should not create a new classcache", beforeCC == config.getClassCache());
-
-        config.setLoader(new URLClassLoader(new java.net.URL[0], beforeCL));
-        assertTrue("setting a new classloader this is different, should create a new classcache", beforeCC != config.getClassCache());
     }
 
     public void testGetScriptSource() throws Exception {

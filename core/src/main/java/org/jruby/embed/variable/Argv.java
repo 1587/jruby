@@ -130,7 +130,9 @@ public class Argv extends AbstractVariable {
         this.irubyObject = argv; fromRuby = true;
 
         RubyModule rubyModule = getRubyClass(runtime);
-        if (rubyModule == null) rubyModule = runtime.getCurrentContext().getRubyClass();
+        // SSS FIXME: With rubyclass stack gone, this needs a replacement
+        if (rubyModule == null) rubyModule = null; // receiver.getRuntime().getCurrentContext().getRubyClass();
+
         if (rubyModule == null) return;
 
         rubyModule.storeConstant(name, argv);
@@ -172,6 +174,12 @@ public class Argv extends AbstractVariable {
         else {
             vars.update(name, new Argv(topSelf, name, argv));
         }
+    }
+
+    // ARGV appears to require special treatment, leaving javaType intact
+    protected void updateRubyObject(final IRubyObject rubyObject) {
+        if ( rubyObject == null ) return;
+        this.irubyObject = rubyObject;
     }
 
     /**

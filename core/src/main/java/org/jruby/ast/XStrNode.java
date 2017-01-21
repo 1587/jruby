@@ -32,15 +32,9 @@
 package org.jruby.ast;
 
 import java.util.List;
-
-import org.jruby.Ruby;
-import org.jruby.RubyString;
 import org.jruby.ast.types.ILiteralNode;
 import org.jruby.ast.visitor.NodeVisitor;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.util.ByteList;
 
 /**
@@ -48,11 +42,13 @@ import org.jruby.util.ByteList;
  */
 public class XStrNode extends Node implements ILiteralNode {
     private final ByteList value;
+    private int coderange;
 
-    public XStrNode(ISourcePosition position, ByteList value) {
+    public XStrNode(ISourcePosition position, ByteList value, int coderange) {
         // FIXME: Shouldn't this have codeRange like StrNode?
-        super(position);
+        super(position, false);
         this.value = (value == null ? ByteList.create("") : value);
+        this.coderange = coderange;
     }
 
     public NodeType getNodeType() {
@@ -63,7 +59,7 @@ public class XStrNode extends Node implements ILiteralNode {
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitXStrNode(this);
     }
 
@@ -74,13 +70,12 @@ public class XStrNode extends Node implements ILiteralNode {
     public ByteList getValue() {
         return value;
     }
+
+    public int getCodeRange() {
+        return coderange;
+    }
     
     public List<Node> childNodes() {
         return EMPTY_LIST;
-    }
-    
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        return self.callMethod(context, "`", RubyString.newStringShared(runtime, value));
     }
 }

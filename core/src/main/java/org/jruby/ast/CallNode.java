@@ -34,25 +34,9 @@ package org.jruby.ast;
 
 import java.util.List;
 
-import org.jruby.Ruby;
-import org.jruby.RubyArray;
-import org.jruby.RubyClass;
-import org.jruby.RubyString;
 import org.jruby.ast.types.INameNode;
 import org.jruby.ast.visitor.NodeVisitor;
-import org.jruby.evaluator.ASTInterpreter;
-import org.jruby.exceptions.JumpException;
-import org.jruby.internal.runtime.methods.DynamicMethod;
-import org.jruby.runtime.Helpers;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.CallSite;
-import org.jruby.runtime.CallType;
-import org.jruby.runtime.MethodIndex;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.Visibility;
-import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.util.DefinedMessage;
 
 /**
  * A method or operator call.
@@ -61,23 +45,27 @@ public class CallNode extends Node implements INameNode, IArgumentNode, BlockAcc
     private final Node receiverNode;
     private Node argsNode;
     protected Node iterNode;
-    public CallSite callAdapter;
+    private String name;
+    private final boolean isLazy;
 
-    @Deprecated
-    public CallNode(ISourcePosition position, Node receiverNode, String name, Node argsNode) {
-        this(position, receiverNode, name, argsNode, null);
-    }
-    
     public CallNode(ISourcePosition position, Node receiverNode, String name, Node argsNode, 
             Node iterNode) {
-        super(position);
+        this(position, receiverNode, name, argsNode, iterNode, false);
+    }
+
+    public CallNode(ISourcePosition position, Node receiverNode, String name, Node argsNode,
+                    Node iterNode, boolean isLazy) {
+        super(position, receiverNode.containsVariableAssignment() ||
+                argsNode != null && argsNode.containsVariableAssignment() ||
+                iterNode != null && iterNode.containsVariableAssignment());
         
         assert receiverNode != null : "receiverNode is not null";
-        
+
+        this.name = name;
         this.receiverNode = receiverNode;
-        setArgsNode(argsNode);
+        this.argsNode = argsNode;
         this.iterNode = iterNode;
-        this.callAdapter = MethodIndex.getCallSite(name);
+        this.isLazy = isLazy;
     }
 
     public NodeType getNodeType() {
@@ -88,7 +76,7 @@ public class CallNode extends Node implements INameNode, IArgumentNode, BlockAcc
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitCallNode(this);
     }
     
@@ -98,9 +86,7 @@ public class CallNode extends Node implements INameNode, IArgumentNode, BlockAcc
     
     public Node setIterNode(Node iterNode) {
         this.iterNode = iterNode;
-        // refresh call adapter, since it matters if this is iter-based or not
-        callAdapter = MethodIndex.getCallSite(callAdapter.methodName);
-        
+
         return this;
     }
 
@@ -119,11 +105,7 @@ public class CallNode extends Node implements INameNode, IArgumentNode, BlockAcc
      */
     public Node setArgsNode(Node argsNode) {
         this.argsNode = argsNode;
-        // If we have more than one arg, make sure the array created to contain them is not ObjectSpaced
-        if (argsNode instanceof ArrayNode) {
-            ((ArrayNode)argsNode).setLightweight(true);
-        }
-        
+
         return argsNode;
     }
 
@@ -133,7 +115,7 @@ public class CallNode extends Node implements INameNode, IArgumentNode, BlockAcc
      * @return name
      */
     public String getName() {
-        return callAdapter.methodName;
+        return name;
     }
 
     /**
@@ -144,52 +126,17 @@ public class CallNode extends Node implements INameNode, IArgumentNode, BlockAcc
     public Node getReceiverNode() {
         return receiverNode;
     }
+
+    public boolean isLazy() {
+        return isLazy;
+    }
     
     public List<Node> childNodes() {
         return Node.createList(receiverNode, argsNode, iterNode);
     }
-    
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        assert false: "No longer called";
-
-        return null;
-    }
-    
-    @Override
-    public IRubyObject assign(Ruby runtime, ThreadContext context, IRubyObject self, IRubyObject value, Block block, boolean checkArity) {
-        IRubyObject receiver = receiverNode.interpret(runtime, context, self, block);
-
-        if (argsNode == null) { // attribute set.
-            Helpers.invoke(context, receiver, getName(), new IRubyObject[]{value}, CallType.NORMAL, Block.NULL_BLOCK);
-        } else { // element set
-            RubyArray args = (RubyArray)argsNode.interpret(runtime, context, self, block);
-            args.append(value);
-            Helpers.invoke(context, receiver, getName(), args.toJavaArray(), CallType.NORMAL, Block.NULL_BLOCK);
-        }
-        
-        return runtime.getNil();
-    }
 
     @Override
-    public RubyString definition(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        if (receiverNode.definition(runtime, context, self, aBlock) != null) {
-            try {
-                IRubyObject receiver = receiverNode.interpret(runtime, context, self, aBlock);
-                RubyClass metaClass = receiver.getMetaClass();
-                DynamicMethod method = metaClass.searchMethod(getName());
-                Visibility visibility = method.getVisibility();
-                
-                if (visibility != Visibility.PRIVATE &&
-                        (visibility != Visibility.PROTECTED || metaClass.getRealClass().isInstance(self))) {
-                    if (!method.isUndefined()) {
-                        return ASTInterpreter.getArgumentDefinition(runtime, context, getArgsNode(), context.runtime.getDefinedMessage(DefinedMessage.METHOD), self, aBlock);
-                    }
-                }
-            } catch (JumpException excptn) {
-            }
-        }
-
-        return null;
+    protected String toStringInternal() {
+        return isLazy ? "lazy" : null;
     }
 }

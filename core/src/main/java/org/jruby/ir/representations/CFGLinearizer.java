@@ -1,14 +1,14 @@
 package org.jruby.ir.representations;
 
-import java.util.ArrayList;
-import java.util.BitSet;
-import java.util.Iterator;
-import java.util.List;
 import org.jruby.ir.instructions.BranchInstr;
 import org.jruby.ir.instructions.Instr;
 import org.jruby.ir.instructions.JumpInstr;
 import org.jruby.ir.instructions.ReturnInstr;
-import org.jruby.ir.representations.CFG.EdgeType;
+
+import java.util.BitSet;
+import java.util.Iterator;
+
+import static org.jruby.ir.representations.CFG.EdgeType.*;
 
 /**
  * This produces a linear list of BasicBlocks so that the linearized instruction
@@ -37,72 +37,73 @@ import org.jruby.ir.representations.CFG.EdgeType;
  * opts.  In that scenario, it may be worth it to not run the linearizer at all.
  */
 public class CFGLinearizer {
-    public static List<BasicBlock> linearize(CFG cfg) {
-        List<BasicBlock> list = new ArrayList<BasicBlock>();
-        BitSet processed = new BitSet(cfg.size()); // Assumes all id's are used
+    public static BasicBlock[] linearize(CFG cfg) {
+        BasicBlock[] list = new BasicBlock[cfg.size()];
+        BitSet processed = new BitSet(cfg.size());
 
-        linearizeInner(cfg, list, processed, cfg.getEntryBB());
+        int listSize = linearizeInner(cfg, list, 0, processed, cfg.getEntryBB());
         verifyAllBasicBlocksProcessed(cfg, processed);
-        fixupList(cfg, list);
+        fixupList(cfg, list, listSize);
 
         return list;
     }
 
-    private static void linearizeInner(CFG cfg, List<BasicBlock> list,
+    private static int linearizeInner(CFG cfg, BasicBlock[] list, int listSize,
             BitSet processed, BasicBlock current) {
-        if (processed.get(current.getID())) return;
+        if (processed.get(current.getID())) return listSize;
 
         // Cannot lay out current block till its fall-through predecessor has been laid out already
-        BasicBlock source = cfg.getIncomingSourceOfType(current, EdgeType.FALL_THROUGH);
-        if (source != null && !processed.get(source.getID())) return;
+        BasicBlock source = cfg.getIncomingSourceOfType(current, FALL_THROUGH);
+        if (source != null && !processed.get(source.getID())) return listSize;
 
-        list.add(current);
+        list[listSize] = current;
+        listSize++;
         processed.set(current.getID());
 
         // First, fall-through BB
-        BasicBlock fallThrough = cfg.getOutgoingDestinationOfType(current, EdgeType.FALL_THROUGH);
-        if (fallThrough != null) linearizeInner(cfg, list, processed, fallThrough);
+        BasicBlock fallThrough = cfg.getOutgoingDestinationOfType(current, FALL_THROUGH);
+        if (fallThrough != null) listSize = linearizeInner(cfg, list, listSize, processed, fallThrough);
 
         // Next, regular edges
-        for (BasicBlock destination: cfg.getOutgoingDestinationsOfType(current, EdgeType.REGULAR)) {
-            linearizeInner(cfg, list, processed, destination);
+        for (BasicBlock destination: cfg.getOutgoingDestinationsOfType(current, REGULAR)) {
+            listSize = linearizeInner(cfg, list, listSize, processed, destination);
         }
 
         // Next, exception edges
-        for (BasicBlock destination: cfg.getOutgoingDestinationsOfType(current, EdgeType.EXCEPTION)) {
-            linearizeInner(cfg, list, processed, destination);
+        for (BasicBlock destination: cfg.getOutgoingDestinationsOfType(current, EXCEPTION)) {
+            listSize = linearizeInner(cfg, list, listSize, processed, destination);
         }
 
         // Next, exit
-        for (BasicBlock destination: cfg.getOutgoingDestinationsOfType(current, EdgeType.EXIT)) {
-            linearizeInner(cfg, list, processed, destination);
+        for (BasicBlock destination: cfg.getOutgoingDestinationsOfType(current, EXIT)) {
+            listSize = linearizeInner(cfg, list, listSize, processed, destination);
         }
+
+        return listSize;
     }
 
     /**
      * Process (fixup) list of instruction and add or remove jumps.
      */
-    private static void fixupList(CFG cfg, List<BasicBlock> list) {
-        BasicBlock exitBB = cfg.getExitBB();
-        int n = list.size();
-        for (int i = 0; i < n - 1; i++) {
-            BasicBlock current = list.get(i);
+    private static void fixupList(CFG cfg, BasicBlock[] list, int listSize) {
+        for (int i = 0; i < listSize - 1; i++) {
+            BasicBlock current = list[i];
 
-            if (current == exitBB) { // exit not last
-                current.addInstr(new ReturnInstr(cfg.getScope().getManager().getNil()));
+            if (current.isExitBB()) { // exit not last
+                current.addInstr(new ReturnInstr(cfg.getManager().getNil()));
                 continue;
             }
 
             Instr lastInstr = current.getLastInstr();
             if (lastInstr instanceof JumpInstr) { // if jumping to next BB then remove it
-                tryAndRemoveUnneededJump(list.get(i + 1), cfg, lastInstr, current);
+                tryAndRemoveUnneededJump(list[i + 1], cfg, lastInstr, current);
             } else {
-                addJumpIfNextNotDestination(cfg, list.get(i + 1), lastInstr, current);
+                addJumpIfNextNotDestination(cfg, list[i + 1], lastInstr, current);
             }
         }
 
-        BasicBlock current = list.get(n - 1);
-        if (current != exitBB) {
+        BasicBlock current = list[listSize - 1];
+        if (!current.isExitBB()) {
             Instr lastInstr = current.getLastInstr();
             // Last instruction of the last basic block in the linearized list can NEVER
             // be a branch instruction because this basic block would then have a fallthrough
@@ -116,7 +117,7 @@ public class CFGLinearizer {
                 //
                 // Verify that we have exactly one non-exception target
                 // SSS FIXME: Is this assertion any different from the BranchInstr assertion above?
-                Iterator<BasicBlock> iter = cfg.getOutgoingDestinationsNotOfType(current, EdgeType.EXCEPTION).iterator();
+                Iterator<BasicBlock> iter = cfg.getOutgoingDestinationsNotOfType(current, EXCEPTION).iterator();
                 BasicBlock target = iter.next();
                 assert (target != null && !iter.hasNext());
 

@@ -1,7 +1,7 @@
 require File.expand_path('../../../spec_helper', __FILE__)
 
 with_feature :encoding do
-  describe :io_internal_encoding, :shared => true do
+  describe :io_internal_encoding, shared: true do
     describe "when Encoding.default_internal is not set" do
       before :each do
         Encoding.default_internal = nil
@@ -82,6 +82,17 @@ with_feature :encoding do
         @io.set_encoding(Encoding::US_ASCII, Encoding::IBM437)
         @io.internal_encoding.should equal(Encoding::IBM437)
       end
+
+      it "returns nil when Encoding.default_external is ASCII-8BIT and the internal encoding is not set" do
+        Encoding.default_external = Encoding::ASCII_8BIT
+        @io = new_io @name, @object
+        @io.internal_encoding.should be_nil
+      end
+
+      it "returns nil when the external encoding is ASCII-8BIT and the internal encoding is not set" do
+        @io = new_io @name, "#{@object}:ascii-8bit"
+        @io.internal_encoding.should be_nil
+      end
     end
   end
 
@@ -95,11 +106,11 @@ with_feature :encoding do
     end
 
     after :each do
+      @io.close if @io
+      rm_r @name
+
       Encoding.default_external = @external
       Encoding.default_internal = @internal
-
-      @io.close if @io and not @io.closed?
-      rm_r @name
     end
 
     describe "with 'r' mode" do

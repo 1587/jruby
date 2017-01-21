@@ -16,7 +16,7 @@ public class KeywordArgNode extends Node {
     private AssignableNode assignable;
     
     public KeywordArgNode(ISourcePosition position, AssignableNode assignable) {
-        super(position);
+        super(position, true);
         this.assignable = assignable;
     }
 
@@ -28,6 +28,10 @@ public class KeywordArgNode extends Node {
     @Override
     public List<Node> childNodes() {
         return Node.createList(assignable);
+    }
+
+    public int getIndex() {
+        return ((IScopedNode) assignable).getIndex();
     }
 
     @Override

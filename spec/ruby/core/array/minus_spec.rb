@@ -12,16 +12,14 @@ describe "Array#-" do
     ([1, 1, 2, 2, 3, 3, 4, 5] - [1, 2, 4]).should == [3, 3, 5]
   end
 
-  ruby_bug "#", "1.8.6.277" do
-    it "properly handles recursive arrays" do
-      empty = ArraySpecs.empty_recursive_array
-      (empty - empty).should == []
+  it "properly handles recursive arrays" do
+    empty = ArraySpecs.empty_recursive_array
+    (empty - empty).should == []
 
-      ([] - ArraySpecs.recursive_array).should == []
+    ([] - ArraySpecs.recursive_array).should == []
 
-      array = ArraySpecs.recursive_array
-      (array - array).should == []
-    end
+    array = ArraySpecs.recursive_array
+    (array - array).should == []
   end
 
   it "tries to convert the passed arguments to Arrays using #to_ary" do
@@ -48,26 +46,28 @@ describe "Array#-" do
   it "removes an item identified as equivalent via #hash and #eql?" do
     obj1 = mock('1')
     obj2 = mock('2')
-    obj1.should_receive(:hash).and_return(0)
-    obj2.should_receive(:hash).and_return(0)
-    obj1.should_receive(:eql?).with(obj2).and_return(true)
+    obj1.should_receive(:hash).at_least(1).and_return(0)
+    obj2.should_receive(:hash).at_least(1).and_return(0)
+    obj1.should_receive(:eql?).at_least(1).and_return(true)
 
     ([obj1] - [obj2]).should == []
+    ([obj1, obj1, obj2, obj2] - [obj2]).should == []
   end
 
   it "doesn't remove an item with the same hash but not #eql?" do
     obj1 = mock('1')
     obj2 = mock('2')
-    obj1.should_receive(:hash).and_return(0)
-    obj2.should_receive(:hash).and_return(0)
-    obj1.should_receive(:eql?).with(obj2).and_return(false)
+    obj1.should_receive(:hash).at_least(1).and_return(0)
+    obj2.should_receive(:hash).at_least(1).and_return(0)
+    obj1.should_receive(:eql?).at_least(1).and_return(false)
 
     ([obj1] - [obj2]).should == [obj1]
+    ([obj1, obj1, obj2, obj2] - [obj2]).should == [obj1, obj1]
   end
 
   it "removes an identical item even when its #eql? isn't reflexive" do
     x = mock('x')
-    x.should_receive(:hash).any_number_of_times.and_return(42)
+    x.should_receive(:hash).at_least(1).and_return(42)
     x.stub!(:eql?).and_return(false) # Stubbed for clarity and latitude in implementation; not actually sent by MRI.
 
     ([x] - [x]).should == []

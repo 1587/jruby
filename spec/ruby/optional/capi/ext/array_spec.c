@@ -7,51 +7,9 @@
 extern "C" {
 #endif
 
-#ifdef HAVE_RARRAY
-static VALUE array_spec_RARRAY_ptr_assign(VALUE self, VALUE ary, VALUE content, VALUE length) {
-  int i;
-  for (i = 0; i < NUM2INT(length); i++) {
-    RARRAY(ary)->ptr[i] = content;
-  }
-  RARRAY(ary)->len = i;
-  return ary;
-}
-
-static VALUE array_spec_RARRAY_ptr_assign_call(VALUE self, VALUE array) {
-  VALUE* ptr;
-
-  ptr = RARRAY(array)->ptr;
-  ptr[1] = INT2FIX(5);
-  ptr[2] = INT2FIX(7);
-  rb_ary_push(array, INT2FIX(9));
-
-  return array;
-}
-
-static VALUE array_spec_RARRAY_ptr_assign_funcall(VALUE self, VALUE array) {
-  VALUE* ptr;
-
-  ptr = RARRAY(array)->ptr;
-  ptr[1] = INT2FIX(1);
-  ptr[2] = INT2FIX(2);
-  rb_funcall(array, rb_intern("<<"), 1, INT2FIX(3));
-
-  return array;
-}
-
-static VALUE array_spec_RARRAY_len(VALUE self, VALUE array) {
-  return INT2FIX(RARRAY(array)->len);
-}
-
-static VALUE array_spec_RARRAY_ptr_iterate(VALUE self, VALUE array) {
-  int i;
-  VALUE* ptr;
-
-  ptr = RARRAY(array)->ptr;
-  for(i = 0; i < RARRAY_LEN(array); i++) {
-    rb_yield(ptr[i]);
-  }
-  return Qnil;
+#ifdef HAVE_RB_ARRAY
+static VALUE array_spec_rb_Array(VALUE self, VALUE object) {
+  return rb_Array(object);
 }
 #endif
 
@@ -77,9 +35,17 @@ static VALUE array_spec_RARRAY_PTR_assign(VALUE self, VALUE array, VALUE value) 
   }
   return Qnil;
 }
+#endif
 
+#ifdef HAVE_RARRAY_LEN
 static VALUE array_spec_RARRAY_LEN(VALUE self, VALUE array) {
   return INT2FIX(RARRAY_LEN(array));
+}
+#endif
+
+#ifdef HAVE_RARRAY_AREF
+static VALUE array_spec_RARRAY_AREF(VALUE self, VALUE array, VALUE index) {
+  return RARRAY_AREF(array, FIX2INT(index));
 }
 #endif
 
@@ -159,6 +125,12 @@ static VALUE array_spec_rb_ary_new3(VALUE self, VALUE first, VALUE second, VALUE
 }
 #endif
 
+#ifdef HAVE_RB_ARY_NEW_FROM_ARGS
+static VALUE array_spec_rb_ary_new_from_args(VALUE self, VALUE first, VALUE second, VALUE third) {
+  return rb_ary_new_from_args(3, first, second, third);
+}
+#endif
+
 #ifdef HAVE_RB_ARY_NEW4
 static VALUE array_spec_rb_ary_new4(VALUE self, VALUE first, VALUE second, VALUE third) {
   VALUE values[3];
@@ -205,6 +177,12 @@ static VALUE array_spec_rb_ary_store(VALUE self, VALUE array, VALUE offset, VALU
 #ifdef HAVE_RB_ARY_CONCAT
 static VALUE array_spec_rb_ary_concat(VALUE self, VALUE array1, VALUE array2) {
   return rb_ary_concat(array1, array2);
+}
+#endif
+
+#ifdef HAVE_RB_ARY_PLUS
+static VALUE array_spec_rb_ary_plus(VALUE self, VALUE array1, VALUE array2) {
+  return rb_ary_plus(array1, array2);
 }
 #endif
 
@@ -270,19 +248,6 @@ static VALUE array_spec_rb_mem_clear(VALUE self, VALUE obj) {
 }
 #endif
 
-#if defined(HAVE_RB_PROTECT_INSPECT) && defined(HAVE_RB_INSPECTING_P)
-
-static VALUE rec_pi(VALUE obj, VALUE arg) {
-  if(RTEST(rb_inspecting_p(obj))) return arg;
-  return Qfalse;
-}
-
-static VALUE array_spec_rb_protect_inspect(VALUE self, VALUE obj) {
-  return rb_protect_inspect(rec_pi, obj, Qtrue);
-}
-
-#endif
-
 #ifdef HAVE_RB_ARY_FREEZE
 static VALUE array_spec_rb_ary_freeze(VALUE self, VALUE ary) {
   return rb_ary_freeze(ary);
@@ -295,24 +260,31 @@ static VALUE array_spec_rb_ary_to_ary(VALUE self, VALUE ary) {
 }
 #endif
 
-void Init_array_spec() {
+#ifdef HAVE_RB_ARY_SUBSEQ
+static VALUE array_spec_rb_ary_subseq(VALUE self, VALUE ary, VALUE begin, VALUE len) {
+  return rb_ary_subseq(ary, FIX2LONG(begin), FIX2LONG(len));
+}
+#endif
+
+void Init_array_spec(void) {
   VALUE cls;
   cls = rb_define_class("CApiArraySpecs", rb_cObject);
 
-#ifdef HAVE_RARRAY
-  rb_define_method(cls, "RARRAY_ptr_iterate", array_spec_RARRAY_ptr_iterate, 1);
-  rb_define_method(cls, "RARRAY_ptr_assign", array_spec_RARRAY_ptr_assign, 3);
-  rb_define_method(cls, "RARRAY_ptr_assign_call",
-      array_spec_RARRAY_ptr_assign_call, 1);
-  rb_define_method(cls, "RARRAY_ptr_assign_funcall",
-      array_spec_RARRAY_ptr_assign_funcall, 1);
-  rb_define_method(cls, "RARRAY_len", array_spec_RARRAY_len, 1);
+#ifdef HAVE_RB_ARRAY
+  rb_define_method(cls, "rb_Array", array_spec_rb_Array, 1);
+#endif
+
+#ifdef HAVE_RARRAY_LEN
+  rb_define_method(cls, "RARRAY_LEN", array_spec_RARRAY_LEN, 1);
 #endif
 
 #if defined(HAVE_RARRAY_LEN) && defined(HAVE_RARRAY_PTR)
-  rb_define_method(cls, "RARRAY_LEN", array_spec_RARRAY_LEN, 1);
   rb_define_method(cls, "RARRAY_PTR_iterate", array_spec_RARRAY_PTR_iterate, 1);
   rb_define_method(cls, "RARRAY_PTR_assign", array_spec_RARRAY_PTR_assign, 2);
+#endif
+
+#ifdef HAVE_RARRAY_AREF
+  rb_define_method(cls, "RARRAY_AREF", array_spec_RARRAY_AREF, 2);
 #endif
 
 #ifdef HAVE_RB_ARY_AREF
@@ -363,6 +335,10 @@ void Init_array_spec() {
   rb_define_method(cls, "rb_ary_new3", array_spec_rb_ary_new3, 3);
 #endif
 
+#ifdef HAVE_RB_ARY_NEW_FROM_ARGS
+  rb_define_method(cls, "rb_ary_new_from_args", array_spec_rb_ary_new_from_args, 3);
+#endif
+
 #ifdef HAVE_RB_ARY_NEW4
   rb_define_method(cls, "rb_ary_new4", array_spec_rb_ary_new4, 3);
 #endif
@@ -391,6 +367,10 @@ void Init_array_spec() {
   rb_define_method(cls, "rb_ary_concat", array_spec_rb_ary_concat, 2);
 #endif
 
+#ifdef HAVE_RB_ARY_PLUS
+  rb_define_method(cls, "rb_ary_plus", array_spec_rb_ary_plus, 2);
+#endif
+
 #ifdef HAVE_RB_ARY_UNSHIFT
   rb_define_method(cls, "rb_ary_unshift", array_spec_rb_ary_unshift, 2);
 #endif
@@ -409,16 +389,16 @@ void Init_array_spec() {
   rb_define_method(cls, "rb_mem_clear", array_spec_rb_mem_clear, 1);
 #endif
 
-#if defined(HAVE_RB_PROTECT_INSPECT) && defined(HAVE_RB_INSPECTING_P)
-  rb_define_method(cls, "rb_protect_inspect",  array_spec_rb_protect_inspect, 1);
-#endif
-
 #ifdef HAVE_RB_ARY_FREEZE
   rb_define_method(cls, "rb_ary_freeze", array_spec_rb_ary_freeze, 1);
 #endif
 
 #ifdef HAVE_RB_ARY_TO_ARY
   rb_define_method(cls, "rb_ary_to_ary", array_spec_rb_ary_to_ary, 1);
+#endif
+
+#ifdef HAVE_RB_ARY_SUBSEQ
+  rb_define_method(cls, "rb_ary_subseq", array_spec_rb_ary_subseq, 3);
 #endif
 }
 

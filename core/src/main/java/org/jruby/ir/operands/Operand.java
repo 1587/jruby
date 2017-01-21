@@ -2,7 +2,9 @@ package org.jruby.ir.operands;
 
 import org.jruby.ir.IRVisitor;
 import org.jruby.ir.Interp;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
+import org.jruby.ir.persistence.IRWriterEncoder;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.parser.StaticScope;
 import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
@@ -12,6 +14,11 @@ import java.util.Map;
 
 public abstract class Operand {
     public static final Operand[] EMPTY_ARRAY = new Operand[0];
+
+    public Operand() {
+    }
+
+    public abstract OperandType getOperandType();
 
     /**
      * Do we know the value of this operand at compile-time?
@@ -65,20 +72,19 @@ public abstract class Operand {
         return this;
     }
 
-    // if (getSubArray) is false, returns the 'index' element of the array, else returns the subarray starting at that element
-    public Operand fetchCompileTimeArrayElement(int index, boolean getSubArray) {
-        return null;
-    }
-
     /** Append the list of variables used in this operand to the input list -- force every operand
      *  to implement this because a missing implementation can cause bad failures.
      */
     public abstract void addUsedVariables(List<Variable> l);
 
-    public abstract Operand cloneForInlining(InlinerInfo ii);
+    public abstract Operand cloneForInlining(CloneInfo ii);
+
+    public void encode(IRWriterEncoder e) {
+        e.encode(getOperandType().getCoded());
+    }
 
     @Interp
-    public Object retrieve(ThreadContext context, IRubyObject self, DynamicScope currDynScope, Object[] temp) {
+    public Object retrieve(ThreadContext context, IRubyObject self, StaticScope currScope, DynamicScope currDynScope, Object[] temp) {
         throw new RuntimeException(this.getClass().getSimpleName() + " should not be directly retrieved.");
     }
 

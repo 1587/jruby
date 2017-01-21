@@ -5,6 +5,7 @@ import org.jruby.Ruby;
 import org.jruby.RubyClass;
 import org.jruby.RubyModule;
 import org.jruby.internal.runtime.methods.DynamicMethod;
+import org.jruby.internal.runtime.methods.NullMethod;
 
 import java.util.regex.Pattern;
 
@@ -18,6 +19,8 @@ import java.util.regex.Pattern;
  * Because this is in the hierarchy, it does mean any methods that are not Java
  * packages or otherwise defined on the JavaPackageModuleTemplate module will
  * be inaccessible.
+ *
+ * @deprecated no longer used - probably needs revamp if needed  to be re-usable
  */
 public class BlankSlateWrapper extends IncludedModuleWrapper {
     public BlankSlateWrapper(Ruby runtime, RubyClass superClass, RubyModule delegate) {
@@ -25,7 +28,7 @@ public class BlankSlateWrapper extends IncludedModuleWrapper {
     }
 
     @Override
-    public DynamicMethod searchMethodInner(String name) {
+    protected DynamicMethod searchMethodCommon(String name) {
         // this module is special and only searches itself;
 
         // do not go to superclasses except for special methods :
@@ -39,7 +42,7 @@ public class BlankSlateWrapper extends IncludedModuleWrapper {
             return superClass.searchMethodInner(name);
         }
 
-        return null;
+        return NullMethod.getInstance();
     }
 
     private static final Pattern KEEP = Pattern.compile(

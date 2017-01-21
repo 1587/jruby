@@ -51,6 +51,8 @@ public class InnerClasses {
 
     protected static interface ProtectedInner {
         public static String VALUE = ProtectedInner.class.getName();
+
+        class Nested extends PackageInner {}
     }
 
     static class PackageInner {

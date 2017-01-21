@@ -1,34 +1,24 @@
 package org.jruby.ir.runtime;
 
-import java.lang.ref.Reference;
-import java.lang.ref.SoftReference;
-
-import org.jruby.ir.IRMethod;
 import org.jruby.exceptions.Unrescuable;
+import org.jruby.runtime.DynamicScope;
+import org.jruby.util.cli.Options;
 
-public class IRReturnJump extends RuntimeException implements Unrescuable {
-    public IRMethod methodToReturnFrom;
-    public Object returnValue;
+public class IRReturnJump extends IRJump implements Unrescuable {
+    public final DynamicScope methodToReturnFrom;
+    public final Object returnValue;
 
-    private IRReturnJump() {}
+    private IRReturnJump(DynamicScope scope, Object rv) {
+        this.methodToReturnFrom = scope;
+        this.returnValue = rv;
+    }
 
-    // See https://jira.codehaus.org/browse/JRUBY-6523
-    // Dont use static threadlocals because they leak classloaders.
-    // Instead, use soft/weak references so that GC can collect these.
+    public static IRReturnJump create(DynamicScope scope, Object rv) {
+        return new IRReturnJump(scope, rv);
+    }
 
-    private static ThreadLocal<Reference<IRReturnJump>> threadLocalRJ = new ThreadLocal<Reference<IRReturnJump>>();
-
-    public static IRReturnJump create(IRMethod m, Object rv) {
-        IRReturnJump rj;
-        Reference<IRReturnJump> rjRef = threadLocalRJ.get();
-        if (rjRef != null) {
-            rj = rjRef.get();
-        } else {
-            rj = new IRReturnJump();
-            threadLocalRJ.set(new SoftReference<IRReturnJump>(rj));
-        }
-        rj.methodToReturnFrom = m;
-        rj.returnValue = rv;
-        return rj;
+    @Override
+    public String toString() {
+        return "IRReturnJump:<" + methodToReturnFrom + ":" + returnValue + ">";
     }
 }

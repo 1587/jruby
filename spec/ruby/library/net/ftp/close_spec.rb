@@ -1,8 +1,8 @@
 require File.expand_path('../../../../spec_helper', __FILE__)
-require 'net/ftp'
+require File.expand_path('../spec_helper', __FILE__)
 
 describe "Net::FTP#close" do
-  before(:each) do
+  before :each do
     @socket = mock("Socket")
     @socket.stub!(:closed?).and_return(false)
     @socket.stub!(:read_timeout).and_return(60)

@@ -9,11 +9,11 @@ extern "C" {
 VALUE enumerator_spec_rb_enumeratorize(int argc, VALUE *argv, VALUE self) {
   VALUE obj, meth, args;
   rb_scan_args(argc, argv, "2*", &obj, &meth, &args);
-  return rb_enumeratorize(obj, meth, RARRAY_LEN(args), RARRAY_PTR(args));
+  return rb_enumeratorize(obj, meth, (int)RARRAY_LEN(args), RARRAY_PTR(args));
 }
 #endif
 
-void Init_enumerator_spec() {
+void Init_enumerator_spec(void) {
   VALUE cls;
   cls = rb_define_class("CApiEnumeratorSpecs", rb_cObject);
 

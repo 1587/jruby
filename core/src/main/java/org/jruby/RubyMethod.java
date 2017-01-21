@@ -31,27 +31,22 @@
  ***** END LICENSE BLOCK *****/
 package org.jruby;
 
-import java.util.Arrays;
-import org.jruby.ext.jruby.JRubyLibrary;
 import org.jruby.anno.JRubyMethod;
 import org.jruby.anno.JRubyClass;
-import org.jruby.exceptions.JumpException;
+import org.jruby.internal.runtime.methods.AliasMethod;
 import org.jruby.internal.runtime.methods.DynamicMethod;
+import org.jruby.internal.runtime.methods.IRMethodArgs;
 import org.jruby.internal.runtime.methods.ProcMethod;
+import org.jruby.runtime.ArgumentDescriptor;
 import org.jruby.runtime.Block;
-import org.jruby.runtime.BlockBody;
 import org.jruby.runtime.ClassIndex;
-import org.jruby.runtime.CompiledBlock19;
-import org.jruby.runtime.CompiledBlockCallback19;
-import org.jruby.runtime.CompiledBlockLight19;
-import org.jruby.runtime.DynamicScope;
-import org.jruby.runtime.MethodBlock;
+import org.jruby.runtime.Helpers;
+import org.jruby.runtime.MethodBlockBody;
 import org.jruby.runtime.ObjectAllocator;
 import org.jruby.runtime.PositionAware;
+import org.jruby.runtime.Signature;
 import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.Visibility;
 import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.runtime.marshal.DataType;
 
 /** 
  * The RubyMethod class represents a RubyMethod object.
@@ -79,7 +74,7 @@ public class RubyMethod extends AbstractRubyMethod {
         RubyClass methodClass = runtime.defineClass("Method", runtime.getObject(), ObjectAllocator.NOT_ALLOCATABLE_ALLOCATOR);
         runtime.setMethod(methodClass);
 
-        methodClass.index = ClassIndex.METHOD;
+        methodClass.setClassIndex(ClassIndex.METHOD);
         methodClass.setReifiedClass(RubyMethod.class);
 
         methodClass.defineAnnotatedMethods(AbstractRubyMethod.class);
@@ -136,9 +131,16 @@ public class RubyMethod extends AbstractRubyMethod {
      * 
      * @return the number of arguments of a method.
      */
-    @JRubyMethod(name = "arity")
+    @JRubyMethod
     public RubyFixnum arity() {
-        return getRuntime().newFixnum(method.getArity().getValue());
+        int value;
+        if (method instanceof IRMethodArgs) {
+            value = ((IRMethodArgs) method).getSignature().arityValue();
+        } else {
+            value = method.getArity().getValue();
+        }
+
+        return getRuntime().newFixnum(value);
     }
 
     @JRubyMethod(name = "==", required = 1)
@@ -153,10 +155,20 @@ public class RubyMethod extends AbstractRubyMethod {
         RubyMethod otherMethod = (RubyMethod)other;
         return context.runtime.newBoolean(receiver == otherMethod.receiver &&
                 originModule == otherMethod.originModule &&
-                method.getRealMethod().getSerialNumber() == otherMethod.method.getRealMethod().getSerialNumber());
+                (isMethodMissingMatch(otherMethod.getMethod().getRealMethod()) || isSerialMatch(otherMethod.getMethod().getRealMethod()))
+        );
     }
 
-    @JRubyMethod(name = "eql?", required = 1, compat = CompatVersion.RUBY1_9)
+    private boolean isMethodMissingMatch(DynamicMethod other) {
+        return (method.getRealMethod() instanceof RubyModule.RespondToMissingMethod) &&
+                ((RubyModule.RespondToMissingMethod)method.getRealMethod()).equals(other);
+    }
+
+    private boolean isSerialMatch(DynamicMethod otherMethod) {
+        return method.getRealMethod().getSerialNumber() == otherMethod.getRealMethod().getSerialNumber();
+    }
+
+    @JRubyMethod(name = "eql?", required = 1)
     public IRubyObject op_eql19(ThreadContext context, IRubyObject other) {
         return op_equal(context, other);
     }
@@ -171,36 +183,24 @@ public class RubyMethod extends AbstractRubyMethod {
      * 
      */
     @JRubyMethod
-    public IRubyObject to_proc(ThreadContext context, Block unusedBlock) {
+    public IRubyObject to_proc(ThreadContext context) {
         Ruby runtime = context.runtime;
-        CompiledBlockCallback19 callback = new CompiledBlockCallback19() {
-            @Override
-            public IRubyObject call(ThreadContext context, IRubyObject self, IRubyObject[] args, Block block) {
-                return method.call(context, receiver, originModule, originName, args, block);
-            }
 
-            @Override
-            public String getFile() {
-                return getFilename();
-            }
-
-            @Override
-            public int getLine() {
-                return RubyMethod.this.getLine();
-            }
-        };
-        int argumentType;
-        if (method.getArity().isFixed()) {
-            if (method.getArity().required() > 0) {
-                argumentType = BlockBody.MULTIPLE_ASSIGNMENT;
-            } else {
-                argumentType = BlockBody.ZERO_ARGS;
-            }
+        MethodBlockBody body;
+        Signature signature;
+        ArgumentDescriptor[] argsDesc;
+        if (method instanceof IRMethodArgs) {
+            signature = ((IRMethodArgs) method).getSignature();
+            argsDesc = ((IRMethodArgs) method).getArgumentDescriptors();
         } else {
-            argumentType = BlockBody.MULTIPLE_ASSIGNMENT;
+            signature = Signature.from(method.getArity());
+            argsDesc = Helpers.methodToArgumentDescriptors(method);
         }
-        BlockBody body = CompiledBlockLight19.newCompiledBlockLight(method.getArity(), runtime.getStaticScopeFactory().getDummyScope(), callback, false, argumentType, JRubyLibrary.MethodExtensions.methodParameters(runtime, method));
-        Block b = new Block(body, context.currentBinding(receiver, Visibility.PUBLIC));
+
+        int line = getLine(); // getLine adds 1 to 1-index but we need to reset to 0-index internally
+        body = new MethodBlockBody(runtime.getStaticScopeFactory().getDummyScope(), signature, method, argsDesc,
+                receiver, originModule, originName, getFilename(), line == -1 ? -1 : line - 1);
+        Block b = MethodBlockBody.createMethodBlock(body);
         
         return RubyProc.newProc(runtime, b, Block.Type.LAMBDA);
     }
@@ -249,31 +249,17 @@ public class RubyMethod extends AbstractRubyMethod {
         return str;
     }
 
-    @JRubyMethod(name = "name", compat = CompatVersion.RUBY1_8)
-    public IRubyObject name(ThreadContext context) {
-        return context.runtime.newString(methodName);
-    }
-
-    @JRubyMethod(name = "name", compat = CompatVersion.RUBY1_9)
-    public IRubyObject name19(ThreadContext context) {
-        return context.runtime.newSymbol(methodName);
-    }
-
-    public String getMethodName() {
-        return methodName;
-    }
-
-    @JRubyMethod(name = "receiver")
+    @JRubyMethod
     public IRubyObject receiver(ThreadContext context) {
         return receiver;
     }
 
-    @JRubyMethod(name = "owner")
+    @JRubyMethod
     public IRubyObject owner(ThreadContext context) {
         return implementationModule;
     }
 
-    @JRubyMethod(name = "source_location", compat = CompatVersion.RUBY1_9)
+    @JRubyMethod
     public IRubyObject source_location(ThreadContext context) {
         Ruby runtime = context.runtime;
 
@@ -303,9 +289,29 @@ public class RubyMethod extends AbstractRubyMethod {
         return -1;
     }
 
-    @JRubyMethod(name = "parameters", compat = CompatVersion.RUBY1_9)
+    @JRubyMethod
     public IRubyObject parameters(ThreadContext context) {
-        return JRubyLibrary.MethodExtensions.methodArgs(this);
+        return Helpers.methodToParameters(context.runtime, this);
     }
+
+    @JRubyMethod(optional = 1)
+    public IRubyObject curry(ThreadContext context, IRubyObject[] args) {
+        return to_proc(context).callMethod(context, "curry", args);
+    }
+
+    @JRubyMethod
+    public IRubyObject super_method(ThreadContext context) {
+        RubyModule superClass = Helpers.findImplementerIfNecessary(receiver.getMetaClass(), implementationModule).getSuperClass();
+        return super_method(context, receiver, superClass);
+    }
+
+    @JRubyMethod
+    public IRubyObject original_name(ThreadContext context) {
+        if (method instanceof AliasMethod) {
+            return context.runtime.newSymbol(((AliasMethod)method).getOldName());
+        }
+        return name(context);
+    }
+
 }
 

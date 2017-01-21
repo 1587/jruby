@@ -33,21 +33,14 @@ package org.jruby.ast;
 
 import java.util.List;
 
-import org.jruby.Ruby;
-import org.jruby.RubyString;
 import org.jruby.ast.types.INameNode;
 import org.jruby.ast.visitor.NodeVisitor;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.util.ByteList;
-import org.jruby.util.DefinedMessage;
 
 /**
  * Access a dynamic variable (e.g. block scope local variable).
  */
-public class DVarNode extends Node implements INameNode {
+public class DVarNode extends Node implements INameNode, IScopedNode, SideEffectFree {
     // The name of the variable
     private String name;
     
@@ -56,7 +49,7 @@ public class DVarNode extends Node implements INameNode {
     private int location;
 
     public DVarNode(ISourcePosition position, int location, String name) {
-        super(position);
+        super(position, false);
         this.location = location;
         this.name = name;
     }
@@ -69,7 +62,7 @@ public class DVarNode extends Node implements INameNode {
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitDVarNode(this);
     }
     
@@ -111,22 +104,9 @@ public class DVarNode extends Node implements INameNode {
     public List<Node> childNodes() {
         return EMPTY_LIST;
     }
-    
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        // System.out.println("DGetting: " + iVisited.getName() + " at index " + iVisited.getIndex() + " and at depth " + iVisited.getDepth());
-        IRubyObject obj = context.getCurrentScope().getValue(getIndex(), getDepth());
-
-        // FIXME: null check is removable once we figure out how to assign to unset named block args
-        return obj == null ? runtime.getNil() : obj;
-    }
 
     @Override
-    public RubyString definition(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        RubyString definition = runtime.getDefinedMessage(DefinedMessage.LOCAL_VARIABLE);
-        if (!context.runtime.is1_9()) {
-            definition = runtime.getDefinedMessage(DefinedMessage.LOCAL_VARIABLE_IN_BLOCK);
-        }
-        return definition;
+    public boolean needsDefinitionCheck() {
+        return false;
     }
 }

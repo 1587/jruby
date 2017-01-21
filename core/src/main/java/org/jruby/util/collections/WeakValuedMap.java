@@ -56,6 +56,21 @@ public class WeakValuedMap<Key, Value> {
         return reference.get();
     }
 
+    public void clear() {
+        cleanReferences();
+        map.clear();
+    }
+
+    public int size() {
+        cleanReferences();
+        return map.size();
+    }
+
+    /**
+     * Construct the backing store map for this WeakValuedMap. It should be capable of safe concurrent read and write.
+     *
+     * @return the backing store map
+     */
     protected Map<Key, KeyedReference<Key, Value>> newMap() {
         return new ConcurrentHashMap<Key, KeyedReference<Key, Value>>();
     }

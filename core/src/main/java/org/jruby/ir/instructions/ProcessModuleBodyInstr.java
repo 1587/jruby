@@ -1,73 +1,63 @@
 package org.jruby.ir.instructions;
 
 import org.jruby.RubyModule;
-import org.jruby.internal.runtime.methods.InterpretedIRMethod;
+import org.jruby.internal.runtime.methods.InterpretedIRBodyMethod;
 import org.jruby.ir.IRVisitor;
 import org.jruby.ir.Operation;
 import org.jruby.ir.operands.Operand;
 import org.jruby.ir.operands.Variable;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.parser.StaticScope;
 import org.jruby.runtime.Block;
 import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 
-import java.util.Map;
-
-public class ProcessModuleBodyInstr extends Instr implements ResultInstr {
-    private Operand  moduleBody;
-    private Variable result;
-
-    public ProcessModuleBodyInstr(Variable result, Operand moduleBody) {
-        super(Operation.PROCESS_MODULE_BODY);
+public class ProcessModuleBodyInstr extends TwoOperandResultBaseInstr implements FixedArityInstr {
+    public ProcessModuleBodyInstr(Variable result, Operand moduleBody, Operand block) {
+        super(Operation.PROCESS_MODULE_BODY, result, moduleBody, block);
 
         assert result != null: "ProcessModuleBodyInstr result is null";
-
-        this.result = result;
-		  this.moduleBody = moduleBody;
     }
 
-    public Operand[] getOperands() {
-        return new Operand[]{moduleBody};
+    public Operand getModuleBody() {
+        return getOperand1();
     }
 
-    public Variable getResult() {
-        return result;
-    }
-
-    public void updateResult(Variable v) {
-        this.result = v;
+    public Operand getBlock() {
+        return getOperand2();
     }
 
     @Override
-    public void simplifyOperands(Map<Operand, Operand> valueMap, boolean force) {
-        moduleBody = moduleBody.getSimplifiedOperand(valueMap, force);
+    public Instr clone(CloneInfo ii) {
+        return new ProcessModuleBodyInstr(ii.getRenamedVariable(result), getModuleBody().cloneForInlining(ii),
+                getBlock().cloneForInlining(ii));
     }
 
     @Override
-    public String toString() {
-        return super.toString() + "(" + moduleBody + ")";
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+        e.encode(getModuleBody());
+        e.encode(getBlock());
+    }
+
+    public static ProcessModuleBodyInstr decode(IRReaderDecoder d) {
+        return new ProcessModuleBodyInstr(d.decodeVariable(), d.decodeOperand(), d.decodeOperand());
     }
 
     @Override
-    public Instr cloneForInlining(InlinerInfo ii) {
-        return new ProcessModuleBodyInstr(ii.getRenamedVariable(result), moduleBody.cloneForInlining(ii));
-    }
+    public Object interpret(ThreadContext context, StaticScope currScope, DynamicScope currDynScope, IRubyObject self, Object[] temp) {
+        InterpretedIRBodyMethod bodyMethod = (InterpretedIRBodyMethod) getModuleBody().retrieve(context, self, currScope, currDynScope, temp);
+        Block b = (Block) getBlock().retrieve(context, self, currScope, currDynScope, temp);
+		RubyModule implClass = bodyMethod.getImplementationClass();
 
-    @Override
-    public Object interpret(ThreadContext context, DynamicScope currDynScope, IRubyObject self, Object[] temp, Block block) {
-        InterpretedIRMethod bodyMethod = (InterpretedIRMethod)moduleBody.retrieve(context, self, currDynScope, temp);
-		  RubyModule implClass = bodyMethod.getImplementationClass();
-        // SSS FIXME: Rather than pass the block implicitly, should we add %block as another operand to ProcessModuleBody, DefineModule instrs?
-        return bodyMethod.call(context, implClass, implClass, "", new IRubyObject[]{}, block);
+        return bodyMethod.call(context, implClass, implClass, null, b);
     }
 
     @Override
     public void visit(IRVisitor visitor) {
         visitor.ProcessModuleBodyInstr(this);
-    }
-
-    public Operand getModuleBody() {
-        return moduleBody;
     }
 }

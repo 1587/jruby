@@ -1,95 +1,87 @@
 package org.jruby.ir.instructions;
 
-import org.jruby.RubyArray;
-import org.jruby.RubyNil;
-import org.jruby.RubyProc;
 import org.jruby.ir.IRVisitor;
 import org.jruby.ir.Interp;
 import org.jruby.ir.Operation;
+import org.jruby.ir.operands.Array;
 import org.jruby.ir.operands.Operand;
 import org.jruby.ir.operands.UndefinedValue;
 import org.jruby.ir.operands.Variable;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
+import org.jruby.ir.runtime.IRRuntimeHelpers;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.parser.StaticScope;
 import org.jruby.runtime.Block;
 import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 
-import java.util.Map;
-
-public class YieldInstr extends Instr implements ResultInstr {
+public class YieldInstr extends TwoOperandResultBaseInstr implements FixedArityInstr {
     public final boolean unwrapArray;
-    private Operand blockArg;
-    private Operand yieldArg;
-    private Variable result;
 
     public YieldInstr(Variable result, Operand block, Operand arg, boolean unwrapArray) {
-        super(Operation.YIELD);
+        super(Operation.YIELD, result, block, arg == null ? UndefinedValue.UNDEFINED : arg);
 
         assert result != null: "YieldInstr result is null";
 
-        this.blockArg = block;
-        this.yieldArg = arg == null ? UndefinedValue.UNDEFINED : arg;
         this.unwrapArray = unwrapArray;
-        this.result = result;
-    }
-
-    @Override
-    public Instr cloneForInlining(InlinerInfo ii) {
-        return new YieldInstr(ii.getRenamedVariable(result), blockArg.cloneForInlining(ii), yieldArg.cloneForInlining(ii), unwrapArray);
     }
 
     public Operand getBlockArg() {
-        return blockArg;
+        return getOperand1();
     }
 
     public Operand getYieldArg() {
-        return yieldArg;
+        return getOperand2();
     }
 
     @Override
-    public String toString() {
-        return unwrapArray ? (super.toString() + "(" + blockArg + ", UNWRAP(" + yieldArg + "))") : (super.toString() + "(" + blockArg + ", " + yieldArg + ")");
-    }
-
-    // if unwrapArray, maybe convert yieldArg into a CompoundArray operand?
-    public Operand[] getOperands() {
-        return new Operand[] {blockArg, yieldArg};
-    }
-
-    public Variable getResult() {
-        return result;
-    }
-
-    public void updateResult(Variable v) {
-        this.result = v;
-    }
-
-    public Operand[] getNonBlockOperands() {
-        return new Operand[] {yieldArg};
+    public Instr clone(CloneInfo ii) {
+        // FIXME: Is it necessary to clone a yield instruction in a method
+        // that is being inlined, i.e. in METHOD_INLINE clone mode?
+        // Fix BasicBlock.java:clone!!
+        return new YieldInstr(ii.getRenamedVariable(result), getBlockArg().cloneForInlining(ii),
+                getYieldArg().cloneForInlining(ii), unwrapArray);
     }
 
     @Override
-    public void simplifyOperands(Map<Operand, Operand> valueMap, boolean force) {
-        blockArg = blockArg.getSimplifiedOperand(valueMap, force);
-        yieldArg = yieldArg.getSimplifiedOperand(valueMap, force);
+    public String[] toStringNonOperandArgs() {
+        return new String[] { "unwrap: " + unwrapArray};
+    }
+
+    public boolean isUnwrapArray() {
+        return unwrapArray;
+    }
+
+    @Override
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+        e.encode(getBlockArg());
+        e.encode(getYieldArg());
+        e.encode(isUnwrapArray());
+    }
+
+    public static YieldInstr decode(IRReaderDecoder d) {
+        return new YieldInstr(d.decodeVariable(), d.decodeOperand(), d.decodeOperand(), d.decodeBoolean());
     }
 
     @Interp
     @Override
-    public Object interpret(ThreadContext context, DynamicScope currDynScope, IRubyObject self, Object[] temp, Block block) {
-        Object resultValue;
-        Object blk = (Object) blockArg.retrieve(context, self, currDynScope, temp);
-        if (blk instanceof RubyProc) blk = ((RubyProc)blk).getBlock();
-        if (blk instanceof RubyNil) blk = Block.NULL_BLOCK;
-        Block b = (Block)blk;
-        // Ruby 1.8 mode: yields are always to normal blocks
-        if (!context.runtime.is1_9()) b.type = Block.Type.NORMAL;
-        if (yieldArg == UndefinedValue.UNDEFINED) {
-            return b.yieldSpecific(context);
+    public Object interpret(ThreadContext context, StaticScope currScope, DynamicScope currDynScope, IRubyObject self, Object[] temp) {
+        Block blk = (Block)getBlockArg().retrieve(context, self, currScope, currDynScope, temp);
+        if (getYieldArg() == UndefinedValue.UNDEFINED) {
+            return IRRuntimeHelpers.yieldSpecific(context, blk);
         } else {
-            IRubyObject yieldVal = (IRubyObject)yieldArg.retrieve(context, self, currDynScope, temp);
-            return (unwrapArray && (yieldVal instanceof RubyArray)) ? b.yieldArray(context, yieldVal, null, null) : b.yield(context, yieldVal);
+            Operand yieldOp = getYieldArg();
+            if (unwrapArray && yieldOp instanceof Array && ((Array)yieldOp).size() > 1) {
+                // Special case this path!
+                // Don't build a RubyArray.
+                return blk.yieldValues(context, ((Array)yieldOp).retrieveArrayElts(context, self, currScope, currDynScope, temp));
+            } else {
+                IRubyObject yieldVal = (IRubyObject) yieldOp.retrieve(context, self, currScope, currDynScope, temp);
+                return IRRuntimeHelpers.yield(context, blk, yieldVal, unwrapArray);
+            }
         }
     }
 

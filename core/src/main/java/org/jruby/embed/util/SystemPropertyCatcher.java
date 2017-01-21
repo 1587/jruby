@@ -36,7 +36,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.jruby.CompatVersion;
 import org.jruby.RubyInstanceConfig;
 import org.jruby.RubyInstanceConfig.CompileMode;
 import org.jruby.embed.internal.LocalContextProvider;
@@ -155,19 +154,8 @@ public class SystemPropertyCatcher {
                 config.setCompileMode(CompileMode.OFF);
             }
         }
-        String compat = SafePropertyAccessor.getProperty(PropertyName.COMPATVERSION.toString());
-        if (compat != null) {
-            compat = compat.toLowerCase();
-            if ( matches(compat, "j?(ruby)?1[\\._]?8") ) {
-                config.setCompatVersion(CompatVersion.RUBY1_8);
-            }
-            else if ( matches(compat, "j?(ruby)?2[\\._]?0") ) {
-                config.setCompatVersion(CompatVersion.RUBY2_0);
-            }
-            else if ( matches(compat, "j?(ruby)?1[\\._]?9") ) {
-                config.setCompatVersion(CompatVersion.RUBY1_9);
-            }
-        }
+        // NOTE: no JRuby COMPAT version setting, since it no longer makes sense in 9K !
+        // String compat = SafePropertyAccessor.getProperty(PropertyName.COMPATVERSION.toString());
     }
 
     /**
@@ -192,6 +180,7 @@ public class SystemPropertyCatcher {
      * @param instance any instance to get a resource
      * @return JRuby home path if exists, null when failed to find it.
      */
+    @Deprecated
     public static String findJRubyHome(Object instance) {
         String jrubyhome;
         if ((jrubyhome = SafePropertyAccessor.getenv("JRUBY_HOME")) != null) {
@@ -200,12 +189,10 @@ public class SystemPropertyCatcher {
         if ((jrubyhome = SafePropertyAccessor.getProperty("jruby.home")) != null) {
             return jrubyhome;
         }
-        if ((jrubyhome = findFromJar(instance)) != null) {
-            return jrubyhome;
-        }
-        return null;
+        return "uri:classloader://META-INF/jruby.home";
     }
 
+    @Deprecated
     public static String findFromJar(Object instance) {
         URL resource = instance.getClass().getResource("/META-INF/jruby.home");
         if (resource == null) {
@@ -244,6 +231,7 @@ public class SystemPropertyCatcher {
      *
      * @return a list of load paths.
      */
+    @Deprecated
     public static List<String> findLoadPaths() {
         String paths = SafePropertyAccessor.getProperty(PropertyName.CLASSPATH.toString());
         List<String> loadPaths = new ArrayList<String>();

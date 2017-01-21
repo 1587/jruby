@@ -33,38 +33,33 @@
 package org.jruby.ast;
 
 import java.util.List;
-
-import org.jruby.Ruby;
-import org.jruby.RubyString;
 import org.jruby.ast.types.ILiteralNode;
 import org.jruby.ast.visitor.NodeVisitor;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.util.ByteList;
 import org.jruby.util.StringSupport;
 
 /** 
  * Representing a simple String literal.
  */
-public class StrNode extends Node implements ILiteralNode {
+public class StrNode extends Node implements ILiteralNode, SideEffectFree {
     private final ByteList value;
     private final int codeRange;
+    private boolean frozen;
 
     public StrNode(ISourcePosition position, ByteList value) {
         this(position, value, StringSupport.codeRangeScan(value.getEncoding(), value));
     }
 
     public StrNode(ISourcePosition position, ByteList value, int codeRange) {
-        super(position);
+        super(position, false);
 
         this.value = value;
         this.codeRange = codeRange;
     }
 
     public StrNode(ISourcePosition position, StrNode head, StrNode tail) {
-        super(position);
+        super(position, false);
         
         ByteList headBL = head.getValue();
         ByteList tailBL = tail.getValue();
@@ -74,6 +69,7 @@ public class StrNode extends Node implements ILiteralNode {
         myValue.append(headBL);
         myValue.append(tailBL);
 
+        frozen = head.isFrozen() && tail.isFrozen();
         value = myValue;
         codeRange = StringSupport.codeRangeScan(value.getEncoding(), value);
     }
@@ -85,7 +81,7 @@ public class StrNode extends Node implements ILiteralNode {
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitStrNode(this);
     }
 
@@ -110,8 +106,11 @@ public class StrNode extends Node implements ILiteralNode {
         return EMPTY_LIST;
     }
 
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        return RubyString.newStringShared(runtime, value, codeRange);
+    public boolean isFrozen() {
+        return frozen;
+    }
+
+    public void setFrozen(boolean frozen) {
+        this.frozen = frozen;
     }
 }

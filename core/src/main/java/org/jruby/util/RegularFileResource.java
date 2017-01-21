@@ -1,21 +1,25 @@
 package org.jruby.util;
 
+import jnr.constants.platform.Errno;
+import jnr.constants.platform.Fcntl;
+import jnr.enxio.channels.NativeDeviceChannel;
 import jnr.posix.FileStat;
 import jnr.posix.POSIX;
-import jnr.posix.POSIXFactory;
 import java.io.File;
-import java.io.FileDescriptor;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.channels.Channel;
 import java.nio.channels.FileChannel;
 
+import org.jruby.ext.fcntl.FcntlLibrary;
 import org.jruby.RubyFile;
-import org.jruby.util.io.ChannelDescriptor;
+import org.jruby.platform.Platform;
 import org.jruby.util.io.ModeFlags;
+import org.jruby.util.io.PosixShim;
 
 /**
  * Represents a "regular" file, backed by regular file system.
@@ -150,7 +154,33 @@ class RegularFileResource extends AbstractFileResource {
     }
 
     @Override
-    public ChannelDescriptor openDescriptor(ModeFlags flags, int perm) throws ResourceException {
+    public Channel openChannel(ModeFlags flags, int perm) throws ResourceException {
+        if (posix.isNative() && !Platform.IS_WINDOWS) {
+            int fd = posix.open(absolutePath(), flags.getFlags(), perm);
+            if (fd < 0) {
+                Errno errno = Errno.valueOf(posix.errno());
+                switch (errno) {
+                    case EACCES:
+                        throw new ResourceException.PermissionDenied(absolutePath());
+                    case EEXIST:
+                        throw new ResourceException.FileExists(absolutePath());
+                    case EINVAL:
+                        throw new ResourceException.InvalidArguments(absolutePath());
+                    case ENOENT:
+                        throw new ResourceException.NotFound(absolutePath());
+                    case ELOOP:
+                        throw new ResourceException.TooManySymlinks(absolutePath());
+                    case EISDIR:
+                        throw new ResourceException.FileIsDirectory(absolutePath());
+                    default:
+                        throw new ResourceException.IOError(new IOException("unhandled errno: " + errno));
+
+                }
+            }
+            posix.fcntlInt(fd, Fcntl.F_SETFD, posix.fcntl(fd, Fcntl.F_GETFD) | FcntlLibrary.FD_CLOEXEC);
+            return new NativeDeviceChannel(fd);
+        }
+
         if (flags.isCreate()) {
             boolean fileCreated;
             try {
@@ -174,15 +204,17 @@ class RegularFileResource extends AbstractFileResource {
                 throw new ResourceException.FileExists(absolutePath());
             }
 
-            ChannelDescriptor descriptor = createDescriptor(flags);
+            Channel channel = createChannel(flags);
 
             // attempt to set the permissions, if we have been passed a POSIX instance,
             // perm is > 0, and only if the file was created in this call.
-            if (fileCreated && posix != null && perm > 0) {
+            if (fileCreated && posix != null) {
+                perm = perm & ~PosixShim.umask(posix);
+
                 if (perm > 0) posix.chmod(file.getPath(), perm);
             }
 
-            return descriptor;
+            return channel;
         }
 
         if (file.isDirectory() && flags.isWritable()) {
@@ -193,11 +225,10 @@ class RegularFileResource extends AbstractFileResource {
             throw new ResourceException.NotFound(absolutePath());
         }
 
-        return createDescriptor(flags);
-     }
+        return createChannel(flags);
+    }
 
-    private ChannelDescriptor createDescriptor(ModeFlags flags) throws ResourceException {
-        FileDescriptor fileDescriptor;
+    private Channel createChannel(ModeFlags flags) throws ResourceException {
         FileChannel fileChannel;
 
         /* Because RandomAccessFile does not provide a way to pass append
@@ -212,27 +243,20 @@ class RegularFileResource extends AbstractFileResource {
          * also be readable we pass false for isInAppendMode to indicate
          * we need manual seeking.
          */
-        boolean isInAppendMode;
         try{
             if (flags.isWritable() && !flags.isReadable()) {
                 FileOutputStream fos = new FileOutputStream(file, flags.isAppendable());
                 fileChannel = fos.getChannel();
-                fileDescriptor = fos.getFD();
-                isInAppendMode = true;
             } else {
                 RandomAccessFile raf = new RandomAccessFile(file, flags.toJavaModeString());
                 fileChannel = raf.getChannel();
-                fileDescriptor = raf.getFD();
-                isInAppendMode = false;
             }
         } catch (FileNotFoundException fnfe) {
             // Jave throws FileNotFoundException both if the file doesn't exist or there were
             // permission issues, but Ruby needs to disambiguate those two cases
             throw file.exists() ?
-                new ResourceException.PermissionDenied(absolutePath()) :
-                new ResourceException.NotFound(absolutePath());
-        } catch (IOException ioe) {
-            throw new ResourceException.IOError(ioe);
+                    new ResourceException.PermissionDenied(absolutePath()) :
+                    new ResourceException.NotFound(absolutePath());
         }
 
         try {
@@ -242,9 +266,6 @@ class RegularFileResource extends AbstractFileResource {
             if (!ioe.getMessage().equals("Illegal seek")) throw new ResourceException.IOError(ioe);
         }
 
-        // TODO: append should set the FD to end, no? But there is no seek(int) in libc!
-        //if (modes.isAppendable()) seek(0, Stream.SEEK_END);
-
-        return new ChannelDescriptor(fileChannel, flags, fileDescriptor, isInAppendMode);
+        return fileChannel;
     }
 }

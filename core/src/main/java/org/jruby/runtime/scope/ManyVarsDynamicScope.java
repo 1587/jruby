@@ -1,10 +1,13 @@
 package org.jruby.runtime.scope;
 
-import org.jruby.RubyArray;
-import org.jruby.runtime.Helpers;
 import org.jruby.parser.StaticScope;
 import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.builtin.IRubyObject;
+import org.jruby.util.ArraySupport;
+
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 
 /**
  * Represents the the dynamic portion of scoping information.  The variableValues are the
@@ -26,13 +29,19 @@ public class ManyVarsDynamicScope extends DynamicScope {
     // Our values holder (name of variables are kept in staticScope)
     private IRubyObject[] variableValues;
 
-    public ManyVarsDynamicScope(StaticScope staticScope, DynamicScope parent) {
-        super(staticScope, parent);
-        allocate();
+    public static final MethodHandle CONSTRUCTOR;
+    static {
+        try {
+            CONSTRUCTOR = MethodHandles.publicLookup()
+                    .findConstructor(ManyVarsDynamicScope.class, MethodType.methodType(void.class, StaticScope.class, DynamicScope.class))
+                    .asType(MethodType.methodType(DynamicScope.class, StaticScope.class, DynamicScope.class));
+        } catch (Exception e) {
+            throw new RuntimeException("BUG: could not initialize constructor handle");
+        }
     }
 
-    public ManyVarsDynamicScope(StaticScope staticScope) {
-        super(staticScope);
+    public ManyVarsDynamicScope(StaticScope staticScope, DynamicScope parent) {
+        super(staticScope, parent);
         allocate();
     }
 
@@ -41,10 +50,6 @@ public class ManyVarsDynamicScope extends DynamicScope {
             int size = staticScope.getNumberOfVariables();
             variableValues = new IRubyObject[size];
         }
-    }
-    
-    public DynamicScope cloneScope() {
-        return new ManyVarsDynamicScope(staticScope, parent);
     }
 
     public IRubyObject[] getValues() {
@@ -69,6 +74,26 @@ public class ManyVarsDynamicScope extends DynamicScope {
         // &foo are not getting set from somewhere...I want the following assert to be true though
         //assert variableValues[offset] != null : "Getting unassigned: " + staticScope.getVariables()[offset];
         return variableValues[offset];
+    }
+
+    public IRubyObject getValueDepthZero(int offset) {
+        return variableValues[offset];
+    }
+
+    public IRubyObject getValueZeroDepthZero() {
+        return variableValues[0];
+    }
+
+    public IRubyObject getValueOneDepthZero() {
+        return variableValues[1];
+    }
+
+    public IRubyObject getValueTwoDepthZero() {
+        return variableValues[2];
+    }
+
+    public IRubyObject getValueThreeDepthZero() {
+        return variableValues[3];
     }
     
     /**
@@ -129,111 +154,72 @@ public class ManyVarsDynamicScope extends DynamicScope {
      * @param value to set
      * @param depth how many captured scopes down this variable should be set
      */
-    public IRubyObject setValue(int offset, IRubyObject value, int depth) {
+    public void setValueVoid(IRubyObject value, int offset, int depth) {
         if (depth > 0) {
             assertParent();
             
-            return parent.setValue(offset, value, depth - 1);
+            parent.setValueVoid(value, offset, depth - 1);
         } else {
             assertSetValue(offset, value);
             
-            return setValueDepthZero(value, offset);
+            setValueDepthZeroVoid(value, offset);
         }
     }
 
-    public IRubyObject setValueDepthZero(IRubyObject value, int offset) {
+    public void setValueDepthZeroVoid(IRubyObject value, int offset) {
         assertSetValueDepthZero(offset, value);
 
-        return variableValues[offset] = value;
+        variableValues[offset] = value;
     }
-    public IRubyObject setValueZeroDepthZero(IRubyObject value) {
+    public void setValueZeroDepthZeroVoid(IRubyObject value) {
         assertSetValueZeroDepthZero(value);
 
-        return variableValues[0] = value;
+        variableValues[0] = value;
     }
-    public IRubyObject setValueOneDepthZero(IRubyObject value) {
+    public void setValueOneDepthZeroVoid(IRubyObject value) {
         assertSetValueOneDepthZero(value);
 
-        return variableValues[1] = value;
+        variableValues[1] = value;
     }
-    public IRubyObject setValueTwoDepthZero(IRubyObject value) {
+    public void setValueTwoDepthZeroVoid(IRubyObject value) {
         assertSetValueTwoDepthZero(value);
 
-        return variableValues[2] = value;
+        variableValues[2] = value;
     }
-    public IRubyObject setValueThreeDepthZero(IRubyObject value) {
+    public void setValueThreeDepthZeroVoid(IRubyObject value) {
         assertSetValueThreeDepthZero(value);
 
-        return variableValues[3] = value;
+        variableValues[3] = value;
     }
+    public void setValueFourDepthZeroVoid(IRubyObject value) {
+        assertSetValueThreeDepthZero(value);
 
-    /**
-     * Set all values which represent 'normal' parameters in a call list to this dynamic
-     * scope.  Function calls bind to local scopes by assuming that the indexes or the
-     * arg list correspond to that of the local scope (plus 2 since $_ and $~ always take
-     * the first two slots).  We pass in a second argument because we sometimes get more
-     * values than we are expecting.  The rest get compacted by original caller into 
-     * rest args.
-     * 
-     * @param values up to size specified to be mapped as ordinary parm values
-     * @param size is the number of values to assign as ordinary parm values
-     */
-    public void setArgValues(IRubyObject[] values, int size) {
-        System.arraycopy(values, 0, variableValues, 0, size);
+        variableValues[4] = value;
     }
+    public void setValueFiveDepthZeroVoid(IRubyObject value) {
+        assertSetValueThreeDepthZero(value);
 
-    @Override
-    public void setArgValues(IRubyObject arg0) {
-        variableValues[0] = arg0;
+        variableValues[5] = value;
     }
-    
-    @Override
-    public void setArgValues(IRubyObject arg0, IRubyObject arg1) {
-        variableValues[0] = arg0;
-        variableValues[1] = arg1;
-    }
-    
-    @Override
-    public void setArgValues(IRubyObject arg0, IRubyObject arg1, IRubyObject arg2) {
-        variableValues[0] = arg0;
-        variableValues[1] = arg1;
-        variableValues[2] = arg2;
-    }
-    
-    public void setEndArgValues(IRubyObject[] values, int index, int size) {
-        System.arraycopy(values, values.length - size, variableValues, index, size);
-    }
+    public void setValueSixDepthZeroVoid(IRubyObject value) {
+        assertSetValueThreeDepthZero(value);
 
-    /**
-     * Copy variable values back for ZSuper call.
-     */
-    public IRubyObject[] getArgValues() {
-        // if we're not the "argument scope" for zsuper, try our parent
-        if (!staticScope.isArgumentScope()) {
-            return parent.getArgValues();
-        }
-        int totalArgs = staticScope.getRequiredArgs() + staticScope.getOptionalArgs();
-        
-        // copy and splat arguments out of the scope to use for zsuper call
-        if (staticScope.getRestArg() < 0) {
-            // required and optional only
-            IRubyObject[] argValues = new IRubyObject[totalArgs];
-            System.arraycopy(variableValues, 0, argValues, 0, totalArgs);
-            
-            return argValues;
-        } else {
-            // rest arg must be splatted
-            IRubyObject restArg = getValue(staticScope.getRestArg(), 0);
-            assert restArg != null;
-            
-            // FIXME: not very efficient
-            RubyArray splattedArgs = Helpers.splatValue(restArg);
-            IRubyObject[] argValues = new IRubyObject[totalArgs + splattedArgs.size()];
-            System.arraycopy(variableValues, 0, argValues, 0, totalArgs);
-            System.arraycopy(splattedArgs.toJavaArray(), 0, argValues, totalArgs, splattedArgs.size());
-            
-            return argValues;
-        }
+        variableValues[6] = value;
+    }
+    public void setValueSevenDepthZeroVoid(IRubyObject value) {
+        assertSetValueThreeDepthZero(value);
+
+        variableValues[7] = value;
+    }
+    public void setValueEightDepthZeroVoid(IRubyObject value) {
+        assertSetValueThreeDepthZero(value);
+
+        variableValues[8] = value;
+    }
+    public void setValueNineDepthZeroVoid(IRubyObject value) {
+        assertSetValueThreeDepthZero(value);
+
+        variableValues[9] = value;
     }
 
     /**
@@ -251,7 +237,7 @@ public class ManyVarsDynamicScope extends DynamicScope {
             IRubyObject values[] = new IRubyObject[staticScope.getNumberOfVariables()];
             
             if (dynamicSize > 0) {
-                System.arraycopy(variableValues, 0, values, 0, dynamicSize);
+                ArraySupport.copy(variableValues, 0, values, 0, dynamicSize);
             }
             
             variableValues = values;
@@ -314,5 +300,11 @@ public class ManyVarsDynamicScope extends DynamicScope {
 
     private void assertSetValueTwoDepthZero(IRubyObject value) {
         assert 2 < variableValues.length : "Setting " + 2 + " to " + value + ", O: " + this;
+    }
+
+    @Deprecated
+    public DynamicScope cloneScope() {
+        // we construct new rather than clone to avoid sharing variableValues
+        return new ManyVarsDynamicScope(staticScope, parent);
     }
 }

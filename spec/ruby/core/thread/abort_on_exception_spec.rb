@@ -9,6 +9,7 @@ describe "Thread#abort_on_exception" do
 
   after do
     ThreadSpecs.state = :exit
+    @thread.join
   end
 
   it "is false by default" do
@@ -21,7 +22,7 @@ describe "Thread#abort_on_exception" do
   end
 end
 
-describe :thread_abort_on_exception, :shared => true do
+describe :thread_abort_on_exception, shared: true do
   before do
     @thread = Thread.new do
       Thread.pass until ThreadSpecs.state == :run
@@ -29,44 +30,23 @@ describe :thread_abort_on_exception, :shared => true do
     end
   end
 
-  ruby_version_is ""..."1.9" do
-    it "causes the main thread to raise a SystemExit" do
-      begin
-        ScratchPad << :before
+  it "causes the main thread to raise the exception raised in the thread" do
+    begin
+      ScratchPad << :before
 
-        lambda do
-          @thread.abort_on_exception = true if @object
-          ThreadSpecs.state = :run
-          @thread.join
-        end.should raise_error(SystemExit)
+      @thread.abort_on_exception = true if @object
+      lambda do
+        ThreadSpecs.state = :run
+        # Wait for the main thread to be interrupted
+        Thread.pass while @thread.alive?
+      end.should raise_error(RuntimeError, "Thread#abort_on_exception= specs")
 
-        ScratchPad << :after
-      rescue Object
-        ScratchPad << :rescue
-      end
-
-      ScratchPad.recorded.should == [:before, :after]
+      ScratchPad << :after
+    rescue Object
+      ScratchPad << :rescue
     end
-  end
 
-  ruby_version_is "1.9" do
-    it "causes the main thread to raise the exception raised in the thread" do
-      begin
-        ScratchPad << :before
-
-        lambda do
-          @thread.abort_on_exception = true if @object
-          ThreadSpecs.state = :run
-          @thread.join
-        end.should raise_error(RuntimeError)
-
-        ScratchPad << :after
-      rescue Object
-        ScratchPad << :rescue
-      end
-
-      ScratchPad.recorded.should == [:before, :after]
-    end
+    ScratchPad.recorded.should == [:before, :after]
   end
 end
 

@@ -1,7 +1,5 @@
 #!/usr/bin/env ruby
 
-MSPEC_HOME = File.expand_path(File.dirname(__FILE__) + '/../../..')
-
 require 'mspec/version'
 require 'mspec/utils/options'
 require 'mspec/utils/script'
@@ -36,10 +34,6 @@ class MSpecMain < MSpecScript
     end
 
     options.targets
-
-    options.on("-D", "--gdb", "Run under gdb") do
-      config[:use_gdb] = true
-    end
 
     options.on("-A", "--valgrind", "Run under valgrind") do
       config[:use_valgrind] = true
@@ -143,10 +137,6 @@ class MSpecMain < MSpecScript
   end
 
   def run
-    ENV['MSPEC_RUNNER'] = '1'
-    ENV['RUBY_EXE']     = config[:target]
-    ENV['RUBY_FLAGS']   = config[:flags].join " "
-
     argv = []
 
     argv.concat config[:launch]
@@ -161,11 +151,9 @@ class MSpecMain < MSpecScript
       multi_exec argv
     else
       if config[:use_valgrind]
-        more = ["--db-attach=#{config[:use_gdb] ? 'yes' : 'no'}", config[:target]] + argv
+        more = ["--child-silent-after-fork=yes",
+                config[:target]] + argv
         exec "valgrind", *more
-      elsif config[:use_gdb]
-        more = ["--args", config[:target]] + argv
-        exec "gdb", *more
       else
         cmd, *rest = config[:target].split(/\s+/)
         argv = rest + argv unless rest.empty?

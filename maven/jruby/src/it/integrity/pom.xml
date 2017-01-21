@@ -22,6 +22,7 @@
 	<configuration>
 	  <executable>java</executable>
 	  <environmentVariables>
+            <JRUBY_HOME>${basedir}</JRUBY_HOME>
 	    <PATH>${basedir}</PATH>
 	    <HOME>${basedir}</HOME>
 	    <GEM_PATH>${basedir}</GEM_PATH>
@@ -81,6 +82,22 @@
 	    </configuration>
 	  </execution>
 	  <execution>
+	    <id>check jruby-home</id>
+	    <phase>test</phase>
+	    <goals>
+              <goal>exec</goal>
+            </goals>
+	    <configuration>
+	      <arguments>
+		<argument>-classpath</argument>
+		<classpath/>
+		<argument>org.jruby.Main</argument>
+		<argument>-e</argument>
+		<argument>p JRuby.runtime.jruby_home</argument>
+              </arguments>
+            </configuration>
+          </execution>
+	  <execution>
 	    <id>count installed gems</id>
 	    <phase>test</phase>
 	    <goals>
@@ -131,7 +148,7 @@
             </configuration>
 	  </execution>
 	  <execution>
-	    <id>there is org.objectweb.asm.ClassWriter</id>
+	    <id>ensure there is no org.objectweb.asm.ClassWriter</id>
 	    <phase>test</phase>
 	    <goals>
               <goal>exec</goal>
@@ -148,10 +165,10 @@
 		<!-- make sure openssl loads -->
 		<argument>
 		  begin
-		    java_import "org.objectweb.asm.ClassWriter"
-		    puts "there is org.objectweb.asm.ClassWriter on the classpath"
+		    import_java "org.objectweb.asm.ClassWriter"
+		    raise "error there is org.objectweb.asm.ClassWriter on the classpath"
 		  rescue NameError => e
-		    raise "error there is NO org.objectweb.asm.ClassWriter on the classpath"
+		    puts "there is NO org.objectweb.asm.ClassWriter on the classpath"
                   end
 		</argument>
               </arguments>

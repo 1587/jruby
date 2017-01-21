@@ -28,11 +28,12 @@
 package org.jruby;
 
 import jnr.constants.platform.Signal;
+
 import org.jruby.anno.JRubyMethod;
 import org.jruby.anno.JRubyModule;
+import org.jruby.platform.Platform;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
-
 import org.jruby.util.SignalFacade;
 import org.jruby.util.NoFunctionalitySignalFacade;
 
@@ -52,53 +53,118 @@ public class RubySignal {
     }
     
     public static void createSignal(Ruby runtime) {
+        // We force java.lang.Process et al to load so that JVM's CHLD handler can be
+        // overwritten by users (jruby/jruby#3283)
+        if (!Platform.IS_WINDOWS) {
+            try {
+                Class.forName("java.lang.Process");
+                Class.forName("java.lang.UNIXProcess");
+            } catch (Throwable t) {
+                // if we can't access Process, other things will fail anyway; ignore for now
+            }
+        }
+
         RubyModule mSignal = runtime.defineModule("Signal");
         
         mSignal.defineAnnotatedMethods(RubySignal.class);
         //registerThreadDumpSignalHandler(runtime);
     }
     
-    @JRubyMethod(module = true)
+    public static Map<String, Integer> list() {
+        Map<String, Integer> signals = new HashMap<String, Integer>();
+
+        for (Signal s : Signal.values()) {
+            if (!s.description().startsWith(SIGNAME_PREFIX))
+                continue;
+            if (!RUBY_18_SIGNALS.contains(signmWithoutPrefix(s.description())))
+                continue;
+
+            // replace CLD with CHLD value
+            int signo = s.intValue();
+            if (s == Signal.SIGCLD)
+                signo = Signal.SIGCHLD.intValue();
+
+            // omit unsupported signals
+            if (signo >= 20000)
+                continue;
+
+            signals.put(signmWithoutPrefix(s.description()), signo);
+        }
+
+        return signals;
+    }
+
+    @JRubyMethod(meta = true)
     public static IRubyObject list(ThreadContext context, IRubyObject recv) {
         Ruby runtime = recv.getRuntime();
         RubyHash names = RubyHash.newHash(runtime);
-        for (Signal s : Signal.values()) {
-            if (!s.description().startsWith("SIG")) continue;
-            if (!RUBY_18_SIGNALS.contains(s.description().substring(3))) continue;
-
-            // replace CLD with CHLD value
-            long longValue = s.longValue();
-            if (s == Signal.SIGCLD) longValue = Signal.SIGCHLD.longValue();
-
-            // omit unsupported signals
-            if (longValue >= 20000) continue;
-
-            names.op_aset(context, runtime.newString(s.description().substring("SIG".length())), runtime.newFixnum(longValue));
+        for (Map.Entry<String, Integer> sig : RubySignal.list().entrySet()) {
+            names.op_aset(context, runtime.newString(sig.getKey()), runtime.newFixnum(sig.getValue()));
         }
         names.op_aset(context, runtime.newString("EXIT"), runtime.newFixnum(0));
         return names;
     }
 
-    @JRubyMethod(name = "__jtrap_kernel", required = 2, module = true)
+    @JRubyMethod(required = 2, meta = true)
     public static IRubyObject __jtrap_kernel(final IRubyObject recv, IRubyObject block, IRubyObject sig) {
         return SIGNALS.trap(recv, block, sig);
     }
 
-    @JRubyMethod(name = "__jtrap_platform_kernel", required = 1, module = true)
+    @JRubyMethod(required = 1, meta = true)
     public static IRubyObject __jtrap_platform_kernel(final IRubyObject recv, IRubyObject sig) {
         return SIGNALS.restorePlatformDefault(recv, sig);
     }
 
-    @JRubyMethod(name = "__jtrap_osdefault_kernel", required = 1, module = true)
+    @JRubyMethod(required = 1, meta = true)
     public static IRubyObject __jtrap_osdefault_kernel(final IRubyObject recv, IRubyObject sig) {
         return SIGNALS.restoreOSDefault(recv, sig);
     }
 
-    @JRubyMethod(name = "__jtrap_ignore_kernel", required = 1, module = true)
+    @JRubyMethod(required = 1, meta = true)
     public static IRubyObject __jtrap_restore_kernel(final IRubyObject recv, IRubyObject sig) {
         return SIGNALS.ignore(recv, sig);
     }
-    
+
+    @JRubyMethod(required = 1, meta = true)
+    public static IRubyObject signame(ThreadContext context, final IRubyObject recv, IRubyObject rubySig) {
+        long sig = rubySig.convertToInteger().getLongValue();
+        String signame = signo2signm(sig);
+        if (signame == null) {
+            if(sig == 0) {
+                return RubyString.newString(context.runtime, "EXIT");
+            } else {
+                throw context.runtime.newArgumentError("invalid signal number: " + rubySig);
+            }
+        }
+        return context.runtime.newString(signame);
+    }
+
+    // MRI: signo2signm
+    public static String signo2signm(long no) {
+        for (Signal s : Signal.values()) {
+            if (s.intValue() == no) {
+                return signmWithoutPrefix(s.name());
+            }
+        }
+        return null;
+    }
+
+    // MRI: signm2signo
+    public static long signm2signo(String nm) {
+        for (Signal s : Signal.values()) {
+            if (signmWithoutPrefix(s.name()).equals(nm)) return s.longValue();
+        }
+        return 0;
+    }
+
+    public static String signmWithPrefix(String nm) {
+        return (nm.startsWith(SIGNAME_PREFIX)) ? nm : SIGNAME_PREFIX + nm;
+    }
+
+    public static String signmWithoutPrefix(String nm) {
+        return (nm.startsWith(SIGNAME_PREFIX)) ? nm.substring(SIGNAME_PREFIX.length()) : nm;
+    }
+
     private static final Set<String> RUBY_18_SIGNALS;
     static {
         RUBY_18_SIGNALS = new HashSet<String>();
@@ -151,4 +217,6 @@ public class RubySignal {
             RUBY_18_SIGNALS.add(name);
         }
     }
+
+    private static final String SIGNAME_PREFIX = "SIG";
 }// RubySignal

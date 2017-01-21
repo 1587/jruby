@@ -3,70 +3,54 @@ package org.jruby.ir.instructions;
 // This is of the form:
 //   d = s
 
-import org.jruby.ir.IRVisitor;
 import org.jruby.ir.IRScope;
+import org.jruby.ir.IRVisitor;
 import org.jruby.ir.Operation;
 import org.jruby.ir.operands.Operand;
 import org.jruby.ir.operands.Variable;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
 
 import java.util.Map;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
+import org.jruby.ir.transformations.inlining.CloneInfo;
 
-public class CopyInstr extends Instr implements ResultInstr {
-    private Operand arg;
-    private Variable result;
-
-    public CopyInstr(Variable result, Operand s) {
-        super(Operation.COPY);
-
-        assert result != null: "CopyInstr result is null";
-        assert s != null;
-
-        this.arg = s;
-        this.result = result;
+public class CopyInstr extends OneOperandResultBaseInstr implements FixedArityInstr {
+    public CopyInstr(Operation op, Variable result, Operand source) {
+        super(op, result, source);
     }
 
-    public Operand[] getOperands() {
-        return new Operand[]{arg};
-    }
-
-    public Variable getResult() {
-        return result;
-    }
-
-    public void updateResult(Variable v) {
-        this.result = v;
+    public CopyInstr(Variable result, Operand source) {
+        this(Operation.COPY, result, source);
     }
 
     public Operand getSource() {
-        return arg;
-    }
-
-    @Override
-    public void simplifyOperands(Map<Operand, Operand> valueMap, boolean force) {
-        arg = arg.getSimplifiedOperand(valueMap, force);
+        return getOperand1();
     }
 
     @Override
     public Operand simplifyAndGetResult(IRScope scope, Map<Operand, Operand> valueMap) {
         simplifyOperands(valueMap, false);
 
-        return arg;
+        return getSource();
     }
 
     @Override
-    public Instr cloneForInlining(InlinerInfo ii) {
-        return new CopyInstr(ii.getRenamedVariable(result), arg.cloneForInlining(ii));
+    public Instr clone(CloneInfo ii) {
+        return new CopyInstr(getOperation(), ii.getRenamedVariable(result), getSource().cloneForInlining(ii));
+    }
+
+    public static CopyInstr decode(IRReaderDecoder d) {
+        return new CopyInstr(d.decodeVariable(), d.decodeOperand());
     }
 
     @Override
-    public String toString() {
-        return (arg instanceof Variable) ? (super.toString() + "(" + arg + ")") : (result + " = " + arg);
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+        e.encode(getSource());
     }
 
     @Override
     public void visit(IRVisitor visitor) {
         visitor.CopyInstr(this);
     }
-
 }

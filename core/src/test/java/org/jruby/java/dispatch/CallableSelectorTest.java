@@ -8,6 +8,8 @@
 package org.jruby.java.dispatch;
 
 import java.lang.reflect.Method;
+import java.util.HashMap;
+
 import org.jruby.Ruby;
 import org.jruby.RubyProc;
 import org.jruby.javasupport.JavaMethod;
@@ -17,6 +19,7 @@ import org.jruby.runtime.Block;
 import org.jruby.runtime.BlockBody;
 import org.jruby.runtime.Frame;
 import org.jruby.runtime.NullBlockBody;
+import org.jruby.runtime.Signature;
 import org.jruby.runtime.backtrace.BacktraceElement;
 import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.util.collections.IntHashMap;
@@ -36,134 +39,144 @@ public class CallableSelectorTest {
         final Method list1 = java.io.File.class.getMethod("listFiles", java.io.FileFilter.class);
         final Method list2 = java.io.File.class.getMethod("listFiles", java.io.FilenameFilter.class);
 
-        IntHashMap cache;
+        HashMap cache;
         JavaMethod[] methods;
-        Binding binding = new Binding(new Frame(), null, null, new BacktraceElement());
+        Binding binding = new Binding(new Frame(), null, new BacktraceElement());
         JavaMethod result; IRubyObject[] args;
 
         // arity 1 :
 
         BlockBody body1 = new NullBlockBody() {
-            @Override public Arity arity() { return Arity.ONE_ARGUMENT; }
+            // @Override public Arity arity() { return Arity.ONE_ARGUMENT; }
+            @Override
+            public Signature getSignature() { return Signature.ONE_ARGUMENT; }
         };
         RubyProc dummyProc = RubyProc.newProc(runtime, new Block(body1, binding), Block.Type.PROC);
 
-        cache = IntHashMap.nullMap();
+        cache = new HashMap<>();
         methods = new JavaMethod[] {
             new JavaMethod(runtime, list1), new JavaMethod(runtime, list2)
         };
-        result = CallableSelector.matchingCallableArityOne(runtime, cache, methods, dummyProc);
+        result = (JavaMethod)CallableSelector.matchingCallableArityOne(runtime, cache, methods, dummyProc);
         assertEquals(new JavaMethod(runtime, list1), result);
 
-        cache = IntHashMap.nullMap();
+        cache = new HashMap<>();
         args = new IRubyObject[] { dummyProc };
-        result = CallableSelector.matchingCallableArityN(runtime, cache, methods, args);
+        result = (JavaMethod)CallableSelector.matchingCallableArityN(runtime, cache, methods, args);
         assertEquals(new JavaMethod(runtime, list1), result);
 
-        cache = IntHashMap.nullMap();
+        cache = new HashMap<>();
         methods = new JavaMethod[] { // "reverse" method order
             new JavaMethod(runtime, list2), new JavaMethod(runtime, list1)
         };
-        result = CallableSelector.matchingCallableArityOne(runtime, cache, methods, dummyProc);
+        result = (JavaMethod)CallableSelector.matchingCallableArityOne(runtime, cache, methods, dummyProc);
         assertEquals(new JavaMethod(runtime, list1), result);
 
-        cache = IntHashMap.nullMap();
+        cache = new HashMap<>();
         args = new IRubyObject[] { dummyProc };
-        result = CallableSelector.matchingCallableArityN(runtime, cache, methods, args);
+        result = (JavaMethod)CallableSelector.matchingCallableArityN(runtime, cache, methods, args);
         assertEquals(new JavaMethod(runtime, list1), result);
 
         // arity 2 :
 
         BlockBody body2 = new NullBlockBody() {
-            @Override public Arity arity() { return Arity.TWO_ARGUMENTS; }
+            // @Override public Arity arity() { return Arity.TWO_ARGUMENTS; }
+            @Override
+            public Signature getSignature() { return Signature.TWO_ARGUMENTS; }
         };
         dummyProc = RubyProc.newProc(runtime, new Block(body2, binding), Block.Type.PROC);
 
-        cache = IntHashMap.nullMap();
+        cache = new HashMap<>();
         methods = new JavaMethod[] {
             new JavaMethod(runtime, list1), new JavaMethod(runtime, list2)
         };
-        result = CallableSelector.matchingCallableArityOne(runtime, cache, methods, dummyProc);
+        result = (JavaMethod)CallableSelector.matchingCallableArityOne(runtime, cache, methods, dummyProc);
         assertEquals(new JavaMethod(runtime, list2), result);
 
-        cache = IntHashMap.nullMap();
+        cache = new HashMap<>();
         args = new IRubyObject[] { dummyProc };
-        result = CallableSelector.matchingCallableArityN(runtime, cache, methods, args);
+        result = (JavaMethod)CallableSelector.matchingCallableArityN(runtime, cache, methods, args);
         assertEquals(new JavaMethod(runtime, list2), result);
 
-        cache = IntHashMap.nullMap();
+        cache = new HashMap<>();
         methods = new JavaMethod[] { // "reverse" method order
             new JavaMethod(runtime, list2), new JavaMethod(runtime, list1)
         };
-        result = CallableSelector.matchingCallableArityOne(runtime, cache, methods, dummyProc);
+        result = (JavaMethod)CallableSelector.matchingCallableArityOne(runtime, cache, methods, dummyProc);
         assertEquals(new JavaMethod(runtime, list2), result);
 
-        cache = IntHashMap.nullMap();
+        cache = new HashMap<>();
         args = new IRubyObject[] { dummyProc };
-        result = CallableSelector.matchingCallableArityN(runtime, cache, methods, args);
+        result = (JavaMethod)CallableSelector.matchingCallableArityN(runtime, cache, methods, args);
         assertEquals(new JavaMethod(runtime, list2), result);
 
         // arity -1 :
 
         BlockBody body_1 = new NullBlockBody() { // arity -1
-            @Override public Arity arity() { return Arity.OPTIONAL; }
+            // @Override public Arity arity() { return Arity.OPTIONAL; }
+            @Override
+            public Signature getSignature() { return Signature.OPTIONAL; }
         };
         dummyProc = RubyProc.newProc(runtime, new Block(body_1, binding), Block.Type.PROC);
 
-        cache = IntHashMap.nullMap();
+        cache = new HashMap<>();
         methods = new JavaMethod[] {
             new JavaMethod(runtime, list1), new JavaMethod(runtime, list2)
         };
-        result = CallableSelector.matchingCallableArityOne(runtime, cache, methods, dummyProc);
+        result = (JavaMethod)CallableSelector.matchingCallableArityOne(runtime, cache, methods, dummyProc);
         assertEquals(new JavaMethod(runtime, list1), result);
 
-        cache = IntHashMap.nullMap();
+        cache = new HashMap<>();
         methods = new JavaMethod[] {
             new JavaMethod(runtime, list2), new JavaMethod(runtime, list1)
         };
-        result = CallableSelector.matchingCallableArityOne(runtime, cache, methods, dummyProc);
+        result = (JavaMethod)CallableSelector.matchingCallableArityOne(runtime, cache, methods, dummyProc);
         assertEquals(new JavaMethod(runtime, list1), result);
 
         // arity -3 :
 
         BlockBody body_3 = new NullBlockBody() { // arity -3
-            @Override public Arity arity() { return Arity.TWO_REQUIRED; }
+            // @Override public Arity arity() { return Arity.TWO_REQUIRED; }
+            @Override
+            public Signature getSignature() { return Signature.TWO_REQUIRED; }
         };
         dummyProc = RubyProc.newProc(runtime, new Block(body_3, binding), Block.Type.PROC);
 
-        cache = IntHashMap.nullMap();
+        cache = new HashMap<>();
         methods = new JavaMethod[] {
             new JavaMethod(runtime, list1), new JavaMethod(runtime, list2)
         };
-        result = CallableSelector.matchingCallableArityOne(runtime, cache, methods, dummyProc);
+        result = (JavaMethod)CallableSelector.matchingCallableArityOne(runtime, cache, methods, dummyProc);
         assertEquals(new JavaMethod(runtime, list2), result);
 
-        cache = IntHashMap.nullMap();
+        cache = new HashMap<>();
         methods = new JavaMethod[] {
             new JavaMethod(runtime, list2), new JavaMethod(runtime, list1)
         };
-        result = CallableSelector.matchingCallableArityOne(runtime, cache, methods, dummyProc);
+        result = (JavaMethod)CallableSelector.matchingCallableArityOne(runtime, cache, methods, dummyProc);
         assertEquals(new JavaMethod(runtime, list2), result);
 
         // arity -2 :
 
         BlockBody body_2 = new NullBlockBody() { // arity -2 (arg1, *rest) should prefer (single)
-            @Override public Arity arity() { return Arity.ONE_REQUIRED; }
+            // @Override public Arity arity() { return Arity.ONE_REQUIRED; }
+            @Override
+            public Signature getSignature() { return Signature.ONE_REQUIRED; }
         };
         dummyProc = RubyProc.newProc(runtime, new Block(body_2, binding), Block.Type.PROC);
 
-        cache = IntHashMap.nullMap();
+        cache = new HashMap<>();
         methods = new JavaMethod[] {
             new JavaMethod(runtime, list1), new JavaMethod(runtime, list2)
         };
-        result = CallableSelector.matchingCallableArityOne(runtime, cache, methods, dummyProc);
+        result = (JavaMethod)CallableSelector.matchingCallableArityOne(runtime, cache, methods, dummyProc);
         assertEquals(new JavaMethod(runtime, list1), result);
 
-        cache = IntHashMap.nullMap();
+        cache = new HashMap<>();
         methods = new JavaMethod[] {
             new JavaMethod(runtime, list2), new JavaMethod(runtime, list1)
         };
-        result = CallableSelector.matchingCallableArityOne(runtime, cache, methods, dummyProc);
+        result = (JavaMethod)CallableSelector.matchingCallableArityOne(runtime, cache, methods, dummyProc);
         assertEquals(new JavaMethod(runtime, list1), result);
 
     }

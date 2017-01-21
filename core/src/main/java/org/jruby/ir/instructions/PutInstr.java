@@ -2,26 +2,16 @@ package org.jruby.ir.instructions;
 
 import org.jruby.ir.Operation;
 import org.jruby.ir.operands.Operand;
-
-import java.util.Map;
+import org.jruby.ir.persistence.IRWriterEncoder;
 
 // Represents target.ref = value or target = value where target is not a stack variable
-public abstract class PutInstr extends Instr {
-    public final int VALUE = 0;
-    public final int TARGET = 1;
-
-    protected Operand[] operands;
+public abstract class PutInstr extends TwoOperandInstr implements FixedArityInstr {
     protected String  ref;
 
     public PutInstr(Operation op, Operand target, String ref, Operand value) {
-        super(op);
+        super(op, target, value);
 
-        operands = new Operand[] { value, target };
         this.ref = ref;
-    }
-
-    public Operand[] getOperands() {
-        return operands;
     }
 
     public String getRef() {
@@ -29,22 +19,23 @@ public abstract class PutInstr extends Instr {
     }
 
     public Operand getTarget() {
-        return operands[TARGET];
+        return getOperand1();
     }
 
     public Operand getValue() {
-        return operands[VALUE];
+        return getOperand2();
     }
 
     @Override
-    public String toString() {
-        return super.toString() + "(" + operands[TARGET] +
-                (ref == null ? "" : ", " + ref) + ") = " + operands[VALUE];
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+        e.encode(getTarget());
+        e.encode(getRef());
+        e.encode(getValue());
     }
 
     @Override
-    public void simplifyOperands(Map<Operand, Operand> valueMap, boolean force) {
-        operands[VALUE] = operands[VALUE].getSimplifiedOperand(valueMap, force);
-        operands[TARGET] = operands[TARGET].getSimplifiedOperand(valueMap, force);
+    public String[] toStringNonOperandArgs() {
+        return new String[] {"name: " + ref};
     }
 }

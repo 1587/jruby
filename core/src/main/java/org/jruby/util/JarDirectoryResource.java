@@ -1,11 +1,11 @@
 package org.jruby.util;
 
 import jnr.posix.POSIX;
-import org.jruby.Ruby;
-import org.jruby.util.io.ChannelDescriptor;
 import org.jruby.util.io.ModeFlags;
 import java.io.IOException;
 import java.io.InputStream;
+
+import java.nio.channels.Channel;
 
 /**
  * Represents a directory in a jar.
@@ -67,7 +67,7 @@ class JarDirectoryResource extends JarResource {
     }
 
     @Override
-    public ChannelDescriptor openDescriptor(ModeFlags flags, int perm) throws ResourceException {
+    public Channel openChannel(ModeFlags flags, int perm) throws ResourceException {
         // opening a directory seems to blow up with EACCESS in jruby (although MRI allows instantiation but blows up on read).
         // So mimicking that for now.
         throw new ResourceException.PermissionDenied(absolutePath());

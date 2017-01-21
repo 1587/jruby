@@ -1,16 +1,12 @@
 package org.jruby.ir.operands;
 
-import org.jruby.Ruby;
-import org.jruby.RubyArray;
-import org.jruby.RubyClass;
-import org.jruby.RubyFloat;
-import org.jruby.RubyHash;
-import org.jruby.RubyInteger;
-import org.jruby.RubyString;
+import org.jruby.*;
 import org.jruby.ir.IRVisitor;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.parser.StaticScope;
 import org.jruby.runtime.Block;
 import org.jruby.runtime.DynamicScope;
+import org.jruby.runtime.JavaSites;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.runtime.builtin.InstanceVariables;
@@ -29,7 +25,14 @@ import java.util.List;
 public class UndefinedValue extends Operand implements IRubyObject {
     public static final UndefinedValue UNDEFINED = new UndefinedValue();
 
-    private UndefinedValue() {}
+    private UndefinedValue() {
+        super();
+    }
+
+    @Override
+    public OperandType getOperandType() {
+        return OperandType.UNDEFINED_VALUE;
+    }
 
     @Override
     public void addUsedVariables(List<org.jruby.ir.operands.Variable> l) {
@@ -37,7 +40,7 @@ public class UndefinedValue extends Operand implements IRubyObject {
     }
 
     @Override
-    public Operand cloneForInlining(InlinerInfo ii) {
+    public Operand cloneForInlining(CloneInfo ii) {
         return this;
     }
 
@@ -47,7 +50,7 @@ public class UndefinedValue extends Operand implements IRubyObject {
     }
 
     @Override
-    public Object retrieve(ThreadContext context, IRubyObject self, DynamicScope currDynScope, Object[] temp) {
+    public Object retrieve(ThreadContext context, IRubyObject self, StaticScope currScope, DynamicScope currDynScope, Object[] temp) {
         return this;
     }
 
@@ -69,6 +72,8 @@ public class UndefinedValue extends Operand implements IRubyObject {
     public IRubyObject callMethod(ThreadContext context, int methodIndex, String name, IRubyObject arg) { throw undefinedOperation(); }
 
     public IRubyObject checkCallMethod(ThreadContext context, String name) { throw undefinedOperation(); }
+
+    public IRubyObject checkCallMethod(ThreadContext context, JavaSites.CheckedSites sites) { throw undefinedOperation(); }
 
     public boolean isNil() { throw undefinedOperation(); }
 
@@ -126,6 +131,9 @@ public class UndefinedValue extends Operand implements IRubyObject {
      * @return
      */
     public boolean isImmediate() { throw undefinedOperation(); }
+
+    @Override
+    public boolean isSpecialConst() { throw undefinedOperation(); }
 
     /**
      * RubyMethod getRubyClass.

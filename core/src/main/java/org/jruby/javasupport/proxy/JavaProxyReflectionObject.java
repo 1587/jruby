@@ -153,22 +153,8 @@ public class JavaProxyReflectionObject extends RubyObject {
     // utility methods
     //
 
-    @Deprecated
-    protected RubyArray buildRubyArray(IRubyObject[] elements) {
-        RubyArray result = getRuntime().newArray(elements.length);
-        for (int i = 0; i < elements.length; i++) {
-            result.append(elements[i]);
-        }
-        return result;
-    }
-
-    @Deprecated
-    protected RubyArray buildRubyArray(final Class<?>[] classes) {
-        return JavaClass.toRubyArray(getRuntime(), classes);
-    }
-
     final RubyArray toRubyArray(final IRubyObject[] elements) {
-        return RubyArray.newArrayNoCopy(getRuntime(), elements);
+        return RubyArray.newArrayMayCopy(getRuntime(), elements);
     }
 
     final RubyArray toRubyArray(final Class<?>[] classes) {

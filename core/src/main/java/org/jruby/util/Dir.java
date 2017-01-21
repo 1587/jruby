@@ -27,18 +27,18 @@
  ***** END LICENSE BLOCK *****/
 package org.jruby.util;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Enumeration;
-import java.util.List;
-import jnr.posix.POSIX;
-import org.jruby.RubyEncoding;
-import org.jruby.RubyFile;
-
-import org.jruby.platform.Platform;
-import java.io.IOException;
 import java.util.Collections;
+import java.util.List;
+
+import jnr.posix.POSIX;
+
+import org.jruby.Ruby;
+import org.jruby.RubyEncoding;
+import org.jruby.platform.Platform;
+import static org.jruby.util.ByteList.NULL_ARRAY;
+import static org.jruby.util.StringSupport.EMPTY_STRING_ARRAY;
 
 /**
  * This class exists as a counterpart to the dir.c file in
@@ -61,13 +61,17 @@ public class Dir {
     public final static int FNM_NOMATCH = 1;
     public final static int FNM_ERROR   = 2;
 
-    public final static byte[] EMPTY = new byte[0];
+    public final static byte[] EMPTY = NULL_ARRAY; // new byte[0];
     public final static byte[] SLASH = new byte[]{'/'};
     public final static byte[] STAR = new byte[]{'*'};
     public final static byte[] DOUBLE_STAR = new byte[]{'*','*'};
 
-    private static boolean isdirsep(byte c) {
+    private static boolean isdirsep(char c) {
         return c == '/' || DOSISH && c == '\\';
+    }
+
+    private static boolean isdirsep(byte c) {
+        return isdirsep((char)(c & 0xFF));
     }
 
     private static int rb_path_next(byte[] _s, int s, int send) {
@@ -87,7 +91,7 @@ public class Dir {
         boolean nocase = (flags & FNM_CASEFOLD) != 0;
 
         while(pat<pend) {
-            byte c = bytes[pat++];
+            char c = (char)(bytes[pat++] & 0xFF);
             switch(c) {
             case '?':
                 if(s >= send || (pathname && isdirsep(string[s])) ||
@@ -97,7 +101,7 @@ public class Dir {
                 s++;
                 break;
             case '*':
-                while(pat < pend && (c = bytes[pat++]) == '*') {}
+                while(pat < pend && (c = (char)(bytes[pat++] & 0xFF)) == '*') {}
                 if(s < send && (period && string[s] == '.' && (s == 0 || (pathname && isdirsep(string[s-1]))))) {
                     return FNM_NOMATCH;
                 }
@@ -115,7 +119,7 @@ public class Dir {
                     }
                     return FNM_NOMATCH;
                 }
-                test = (char)((escape && c == '\\' && pat < pend ? bytes[pat] : c)&0xFF);
+                test = (char)(escape && c == '\\' && pat < pend ? (bytes[pat] & 0xFF) : c);
                 test = Character.toLowerCase(test);
                 pat--;
                 while(s < send) {
@@ -144,7 +148,7 @@ public class Dir {
                     if (pat >= pend) {
                         c = '\\';
                     } else {
-                        c = bytes[pat++];
+                        c = (char)(bytes[pat++] & 0xFF);
                     }
                 }
             default:
@@ -159,7 +163,7 @@ public class Dir {
                         }
 
                     } else {
-                        if(c != (char)string[s]) {
+                        if(c != (char)(string[s] & 0xFF)) {
                             return FNM_NOMATCH;
                         }
                     }
@@ -298,10 +302,10 @@ public class Dir {
         return ok == not ? -1 : pat + 1;
     }
 
-    public static List<ByteList> push_glob(POSIX posix, String cwd, ByteList globByteList, int flags) {
+    public static List<ByteList> push_glob(Ruby runtime, String cwd, ByteList globByteList, int flags) {
         if (globByteList.length() > 0) {
             final ArrayList<ByteList> result = new ArrayList<ByteList>();
-            push_braces(posix, cwd, result, new GlobPattern(globByteList, flags));
+            push_braces(runtime, cwd, result, new GlobPattern(globByteList, flags));
             return result;
         }
 
@@ -416,7 +420,7 @@ public class Dir {
     /*
      * Process {}'s (example: Dir.glob("{jruby,jython}/README*")
      */
-    private static int push_braces(POSIX posix, String cwd, List<ByteList> result, GlobPattern pattern) {
+    private static int push_braces(Ruby runtime, String cwd, List<ByteList> result, GlobPattern pattern) {
         pattern.reset();
         int lbrace = pattern.indexOf((byte) '{'); // index of left-most brace
         int rbrace = pattern.findClosingIndexOf(lbrace);// index of right-most brace
@@ -437,7 +441,7 @@ public class Dir {
                     unescaped.append(b);
                 }
             }
-            return push_globs(posix, cwd, result, unescaped, pattern.flags);
+            return push_globs(runtime, cwd, result, unescaped, pattern.flags);
         }
 
         // Peel onion...make subpatterns out of outer layer of glob and recall with each subpattern
@@ -455,16 +459,94 @@ public class Dir {
             bytes.append(pattern.bytes, pattern.begin, lbrace - pattern.begin);
             bytes.append(pattern.bytes, middleRegionIndex, i - middleRegionIndex);
             bytes.append(pattern.bytes, rbrace + 1, pattern.end - (rbrace + 1));
-            int status = push_braces(posix, cwd, result, new GlobPattern(bytes, pattern.flags));
+            int status = push_braces(runtime, cwd, result, new GlobPattern(bytes, pattern.flags));
             if (status != 0) return status;
         }
 
         return 0; // All braces pushed..
     }
 
-    private static int push_globs(POSIX posix, String cwd, List<ByteList> ary, ByteList pattern, int flags) {
+    private static int push_globs(Ruby runtime, String cwd, List<ByteList> ary, ByteList pattern, int flags) {
         flags |= FNM_SYSCASE;
-        return glob_helper(posix, cwd, pattern, -1, flags, glob_caller, new GlobArgs(push_pattern, ary));
+        return glob_helper(runtime, cwd, pattern, -1, flags, glob_caller, new GlobArgs(push_pattern, ary));
+    }
+
+    public static ArrayList<String> braces(String pattern, int flags, ArrayList<String> patterns) {
+        boolean escape = (flags & FNM_NOESCAPE) == 0;
+
+        int rbrace = -1;
+        int lbrace = -1;
+
+        // Do a quick search for a { to start the search better
+        int i = pattern.indexOf('{');
+
+        if(i >= 0) {
+            int nest = 0;
+
+            while(i < pattern.length()) {
+                char c = pattern.charAt(i);
+
+                if(c == '{') {
+                    if(nest == 0) {
+                        lbrace = i;
+                    }
+                    nest += 1;
+                }
+
+                if(c == '}') {
+                    nest -= 1;
+                }
+
+                if(nest == 0) {
+                    rbrace = i;
+                    break;
+                }
+
+                if(c == '\\' && escape) {
+                    i += 1;
+                }
+
+                i += 1;
+            }
+        }
+
+        // There was a full {} expression detected, expand each part of it
+        // recursively.
+        if(lbrace >= 0 && rbrace >= 0) {
+            int pos = lbrace;
+            String front = pattern.substring(0, lbrace);
+            String back = pattern.substring(rbrace + 1, pattern.length());
+
+            while(pos < rbrace) {
+                int nest = 0;
+                pos += 1;
+                int last = pos;
+
+                while(pos < rbrace && !(pattern.charAt(pos) == ',' && nest == 0)) {
+                    if(pattern.charAt(pos) == '{') {
+                        nest += 1;
+                    }
+                    if(pattern.charAt(pos) == '}') {
+                        nest -= 1;
+                    }
+
+                    if(pattern.charAt(pos) == '\\' && escape) {
+                        pos += 1;
+                        if(pos == rbrace) {
+                            break;
+                        }
+                    }
+
+                    pos += 1;
+                }
+                String brace_pattern = front + pattern.substring(last, pos) + back;
+                patterns.add(brace_pattern);
+
+                braces(brace_pattern, flags, patterns);
+            }
+        }
+
+        return patterns;
     }
 
     private static boolean has_magic(byte[] bytes, int begin, int end, int flags) {
@@ -551,7 +633,7 @@ public class Dir {
 
     private static String[] files(final FileResource directory) {
         final String[] files = directory.list();
-        return files == null ? new String[0] : files;
+        return files == null ? EMPTY_STRING_ARRAY : files;
     }
 
     private static final class DirGlobber {
@@ -570,7 +652,7 @@ public class Dir {
         return c == '.' && name.charAt(2) == '/';
     }
 
-    private static int addToResultIfExists(POSIX posix, String cwd, byte[] bytes, int begin, int end, int flags, GlobFunc<GlobArgs> func, GlobArgs arg) {
+    private static int addToResultIfExists(Ruby runtime, String cwd, byte[] bytes, int begin, int end, int flags, GlobFunc<GlobArgs> func, GlobArgs arg) {
         final String fileName = newStringFromUTF8(bytes, begin, end - begin);
 
         // FIXME: Ultimately JRubyFile.createResource should do this but all 1.7.x is only selectively honoring raw
@@ -581,7 +663,7 @@ public class Dir {
             cwd = cwd + "/";
         }
 
-        FileResource file = JRubyFile.createResource(posix, cwd, fileName);
+        FileResource file = JRubyFile.createResource(runtime, cwd, fileName);
 
         if (file.exists()) {
             boolean trailingSlash = bytes[end - 1] == '/';
@@ -617,13 +699,13 @@ public class Dir {
         return 0;
     }
 
-    private static int glob_helper(POSIX posix, String cwd, ByteList path, int sub, int flags, GlobFunc<GlobArgs> func, GlobArgs arg) {
+    private static int glob_helper(Ruby runtime, String cwd, ByteList path, int sub, int flags, GlobFunc<GlobArgs> func, GlobArgs arg) {
         final int begin = path.getBegin();
         final int end = begin + path.getRealSize();
-        return glob_helper(posix, cwd, path.getUnsafeBytes(), begin, end, sub, flags, func, arg);
+        return glob_helper(runtime, cwd, path.getUnsafeBytes(), begin, end, sub, flags, func, arg);
     }
 
-    private static int glob_helper(POSIX posix, String cwd,
+    private static int glob_helper(Ruby runtime, String cwd,
         byte[] path, int begin, int end, int sub,
         final int flags, GlobFunc<GlobArgs> func, GlobArgs arg) {
         int status = 0;
@@ -646,9 +728,9 @@ public class Dir {
 
             if ( (end - begin) > 0 ) {
                 if ( isAbsolutePath(path, begin, end) ) {
-                    status = addToResultIfExists(posix, null, path, begin, end, flags, func, arg);
+                    status = addToResultIfExists(runtime, null, path, begin, end, flags, func, arg);
                 } else {
-                    status = addToResultIfExists(posix, cwd, path, begin, end, flags, func, arg);
+                    status = addToResultIfExists(runtime, cwd, path, begin, end, flags, func, arg);
                 }
             }
 
@@ -669,7 +751,7 @@ public class Dir {
                     byte[] magic = extract_elem(path, p, end);
                     boolean recursive = false;
 
-                    resource = JRubyFile.createResource(posix, cwd, newStringFromUTF8(dir, 0, dir.length));
+                    resource = JRubyFile.createResource(runtime, cwd, newStringFromUTF8(dir, 0, dir.length));
 
                     if ( resource.isDirectory() ) {
                         if ( s != -1 && Arrays.equals(magic, DOUBLE_STAR) ) {
@@ -678,7 +760,7 @@ public class Dir {
                             buf.length(0);
                             buf.append(base);
                             buf.append(path, (n > 0 ? s : s + 1), end - (n > 0 ? s : s + 1));
-                            status = glob_helper(posix, cwd, buf, n, flags, func, arg);
+                            status = glob_helper(runtime, cwd, buf, n, flags, func, arg);
                             if ( status != 0 ) break finalize;
                         }
                     } else {
@@ -698,13 +780,13 @@ public class Dir {
                             buf.append(base);
                             buf.append( isRoot(base) ? EMPTY : SLASH );
                             buf.append( getBytesInUTF8(file) );
-                            resource = JRubyFile.createResource(posix, cwd, newStringFromUTF8(buf));
+                            resource = JRubyFile.createResource(runtime, cwd, newStringFromUTF8(buf));
                             if ( !resource.isSymLink() && resource.isDirectory() && !".".equals(file) && !"..".equals(file) ) {
                                 final int len = buf.getRealSize();
                                 buf.append(SLASH);
                                 buf.append(DOUBLE_STAR);
                                 buf.append(path, s, end - s);
-                                status = glob_helper(posix, cwd, buf, buf.getBegin() + len, flags, func, arg);
+                                status = glob_helper(runtime, cwd, buf, buf.getBegin() + len, flags, func, arg);
                                 if ( status != 0 ) break;
                             }
                             continue;
@@ -729,13 +811,13 @@ public class Dir {
                     for ( DirGlobber globber : links ) {
                         final ByteList link = globber.link;
                         if ( status == 0 ) {
-                            resource = JRubyFile.createResource(posix, cwd, newStringFromUTF8(link));
+                            resource = JRubyFile.createResource(runtime, cwd, newStringFromUTF8(link));
                             if ( resource.isDirectory() ) {
                                 final int len = link.getRealSize();
                                 buf.length(0);
                                 buf.append(link);
                                 buf.append(path, s, end - s);
-                                status = glob_helper(posix, cwd, buf, buf.getBegin() + len, flags, func, arg);
+                                status = glob_helper(runtime, cwd, buf, buf.getBegin() + len, flags, func, arg);
                             }
                         }
                     }

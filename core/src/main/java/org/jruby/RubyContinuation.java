@@ -42,7 +42,7 @@ import org.jruby.runtime.builtin.IRubyObject;
  */
 @JRubyClass(name="Continuation")
 public class RubyContinuation extends RubyObject {
-    public static class Continuation extends Error implements Unrescuable {
+    public static class Continuation extends RuntimeException implements Unrescuable {
         public Continuation() {tag = null;}
         public Continuation(IRubyObject tag) {
             this.tag = tag;
@@ -62,7 +62,7 @@ public class RubyContinuation extends RubyObject {
     public static void createContinuation(Ruby runtime) {
         RubyClass cContinuation = runtime.defineClass("Continuation",runtime.getObject(),runtime.getObject().getAllocator());
 
-        cContinuation.index = ClassIndex.CONTINUATION;
+        cContinuation.setClassIndex(ClassIndex.CONTINUATION);
         cContinuation.setReifiedClass(RubyContinuation.class);
         
         cContinuation.defineAnnotatedMethods(RubyContinuation.class);
@@ -112,7 +112,7 @@ public class RubyContinuation extends RubyObject {
                 } else if (continuation.args.length == 1) {
                     return continuation.args[0];
                 } else {
-                    return context.runtime.newArrayNoCopy(continuation.args);
+                    return RubyArray.newArrayMayCopy(context.runtime, continuation.args);
                 }
             } else {
                 throw c;

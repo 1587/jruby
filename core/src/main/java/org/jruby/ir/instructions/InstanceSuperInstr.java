@@ -1,16 +1,15 @@
 package org.jruby.ir.instructions;
 
-import org.jruby.RubyClass;
+import org.jruby.RubyInstanceConfig;
 import org.jruby.RubyModule;
-import org.jruby.internal.runtime.methods.DynamicMethod;
-import org.jruby.internal.runtime.methods.UndefinedMethod;
 import org.jruby.ir.IRVisitor;
 import org.jruby.ir.Operation;
-import org.jruby.ir.operands.MethAddr;
 import org.jruby.ir.operands.Operand;
 import org.jruby.ir.operands.Variable;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
-import org.jruby.runtime.Helpers;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.runtime.IRRuntimeHelpers;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.parser.StaticScope;
 import org.jruby.runtime.Block;
 import org.jruby.runtime.CallType;
 import org.jruby.runtime.DynamicScope;
@@ -18,8 +17,9 @@ import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 
 public class InstanceSuperInstr extends CallInstr {
-    public InstanceSuperInstr(Variable result, Operand definingModule, MethAddr superMeth, Operand[] args, Operand closure) {
-        super(Operation.SUPER, CallType.SUPER, result, superMeth, definingModule, args, closure);
+    public InstanceSuperInstr(Variable result, Operand definingModule, String name, Operand[] args, Operand closure,
+                              boolean isPotentiallyRefined) {
+        super(Operation.INSTANCE_SUPER, CallType.SUPER, result, name, definingModule, args, closure, isPotentiallyRefined);
     }
 
     public Operand getDefiningModule() {
@@ -27,9 +27,31 @@ public class InstanceSuperInstr extends CallInstr {
     }
 
     @Override
-    public Instr cloneForInlining(InlinerInfo ii) {
-        return new InstanceSuperInstr(ii.getRenamedVariable(getResult()), getDefiningModule().cloneForInlining(ii), (MethAddr)getMethodAddr().cloneForInlining(ii),
-                cloneCallArgs(ii), closure == null ? null : closure.cloneForInlining(ii));
+    public Instr clone(CloneInfo ii) {
+        return new InstanceSuperInstr(ii.getRenamedVariable(getResult()), getDefiningModule().cloneForInlining(ii), getName(),
+                cloneCallArgs(ii), getClosureArg() == null ? null : getClosureArg().cloneForInlining(ii), isPotentiallyRefined());
+    }
+
+    public static InstanceSuperInstr decode(IRReaderDecoder d) {
+        if (RubyInstanceConfig.IR_READING_DEBUG) System.out.println("decoding super");
+        int callTypeOrdinal = d.decodeInt();
+        if (RubyInstanceConfig.IR_READING_DEBUG) System.out.println("decoding super, calltype(ord):  "+ callTypeOrdinal);
+        String methAddr = d.decodeString();
+        if (RubyInstanceConfig.IR_READING_DEBUG) System.out.println("decoding super, methaddr:  "+ methAddr);
+        Operand receiver = d.decodeOperand();
+        int argsCount = d.decodeInt();
+        boolean hasClosureArg = argsCount < 0;
+        int argsLength = hasClosureArg ? (-1 * (argsCount + 1)) : argsCount;
+        if (RubyInstanceConfig.IR_READING_DEBUG) System.out.println("ARGS: " + argsLength + ", CLOSURE: " + hasClosureArg);
+        Operand[] args = new Operand[argsLength];
+
+        for (int i = 0; i < argsLength; i++) {
+            args[i] = d.decodeOperand();
+        }
+
+        Operand closure = hasClosureArg ? d.decodeOperand() : null;
+
+        return new InstanceSuperInstr(d.decodeVariable(), receiver, methAddr, args, closure, d.getCurrentScope().maybeUsingRefinements());
     }
 
     // We cannot convert this into a NoCallResultInstr
@@ -39,21 +61,12 @@ public class InstanceSuperInstr extends CallInstr {
     }
 
     @Override
-    public CallBase specializeForInterpretation() {
-        return this;
-    }
+    public Object interpret(ThreadContext context, StaticScope currScope, DynamicScope currDynScope, IRubyObject self, Object[] temp) {
+        IRubyObject[] args = prepareArguments(context, self, currScope, currDynScope, temp);
+        Block block = prepareBlock(context, self, currScope, currDynScope, temp);
+        RubyModule definingModule = ((RubyModule) getDefiningModule().retrieve(context, self, currScope, currDynScope, temp)).getMethodLocation();
 
-    @Override
-    public Object interpret(ThreadContext context, DynamicScope currDynScope, IRubyObject self, Object[] temp, Block aBlock) {
-        IRubyObject[] args = prepareArguments(context, self, getCallArgs(), currDynScope, temp);
-        Block block = prepareBlock(context, self, currDynScope, temp);
-        String methodName = methAddr.getName();
-        RubyModule definingModule = (RubyModule) getDefiningModule().retrieve(context, self, currDynScope, temp);
-        RubyClass superClass = definingModule.getSuperClass();
-        DynamicMethod method = superClass != null ? superClass.searchMethod(methodName) : UndefinedMethod.INSTANCE;
-        Object rVal = method.isUndefined() ? Helpers.callMethodMissing(context, self, method.getVisibility(), methodName, CallType.SUPER, args, block)
-                                           : method.call(context, self, superClass, methodName, args, block);
-        return hasUnusedResult() ? null : rVal;
+        return IRRuntimeHelpers.instanceSuper(context, self, getName(), definingModule, args, block);
     }
 
     @Override

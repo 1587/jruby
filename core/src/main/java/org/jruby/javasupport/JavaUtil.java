@@ -36,23 +36,25 @@ package org.jruby.javasupport;
 import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Array;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.lang.reflect.ReflectPermission;
 import static java.lang.Character.isLetter;
 import static java.lang.Character.isLowerCase;
 import static java.lang.Character.isUpperCase;
 import static java.lang.Character.isDigit;
 import static java.lang.Character.toLowerCase;
 
-import java.lang.reflect.ReflectPermission;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.security.AccessController;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -80,7 +82,6 @@ import org.jruby.java.proxies.RubyObjectHolderProxy;
 import org.jruby.javasupport.proxy.InternalJavaProxy;
 import org.jruby.runtime.Helpers;
 import org.jruby.runtime.Block;
-import org.jruby.runtime.ClassIndex;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 
@@ -116,7 +117,7 @@ public class JavaUtil {
     }
 
     public static IRubyObject[] convertJavaArrayToRuby(final Ruby runtime, final Object[] objects) {
-        if ( objects == null ) return IRubyObject.NULL_ARRAY;
+        if ( objects == null || objects.length == 0 ) return IRubyObject.NULL_ARRAY;
 
         IRubyObject[] rubyObjects = new IRubyObject[objects.length];
         for (int i = 0; i < objects.length; i++) {
@@ -209,8 +210,7 @@ public class JavaUtil {
 
     public static IRubyObject convertJavaArrayElementToRuby(Ruby runtime, JavaConverter converter, Object array, int i) {
         if (converter == null || converter == JAVA_DEFAULT_CONVERTER) {
-            IRubyObject x = convertJavaToUsableRubyObject(runtime, ((Object[])array)[i]);
-            return x;
+            return convertJavaToUsableRubyObject(runtime, ((Object[])array)[i]);
         }
         return converter.get(runtime, array, i);
     }
@@ -243,7 +243,18 @@ public class JavaUtil {
             // Proc implementing an interface, pull in the catch-all code that lets the proc get invoked
             // no matter what method is called on the interface
             final RubyClass singletonClass = rubyObject.getSingletonClass();
-            singletonClass.addMethod("method_missing", new Java.ProcToInterface(singletonClass));
+            final Java.ProcToInterface procToIface = new Java.ProcToInterface(singletonClass);
+            singletonClass.addMethod("method_missing", procToIface);
+            // similar to Iface.impl { ... } - bind interface method(s) to avoid Java-Ruby conflicts
+            // ... e.g. calling a Ruby implemented Predicate#test should not dispatch to Kernel#test
+            final Java.ProcToInterface.ConcreteMethod implMethod = procToIface.getConcreteMethod();
+            // getMethods for interface returns all methods (including ones from super-interfaces)
+            for ( Method method : targetType.getMethods() ) {
+                if ( Modifier.isAbstract(method.getModifiers()) ) {
+                    singletonClass.addMethodInternal(method.getName(), implMethod);
+                }
+            }
+
         }
         JavaObject javaObject = (JavaObject) Helpers.invoke(context, rubyObject, "__jcreate_meta!");
         return (T) javaObject.getValue();
@@ -269,11 +280,28 @@ public class JavaUtil {
      * @return Java object
      * @see JavaUtil#isJavaObject(IRubyObject)
      */
-    public static Object unwrapJavaObject(final IRubyObject object) {
+    public static <T> T unwrapJavaObject(final IRubyObject object) {
         if ( object instanceof JavaProxy ) {
-            return ((JavaProxy) object).getObject();
+            return (T) ((JavaProxy) object).getObject();
         }
-        return ((JavaObject) object.dataGetStruct()).getValue();
+        return (T) ((JavaObject) object.dataGetStruct()).getValue();
+    }
+
+    /**
+     * Unwrap if the passed object is a Java object, otherwise return object.
+     * @param object
+     * @return java object or passed object
+     * @see JavaUtil#isJavaObject(IRubyObject)
+     */
+    public static <T> T unwrapIfJavaObject(final IRubyObject object) {
+        if ( object instanceof JavaProxy ) {
+            return (T) ((JavaProxy) object).getObject();
+        }
+        final Object unwrap = object.dataGetStruct();
+        if ( unwrap instanceof JavaObject ) {
+            return (T) ((JavaObject) unwrap).getValue();
+        }
+        return (T) object; // assume correct instance
     }
 
     @Deprecated // no longer used
@@ -285,7 +313,7 @@ public class JavaUtil {
             return ((JavaObject) object).getValue();
         }
         final Object unwrap = object.dataGetStruct();
-        if ( unwrap != null && unwrap instanceof IRubyObject ) {
+        if ( unwrap instanceof IRubyObject ) {
             return unwrapJavaValue(runtime, (IRubyObject) unwrap, errorMessage);
         }
         throw runtime.newTypeError(errorMessage);
@@ -304,7 +332,7 @@ public class JavaUtil {
             return ((JavaObject) object).getValue();
         }
         final Object unwrap = object.dataGetStruct();
-        if ( unwrap != null && unwrap instanceof IRubyObject ) {
+        if ( unwrap instanceof IRubyObject ) {
             return unwrapJavaValue((IRubyObject) unwrap);
         }
         return null;
@@ -491,6 +519,41 @@ public class JavaUtil {
         }
     }
 
+    public static Object[] convertArguments(final IRubyObject[] args, final Class<?>[] types) {
+        return convertArguments(args, types, 0);
+    }
+
+    public static Object[] convertArguments(final IRubyObject[] args, final Class<?>[] types, int offset) {
+        final Object[] arguments = new Object[ args.length - offset ];
+        for ( int i = arguments.length; --i >= 0; ) {
+            arguments[i] = args[ i + offset ].toJava( types[i] );
+        }
+        return arguments;
+    }
+
+    /**
+     * Clone a Java object, assuming its class has an accessible <code>clone</code> method.
+     * @param object
+     * @return cloned object or null (if method is not found or inaccessible)
+     */
+    public static <T> T clone(final Object object) {
+        return (T) clone(object, false);
+    }
+
+    static Object clone(final Object object, final boolean silent) {
+        try {
+            final Method clone = object.getClass().getMethod("clone");
+            return clone.invoke(object);
+        }
+        catch (NoSuchMethodException|IllegalAccessException e) {
+            return null;
+        }
+        catch (InvocationTargetException e) {
+            if ( ! silent ) Helpers.throwException(e.getTargetException());
+            return null;
+        }
+    }
+
     public static abstract class JavaConverter {
         private final Class type;
         public JavaConverter(Class type) {this.type = type;}
@@ -525,10 +588,7 @@ public class JavaUtil {
     private static final JavaConverter JAVA_DEFAULT_CONVERTER = new JavaConverter(Object.class) {
         public IRubyObject convert(Ruby runtime, Object object) {
             IRubyObject result = trySimpleConversions(runtime, object);
-
-            if (result != null) return result;
-
-            return JavaObject.wrap(runtime, object);
+            return result == null ? JavaObject.wrap(runtime, object) : result;
         }
         public IRubyObject get(Ruby runtime, Object array, int i) {
             return convert(runtime, ((Object[]) array)[i]);
@@ -798,8 +858,7 @@ public class JavaUtil {
         }
     };
 
-    private static final Map<Class,JavaConverter> JAVA_CONVERTERS =
-        new HashMap<Class,JavaConverter>();
+    private static final Map<Class, JavaConverter> JAVA_CONVERTERS = new IdentityHashMap<>(24);
 
     static {
         JAVA_CONVERTERS.put(Byte.class, JAVA_BYTE_CONVERTER);
@@ -927,7 +986,7 @@ public class JavaUtil {
         return value >= Integer.MIN_VALUE && value <= Integer.MAX_VALUE;
     }
 
-    private static final Map<Class, NumericConverter> NUMERIC_CONVERTERS = new HashMap<Class, NumericConverter>();
+    private static final Map<Class, NumericConverter> NUMERIC_CONVERTERS = new IdentityHashMap<>(24);
 
     static {
         NUMERIC_CONVERTERS.put(Byte.TYPE, NUMERIC_TO_BYTE);
@@ -955,9 +1014,9 @@ public class JavaUtil {
         return ((JavaProxy)self).getObject();
     }
 
-    public static final Map<String,Class> PRIMITIVE_CLASSES;
+    public static final Map<String, Class> PRIMITIVE_CLASSES;
     static {
-        Map<String, Class> primitiveClasses = new HashMap<String,Class>();
+        Map<String, Class> primitiveClasses = new HashMap<>(10, 1);
         primitiveClasses.put("boolean", Boolean.TYPE);
         primitiveClasses.put("byte", Byte.TYPE);
         primitiveClasses.put("char", Character.TYPE);
@@ -967,6 +1026,22 @@ public class JavaUtil {
         primitiveClasses.put("float", Float.TYPE);
         primitiveClasses.put("double", Double.TYPE);
         PRIMITIVE_CLASSES = Collections.unmodifiableMap(primitiveClasses);
+    }
+
+    public static Class<?> getPrimitiveClass(final String name) {
+        switch (name) {
+            case "boolean": return Boolean.TYPE;
+            case "byte": return Byte.TYPE;
+            case "char": return Character.TYPE;
+            case "short": return Short.TYPE;
+            case "int": return Integer.TYPE;
+            case "long": return Long.TYPE;
+            case "float": return Float.TYPE;
+            case "double": return Double.TYPE;
+
+            case "void": return Void.TYPE;
+        }
+        return null;
     }
 
     @Deprecated
@@ -1193,7 +1268,7 @@ public class JavaUtil {
     };
 
     @Deprecated
-    public static final Map<Class, RubyConverter> RUBY_CONVERTERS = new HashMap<Class, RubyConverter>();
+    public static final Map<Class, RubyConverter> RUBY_CONVERTERS = new HashMap<>(16, 1);
     static {
         RUBY_CONVERTERS.put(Boolean.class, RUBY_BOOLEAN_CONVERTER);
         RUBY_CONVERTERS.put(Boolean.TYPE, RUBY_BOOLEAN_CONVERTER);
@@ -1316,7 +1391,7 @@ public class JavaUtil {
     };
 
     @Deprecated
-    public static final Map<Class, RubyConverter> ARRAY_CONVERTERS = new HashMap<Class, RubyConverter>();
+    public static final Map<Class, RubyConverter> ARRAY_CONVERTERS = new HashMap<>(24, 1);
     static {
         ARRAY_CONVERTERS.put(Boolean.class, ARRAY_BOOLEAN_CONVERTER);
         ARRAY_CONVERTERS.put(Boolean.TYPE, ARRAY_BOOLEAN_CONVERTER);
@@ -1379,34 +1454,35 @@ public class JavaUtil {
 
     @Deprecated
     public static IRubyObject primitive_to_java(IRubyObject recv, IRubyObject object, Block unusedBlock) {
-        if ( object instanceof JavaObject ) return object;
-
-        final Ruby runtime = recv.getRuntime();
-        final Object javaObject;
-        switch (object.getMetaClass().index) {
-        case ClassIndex.NIL:
+        if (object instanceof JavaObject) {
+            return object;
+        }
+        Ruby runtime = recv.getRuntime();
+        Object javaObject;
+        switch (object.getMetaClass().getClassIndex()) {
+        case NIL:
             javaObject = null;
             break;
-        case ClassIndex.FIXNUM:
-            javaObject = ((RubyFixnum) object).getLongValue();
+        case FIXNUM:
+            javaObject = Long.valueOf(((RubyFixnum) object).getLongValue());
             break;
-        case ClassIndex.BIGNUM:
+        case BIGNUM:
             javaObject = ((RubyBignum) object).getValue();
             break;
-        case ClassIndex.FLOAT:
-            javaObject = ((RubyFloat) object).getValue(); // Double
+        case FLOAT:
+            javaObject = new Double(((RubyFloat) object).getValue());
             break;
-        case ClassIndex.STRING:
-            final ByteList str = ((RubyString) object).getByteList();
-            javaObject = RubyEncoding.decodeUTF8(str.getUnsafeBytes(), str.begin(), str.length());
+        case STRING:
+            ByteList bytes = ((RubyString) object).getByteList();
+            javaObject = RubyEncoding.decodeUTF8(bytes.getUnsafeBytes(), bytes.begin(), bytes.length());
             break;
-        case ClassIndex.TRUE:
+        case TRUE:
             javaObject = Boolean.TRUE;
             break;
-        case ClassIndex.FALSE:
+        case FALSE:
             javaObject = Boolean.FALSE;
             break;
-        case ClassIndex.TIME:
+        case TIME:
             javaObject = ((RubyTime) object).getJavaDate();
             break;
         default:
@@ -1488,11 +1564,7 @@ public class JavaUtil {
 
             // 1.9 support for encodings
             // TODO: Fix charset use for JRUBY-4553
-            if (string.getRuntime().is1_9()) {
-                return new String(bytes.getUnsafeBytes(), bytes.begin(), bytes.length(), string.getEncoding().toString());
-            }
-
-            return RubyEncoding.decodeUTF8(bytes.getUnsafeBytes(), bytes.begin(), bytes.length());
+            return new String(bytes.getUnsafeBytes(), bytes.begin(), bytes.length(), string.getEncoding().toString());
         } catch (UnsupportedEncodingException uee) {
             return string.toString();
         }

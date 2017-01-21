@@ -73,9 +73,14 @@ public class JavaArray extends JavaObject {
         return Array.getLength(getValue());
     }
 
+    @Override
     public boolean equals(Object other) {
-        return other instanceof JavaArray &&
-            this.getValue() == ((JavaArray)other).getValue();
+        return other instanceof JavaArray && this.getValue() == ((JavaArray) other).getValue();
+    }
+
+    @Override
+    public int hashCode() {
+        return 17 * getValue().hashCode();
     }
 
     public IRubyObject arefDirect(Ruby runtime, int intIndex) {
@@ -117,24 +122,16 @@ public class JavaArray extends JavaObject {
         if (! (value instanceof JavaObject)) {
             throw getRuntime().newTypeError("not a java object:" + value);
         }
-        Object javaObject = ((JavaObject) value).getValue();
-        fillWithExceptionHandling(intIndex, intEndIndex, javaObject);
+        Object javaValue = ((JavaObject) value).getValue();
+        fillWithExceptionHandling(intIndex, intEndIndex, javaValue);
         return value;
     }
 
-    public void fillWithExceptionHandling(int intIndex, int intEndIndex, Object javaObject) {
-        try {
-          for ( ; intIndex < intEndIndex; intIndex++) {
-            Array.set(getValue(), intIndex, javaObject);
-          }
-        } catch (IndexOutOfBoundsException e) {
-            throw getRuntime().newArgumentError(
-                                    "index out of bounds for java array (" + intIndex +
-                                    " for length " + getLength() + ")");
-        } catch (ArrayStoreException e) {
-            throw getRuntime().newArgumentError(
-                                    "wrong element type " + javaObject.getClass() + "(array is " +
-                                    getValue().getClass() + ")");
+    public final void fillWithExceptionHandling(int start, int end, Object javaValue) {
+        final Ruby runtime = getRuntime();
+        final Object array = getValue();
+        for (int i = start; i < end; i++) {
+            ArrayUtils.setWithExceptionHandlingDirect(runtime, array, i, javaValue);
         }
     }
 }

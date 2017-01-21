@@ -5,6 +5,9 @@ require 'mspec/runner/actions/tag'
 require 'mspec/runner/actions/taglist'
 require 'mspec/runner/actions/tagpurge'
 
+one_spec = File.expand_path(File.dirname(__FILE__)) + '/fixtures/one_spec.rb'
+two_spec = File.expand_path(File.dirname(__FILE__)) + '/fixtures/two_spec.rb'
+
 describe MSpecTag, ".new" do
   before :each do
     @script = MSpecTag.new
@@ -31,12 +34,12 @@ describe MSpecTag, "#options" do
   before :each do
     @stdout, $stdout = $stdout, IOStub.new
 
-    @argv = ["a", "b"]
+    @argv = [one_spec, two_spec]
     @options, @config = new_option
-    MSpecOptions.stub!(:new).and_return(@options)
+    MSpecOptions.stub(:new).and_return(@options)
 
     @script = MSpecTag.new
-    @script.stub!(:config).and_return(@config)
+    @script.stub(:config).and_return(@config)
   end
 
   after :each do
@@ -55,7 +58,7 @@ describe MSpecTag, "#options" do
 
   it "provides a custom action (block) to the config option" do
     @script.should_receive(:load).with("cfg.mspec")
-    @script.options ["-B", "cfg.mspec", "a"]
+    @script.options ["-B", "cfg.mspec", one_spec]
   end
 
   it "enables the name option" do
@@ -98,11 +101,6 @@ describe MSpecTag, "#options" do
     @script.options @argv
   end
 
-  it "enables the debug option" do
-    @options.should_receive(:debug)
-    @script.options @argv
-  end
-
   it "calls #custom_options" do
     @script.should_receive(:custom_options).with(@options)
     @script.options @argv
@@ -112,30 +110,30 @@ describe MSpecTag, "#options" do
     @options.should_receive(:parse).and_return([])
     @script.should_receive(:exit)
     @script.options
-    $stdout.should =~ /No files specified/
+    $stdout.should include "No files specified"
   end
 end
 
 describe MSpecTag, "options" do
   before :each do
     @options, @config = new_option
-    MSpecOptions.stub!(:new).and_return(@options)
+    MSpecOptions.stub(:new).and_return(@options)
     @script = MSpecTag.new
-    @script.stub!(:config).and_return(@config)
+    @script.stub(:config).and_return(@config)
   end
 
   describe "-N, --add TAG" do
     it "is enabled with #options" do
-      @options.stub!(:on)
+      @options.stub(:on)
       @options.should_receive(:on).with("-N", "--add", "TAG", an_instance_of(String))
-      @script.options ["file.rb"]
+      @script.options [one_spec]
     end
 
     it "sets the mode to :add and sets the tag to TAG" do
       ["-N", "--add"].each do |opt|
         @config[:tagger] = nil
         @config[:tag] = nil
-        @script.options [opt, "taggit", "file.rb"]
+        @script.options [opt, "taggit", one_spec]
         @config[:tagger].should == :add
         @config[:tag].should == "taggit:"
       end
@@ -144,10 +142,10 @@ describe MSpecTag, "options" do
 
   describe "-R, --del TAG" do
     it "is enabled with #options" do
-      @options.stub!(:on)
+      @options.stub(:on)
       @options.should_receive(:on).with("-R", "--del", "TAG",
           an_instance_of(String))
-      @script.options ["file.rb"]
+      @script.options [one_spec]
     end
 
     it "it sets the mode to :del, the tag to TAG, and the outcome to :pass" do
@@ -155,7 +153,7 @@ describe MSpecTag, "options" do
         @config[:tagger] = nil
         @config[:tag] = nil
         @config[:outcome] = nil
-        @script.options [opt, "taggit", "file.rb"]
+        @script.options [opt, "taggit", one_spec]
         @config[:tagger].should == :del
         @config[:tag].should == "taggit:"
         @config[:outcome].should == :pass
@@ -165,15 +163,15 @@ describe MSpecTag, "options" do
 
   describe "-Q, --pass" do
     it "is enabled with #options" do
-      @options.stub!(:on)
+      @options.stub(:on)
       @options.should_receive(:on).with("-Q", "--pass", an_instance_of(String))
-      @script.options ["file.rb"]
+      @script.options [one_spec]
     end
 
     it "sets the outcome to :pass" do
       ["-Q", "--pass"].each do |opt|
         @config[:outcome] = nil
-        @script.options [opt, "file.rb"]
+        @script.options [opt, one_spec]
         @config[:outcome].should == :pass
       end
     end
@@ -181,15 +179,15 @@ describe MSpecTag, "options" do
 
   describe "-F, --fail" do
     it "is enabled with #options" do
-      @options.stub!(:on)
+      @options.stub(:on)
       @options.should_receive(:on).with("-F", "--fail", an_instance_of(String))
-      @script.options ["file.rb"]
+      @script.options [one_spec]
     end
 
     it "sets the outcome to :fail" do
       ["-F", "--fail"].each do |opt|
         @config[:outcome] = nil
-        @script.options [opt, "file.rb"]
+        @script.options [opt, one_spec]
         @config[:outcome].should == :fail
       end
     end
@@ -197,15 +195,15 @@ describe MSpecTag, "options" do
 
   describe "-L, --all" do
     it "is enabled with #options" do
-      @options.stub!(:on)
+      @options.stub(:on)
       @options.should_receive(:on).with("-L", "--all", an_instance_of(String))
-      @script.options ["file.rb"]
+      @script.options [one_spec]
     end
 
     it "sets the outcome to :all" do
       ["-L", "--all"].each do |opt|
         @config[:outcome] = nil
-        @script.options [opt, "file.rb"]
+        @script.options [opt, one_spec]
         @config[:outcome].should == :all
       end
     end
@@ -213,48 +211,48 @@ describe MSpecTag, "options" do
 
   describe "--list TAG" do
     it "is enabled with #options" do
-      @options.stub!(:on)
+      @options.stub(:on)
       @options.should_receive(:on).with("--list", "TAG", an_instance_of(String))
-      @script.options ["file.rb"]
+      @script.options [one_spec]
     end
 
     it "sets the mode to :list" do
       @config[:tagger] = nil
-      @script.options ["--list", "TAG", "file.rb"]
+      @script.options ["--list", "TAG", one_spec]
       @config[:tagger].should == :list
     end
 
     it "sets ltags to include TAG" do
       @config[:tag] = nil
-      @script.options ["--list", "TAG", "file.rb"]
+      @script.options ["--list", "TAG", one_spec]
       @config[:ltags].should == ["TAG"]
     end
   end
 
   describe "--list-all" do
     it "is enabled with #options" do
-      @options.stub!(:on)
+      @options.stub(:on)
       @options.should_receive(:on).with("--list-all", an_instance_of(String))
-      @script.options ["file.rb"]
+      @script.options [one_spec]
     end
 
     it "sets the mode to :list_all" do
       @config[:tagger] = nil
-      @script.options ["--list-all", "file.rb"]
+      @script.options ["--list-all", one_spec]
       @config[:tagger].should == :list_all
     end
   end
 
   describe "--purge" do
     it "is enabled with #options" do
-      @options.stub!(:on)
+      @options.stub(:on)
       @options.should_receive(:on).with("--purge", an_instance_of(String))
-      @script.options ["file.rb"]
+      @script.options [one_spec]
     end
 
     it "sets the mode to :purge" do
       @config[:tagger] = nil
-      @script.options ["--purge", "file.rb"]
+      @script.options ["--purge", one_spec]
       @config[:tagger].should == :purge
     end
   end
@@ -262,17 +260,17 @@ end
 
 describe MSpecTag, "#run" do
   before :each do
-    MSpec.stub!(:process)
+    MSpec.stub(:process)
 
-    options = mock("MSpecOptions").as_null_object
-    options.stub!(:parse).and_return(["one", "two"])
-    MSpecOptions.stub!(:new).and_return(options)
+    options = double("MSpecOptions").as_null_object
+    options.stub(:parse).and_return(["one", "two"])
+    MSpecOptions.stub(:new).and_return(options)
 
     @config = { }
     @script = MSpecTag.new
-    @script.stub!(:exit)
-    @script.stub!(:config).and_return(@config)
-    @script.stub!(:files).and_return(["one", "two"])
+    @script.stub(:exit)
+    @script.stub(:config).and_return(@config)
+    @script.stub(:files).and_return(["one", "two"])
     @script.options
   end
 
@@ -293,7 +291,7 @@ describe MSpecTag, "#run" do
   end
 
   it "exits with the exit code registered with MSpec" do
-    MSpec.stub!(:exit_code).and_return(7)
+    MSpec.stub(:exit_code).and_return(7)
     @script.should_receive(:exit).with(7)
     @script.run
   end
@@ -308,14 +306,14 @@ describe MSpecTag, "#register" do
     @config[:astrings] = []
     @config[:ltags] = ["fails", "unstable"]
 
-    @script.stub!(:files).and_return([])
+    @script.stub(:files).and_return([])
     @script.options "fake"
 
-    @t = mock("TagAction")
-    @t.stub!(:register)
+    @t = double("TagAction")
+    @t.stub(:register)
 
-    @tl = mock("TagListAction")
-    @tl.stub!(:register)
+    @tl = double("TagListAction")
+    @tl.stub(:register)
   end
 
   it "raises an ArgumentError if no recognized action is given" do
@@ -394,7 +392,7 @@ describe MSpecTag, "#register" do
   describe "when config[:tagger] is :purge" do
     before :each do
       TagPurgeAction.should_receive(:new).and_return(@tl)
-      MSpec.stub!(:register_mode)
+      MSpec.stub(:register_mode)
       @config[:tagger] = :purge
     end
 

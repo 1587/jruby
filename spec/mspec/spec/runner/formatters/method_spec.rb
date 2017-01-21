@@ -26,7 +26,7 @@ end
 describe MethodFormatter, "#before" do
   before :each do
     @formatter = MethodFormatter.new
-    MSpec.stub!(:register)
+    MSpec.stub(:register)
     @formatter.register
   end
 
@@ -94,7 +94,7 @@ end
 describe MethodFormatter, "#after" do
   before :each do
     @formatter = MethodFormatter.new
-    MSpec.stub!(:register)
+    MSpec.stub(:register)
     @formatter.register
   end
 
@@ -120,8 +120,8 @@ describe MethodFormatter, "#after" do
     @formatter.before state
 
     exc = SpecExpectationNotMetError.new "failed"
-    @formatter.exception ExceptionState.new(@state, nil, exc)
-    @formatter.exception ExceptionState.new(@state, nil, exc)
+    @formatter.exception ExceptionState.new(state, nil, exc)
+    @formatter.exception ExceptionState.new(state, nil, exc)
 
     @formatter.after state
     h = @formatter.methods["Some#method"]
@@ -138,7 +138,7 @@ describe MethodFormatter, "#after" do
     context = ContextState.new "Class#method"
     @state = ExampleState.new(context, "runs")
     @formatter = MethodFormatter.new
-    MSpec.stub!(:register)
+    MSpec.stub(:register)
     @formatter.register
   end
 

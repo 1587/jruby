@@ -33,11 +33,8 @@ package org.jruby.internal.runtime.methods;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import org.jruby.MetaClass;
-import org.jruby.Ruby;
-import org.jruby.RubyLocalJumpError;
+import org.jruby.PrependedModule;
 import org.jruby.RubyModule;
-import org.jruby.exceptions.JumpException;
-import org.jruby.exceptions.RaiseException;
 import org.jruby.runtime.Arity;
 import org.jruby.runtime.Block;
 import org.jruby.runtime.CallType;
@@ -55,28 +52,25 @@ import org.jruby.util.CodegenUtils;
  * delegation or callback mechanisms.
  */
 public abstract class DynamicMethod {
-    /** The Ruby module or class in which this method is immediately defined. */
+    /** The Ruby module or class from which this method should `super`. Referred to as the `owner` in C Ruby. */
     protected RubyModule implementationClass;
     /** The "protected class" used for calculating protected access. */
     protected RubyModule protectedClass;
-    /** The visibility of this method. */
-    protected Visibility visibility;
-    /** The "call configuration" to use for pre/post call logic. */
-    protected CallConfiguration callConfig;
+    /** The module or class that originally defined this method. Referred to as the `defined_class` in C Ruby. */
+    protected RubyModule definedClass;
+    /** The visibility of this method. This is the ordinal of the Visibility enum value. */
+    private byte visibility;
     /** The serial number for this method object, to globally identify it */
     protected long serialNumber;
-    /** Is this a builtin core method or not */
-    protected boolean builtin = false;
-    /** Single-arity native call */
-    protected NativeCall nativeCall;
-    /** Alternate-arity NativeCalls */
-    protected NativeCall[] nativeCalls = new NativeCall[10];
+    /** Flags for builtin, notimpl, etc */
+    protected byte flags;
     /** The simple, base name this method was defined under. May be null.*/
     protected String name;
-    /** Whether this method is "not implemented". */
-    protected boolean notImplemented = false;
     /** An arbitrarily-typed "method handle" for use by compilers and call sites */
     protected Object handle;
+
+    private static final int BUILTIN_FLAG = 0x1;
+    private static final int NOTIMPL_FLAG = 0x2;
 
     /**
      * Base constructor for dynamic method handles.
@@ -84,12 +78,11 @@ public abstract class DynamicMethod {
      * @param implementationClass The class to which this method will be
      * immediately bound
      * @param visibility The visibility assigned to this method
-     * @param callConfig The CallConfiguration to use for this method's
      * pre/post invocation logic.
      */
-    protected DynamicMethod(RubyModule implementationClass, Visibility visibility, CallConfiguration callConfig) {
+    protected DynamicMethod(RubyModule implementationClass, Visibility visibility) {
         assert implementationClass != null;
-        init(implementationClass, visibility, callConfig);
+        init(implementationClass, visibility);
     }
 
     /**
@@ -98,11 +91,10 @@ public abstract class DynamicMethod {
      * @param implementationClass The class to which this method will be
      * immediately bound
      * @param visibility The visibility assigned to this method
-     * @param callConfig The CallConfiguration to use for this method's
-     * pre/post invocation logic.
+     * @param name The simple name of this method
      */
-    protected DynamicMethod(RubyModule implementationClass, Visibility visibility, CallConfiguration callConfig, String name) {
-        this(implementationClass, visibility, callConfig);
+    protected DynamicMethod(RubyModule implementationClass, Visibility visibility, String name) {
+        this(implementationClass, visibility);
         this.name = name;
     }
 
@@ -116,13 +108,12 @@ public abstract class DynamicMethod {
 //                this instanceof );
     }
 
-    protected void init(RubyModule implementationClass, Visibility visibility, CallConfiguration callConfig) {
-        this.visibility = visibility;
+    protected void init(RubyModule implementationClass, Visibility visibility) {
+        this.visibility = (byte)visibility.ordinal();
         this.implementationClass = implementationClass;
         // TODO: Determine whether we should perhaps store non-singleton class
         // in the implementationClass
         this.protectedClass = calculateProtectedClass(implementationClass);
-        this.callConfig = callConfig;
         this.serialNumber = implementationClass.getRuntime().getNextDynamicMethodSerial();
     }
 
@@ -136,16 +127,20 @@ public abstract class DynamicMethod {
     }
 
     public boolean isBuiltin() {
-        return builtin;
+        return (flags & BUILTIN_FLAG) == BUILTIN_FLAG;
     }
 
     public void setIsBuiltin(boolean isBuiltin) {
-        this.builtin = isBuiltin;
+        if (isBuiltin) {
+            flags |= BUILTIN_FLAG;
+        } else {
+            flags &= ~BUILTIN_FLAG;
+        }
     }
 
     /**
      * The minimum 'call' method required for a dynamic method handle.
-     * Subclasses must impleemnt this method, but may implement the other
+     * Subclasses must implement this method, but may implement the other
      * signatures to provide faster, non-boxing call paths. Typically
      * subclasses will implement this method to check variable arity calls,
      * then performing a specific-arity invocation to the appropriate method
@@ -153,7 +148,7 @@ public abstract class DynamicMethod {
      *
      * @param context The thread context for the currently executing thread
      * @param self The 'self' or 'receiver' object to use for this call
-     * @param klazz The Ruby class against which this method is binding
+     * @param clazz The Ruby class against which this method is binding
      * @param name The incoming name used to invoke this method
      * @param args The argument list to this invocation
      * @param block The block passed to this invocation
@@ -169,10 +164,9 @@ public abstract class DynamicMethod {
      *
      * @param context The thread context for the currently executing thread
      * @param self The 'self' or 'receiver' object to use for this call
-     * @param klazz The Ruby class against which this method is binding
+     * @param clazz The Ruby class against which this method is binding
      * @param name The incoming name used to invoke this method
-     * @param arg1 The first argument to this invocation
-     * @param arg2 The second argument to this invocation
+     * @param args The first argument to this invocation
      * @return The result of the call
      */
     public IRubyObject call(ThreadContext context, IRubyObject self, RubyModule clazz,
@@ -248,7 +242,7 @@ public abstract class DynamicMethod {
      * @return true if the call would not violate visibility; false otherwise
      */
     public boolean isCallableFrom(IRubyObject caller, CallType callType) {
-        switch (visibility) {
+        switch (Visibility.getValues()[visibility]) {
         case PUBLIC:
             return true;
         case PRIVATE:
@@ -288,6 +282,8 @@ public abstract class DynamicMethod {
         // For visibility we need real meta class and not anonymous one from class << self
         if (cls instanceof MetaClass) cls = ((MetaClass) cls).getRealClass();
 
+        if (cls instanceof PrependedModule) cls = ((PrependedModule) cls).getNonIncludedClass();
+
         return cls;
     }
 
@@ -310,6 +306,10 @@ public abstract class DynamicMethod {
         return implementationClass;
     }
 
+    public boolean isImplementedBy(RubyModule other) {
+        return implementationClass == other;
+    }
+
     /**
      * Set the class on which this method is implemented, used for 'super'
      * logic, among others.
@@ -322,12 +322,30 @@ public abstract class DynamicMethod {
     }
 
     /**
+     * Get the original owner of this method/
+     */
+    public RubyModule getDefinedClass() {
+        RubyModule definedClass = this.definedClass;
+
+        if (definedClass != null) return definedClass;
+
+        return implementationClass;
+    }
+
+    /**
+     * Set the defining class for this method, as when restructuring hierarchy for prepend.
+     */
+    public void setDefinedClass(RubyModule definedClass) {
+        this.definedClass = definedClass;
+    }
+
+    /**
      * Get the visibility of this method.
      *
      * @return The visibility of this method
      */
     public Visibility getVisibility() {
-        return visibility;
+        return Visibility.getValues()[visibility];
     }
 
     /**
@@ -336,7 +354,7 @@ public abstract class DynamicMethod {
      * @param visibility The visibility of this method
      */
     public void setVisibility(Visibility visibility) {
-        this.visibility = visibility;
+        this.visibility = (byte)visibility.ordinal();
     }
 
     /**
@@ -348,6 +366,17 @@ public abstract class DynamicMethod {
      */
     public final boolean isUndefined() {
         return this == UndefinedMethod.INSTANCE;
+    }
+
+    /**
+     * Whether this method is the "null" method, used to stop method
+     * name resolution loops. Only returns true for NullMethod instances,
+     * of which there should be only one (a singleton).
+     *
+     * @return true if this method is the undefined method; false otherwise
+     */
+    public final boolean isNull() {
+        return this == NullMethod.INSTANCE;
     }
 
     /**
@@ -370,24 +399,6 @@ public abstract class DynamicMethod {
      */
     public DynamicMethod getRealMethod() {
         return this;
-    }
-
-    /**
-     * Get the CallConfiguration used for pre/post logic for this method handle.
-     *
-     * @return The CallConfiguration for this method handle
-     */
-    public CallConfiguration getCallConfig() {
-        return callConfig;
-    }
-
-    /**
-     * Set the CallConfiguration used for pre/post logic for this method handle.
-     *
-     * @param callConfig The CallConfiguration for this method handle
-     */
-    public void setCallConfig(CallConfiguration callConfig) {
-        this.callConfig = callConfig;
     }
     
     public static class NativeCall {
@@ -458,55 +469,8 @@ public abstract class DynamicMethod {
 
         @Override
         public String toString() {
-            return "" + (statik?"static ":"") + nativeReturn.getSimpleName() + " " + nativeTarget.getSimpleName() + "." + nativeName + CodegenUtils.prettyShortParams(nativeSignature);
+            return (statik ? "static " :"") + nativeReturn.getSimpleName() + ' ' + nativeTarget.getSimpleName() + '.' + nativeName + CodegenUtils.prettyShortParams(nativeSignature);
         }
-    }
-
-    /**
-     * Set the single-arity NativeCall for this method. All signatures for the
-     * non-single-arity getNativeCall will also be set to this value.
-     * 
-     * @param nativeTarget native method target
-     * @param nativeName native method name
-     * @param nativeReturn native method return
-     * @param nativeSignature native method arguments
-     * @param statik static?
-     * @param java plain Java method?
-     */
-    public void setNativeCall(Class nativeTarget, String nativeName, Class nativeReturn, Class[] nativeSignature, boolean statik, boolean java) {
-        this.nativeCall = new NativeCall(nativeTarget, nativeName, nativeReturn, nativeSignature, statik, java);
-        Arrays.fill(nativeCalls, nativeCall);
-    }
-
-
-    /**
-     * Set the single-arity NativeCall for this method. All signatures for the
-     * non-single-arity getNativeCall will also be set to this value.
-     * 
-     * @param nativeTarget native method target
-     * @param nativeName native method name
-     * @param nativeReturn native method return
-     * @param nativeSignature native method arguments
-     * @param statik static?
-     */
-    public void setNativeCall(Class nativeTarget, String nativeName, Class nativeReturn, Class[] nativeSignature, boolean statik) {
-        setNativeCall(nativeTarget, nativeName, nativeReturn, nativeSignature, statik, false);
-    }
-    
-    public NativeCall getNativeCall() {
-        return this.nativeCall;
-    }
-    
-    public NativeCall getNativeCall(int args, boolean block) {
-        if (args == -1 || args > 3) args = 4;
-        if (block) args += 5;
-        return this.nativeCalls[args];
-    }
-    
-    public void setNativeCall(int args, boolean block, NativeCall nativeCall) {
-        if (args == -1 || args > 3) args = 4;
-        if (block) args += 5;
-        this.nativeCalls[args] = nativeCall;
     }
 
     /**
@@ -560,7 +524,7 @@ public abstract class DynamicMethod {
      * the feature in question is unsupported (but still having the method defined).
      */
     public boolean isNotImplemented() {
-        return notImplemented;
+        return (flags & NOTIMPL_FLAG) == NOTIMPL_FLAG;
     }
     
     /**
@@ -574,24 +538,34 @@ public abstract class DynamicMethod {
      * Set whether this method is "not implemented".
      */
     public void setNotImplemented(boolean setNotImplemented) {
-        this.notImplemented = setNotImplemented;
-    }
-
-    protected IRubyObject handleRedo(Ruby runtime) throws RaiseException {
-        throw runtime.newLocalJumpError(RubyLocalJumpError.Reason.REDO, runtime.getNil(), "unexpected redo");
-    }
-
-    protected IRubyObject handleReturn(ThreadContext context, JumpException.ReturnJump rj, int callNumber) {
-        if (rj.getTarget() == callNumber) {
-            return (IRubyObject) rj.getValue();
+        if (setNotImplemented) {
+            flags |= NOTIMPL_FLAG;
+        } else {
+            flags &= ~NOTIMPL_FLAG;
         }
-        throw rj;
     }
 
-    protected IRubyObject handleBreak(ThreadContext context, Ruby runtime, JumpException.BreakJump bj, int callNumber) {
-        if (bj.getTarget() == callNumber) {
-            throw runtime.newLocalJumpError(RubyLocalJumpError.Reason.BREAK, runtime.getNil(), "unexpected break");
-        }
-        throw bj;
+    @Deprecated
+    protected DynamicMethod(RubyModule implementationClass, Visibility visibility, CallConfiguration callConfig) {
+        this(implementationClass, visibility);
+    }
+
+    @Deprecated
+    protected DynamicMethod(RubyModule implementationClass, Visibility visibility, CallConfiguration callConfig, String name) {
+        this(implementationClass, visibility, name);
+    }
+
+    @Deprecated
+    protected void init(RubyModule implementationClass, Visibility visibility, CallConfiguration callConfig) {
+        init(implementationClass, visibility);
+    }
+
+    @Deprecated
+    public CallConfiguration getCallConfig() {
+        return CallConfiguration.FrameNoneScopeNone;
+    }
+
+    @Deprecated
+    public void setCallConfig(CallConfiguration callConfig) {
     }
 }

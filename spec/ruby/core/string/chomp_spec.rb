@@ -44,7 +44,7 @@ describe "String#chomp" do
 
     it "returns subclass instances when called on a subclass" do
       str = StringSpecs::MyString.new("hello\n").chomp
-      str.should be_kind_of(StringSpecs::MyString)
+      str.should be_an_instance_of(StringSpecs::MyString)
     end
 
     it "removes trailing characters that match $/ when it has been assigned a value" do
@@ -203,7 +203,7 @@ describe "String#chomp!" do
 
     it "returns subclass instances when called on a subclass" do
       str = StringSpecs::MyString.new("hello\n").chomp!
-      str.should be_kind_of(StringSpecs::MyString)
+      str.should be_an_instance_of(StringSpecs::MyString)
     end
 
     it "removes trailing characters that match $/ when it has been assigned a value" do
@@ -310,63 +310,32 @@ describe "String#chomp!" do
     end
   end
 
-  ruby_version_is ""..."1.9" do
-    it "raises a TypeError when self is frozen" do
-      a = "string\n"
-      a.freeze
+  it "raises a RuntimeError on a frozen instance when it is modified" do
+    a = "string\n\r"
+    a.freeze
 
-      lambda { a.chomp! }.should raise_error(TypeError)
-      lambda { a.chomp!("\n") }.should raise_error(TypeError)
-      lambda { a.chomp!("") }.should raise_error(TypeError)
-
-      c = "fooa"
-      c.freeze
-      lambda { c.chomp!("a") }.should raise_error(TypeError)
-    end
-
-    it "does raise an exception when no change would be done and no argument is passed in" do
-      b = "string"
-      b.freeze
-
-      lambda { b.chomp! }.should raise_error(TypeError)
-    end
-
-    it "does not raise an exception when no change would be done and no argument is passed in on an empty string" do
-      b = ""
-      b.freeze
-
-      b.chomp!.should be_nil
-    end
-
-    it "does not raise an exception when the string would not be modified" do
-      a = "string\n\r"
-      a.freeze
-
-      a.chomp!(nil).should be_nil
-      a.chomp!("x").should be_nil
-    end
+    lambda { a.chomp! }.should raise_error(RuntimeError)
   end
 
-  ruby_version_is "1.9" do
-    it "raises a RuntimeError on a frozen instance when it is modified" do
-      a = "string\n\r"
-      a.freeze
-
-      lambda { a.chomp! }.should raise_error(RuntimeError)
-    end
-
-    # see [ruby-core:23666]
-    it "raises a RuntimeError on a frozen instance when it would not be modified" do
-      a = "string\n\r"
-      a.freeze
-      lambda { a.chomp!(nil) }.should raise_error(RuntimeError)
-      lambda { a.chomp!("x") }.should raise_error(RuntimeError)
-    end
+  # see [ruby-core:23666]
+  it "raises a RuntimeError on a frozen instance when it would not be modified" do
+    a = "string\n\r"
+    a.freeze
+    lambda { a.chomp!(nil) }.should raise_error(RuntimeError)
+    lambda { a.chomp!("x") }.should raise_error(RuntimeError)
   end
 end
 
 with_feature :encoding do
   describe "String#chomp" do
+    before :each do
+      @before_separator = $/
+    end
+
+    after :each do
+      $/ = @before_separator
+    end
+
     it "does not modify a multi-byte character" do
       "あれ".chomp.should == "あれ"
     end
@@ -379,9 +348,23 @@ with_feature :encoding do
       str = "abc\r\n".encode "utf-32be"
       str.chomp.should == "abc".encode("utf-32be")
     end
+
+    it "removes the final carriage return, newline from a non-ASCII String when the record separator is changed" do
+      $/ = "\n".encode("utf-8")
+      str = "abc\r\n".encode "utf-32be"
+      str.chomp.should == "abc".encode("utf-32be")
+    end
   end
 
   describe "String#chomp!" do
+    before :each do
+      @before_separator = $/
+    end
+
+    after :each do
+      $/ = @before_separator
+    end
+
     it "returns nil when the String is not modified" do
       "あれ".chomp!.should be_nil
     end
@@ -391,6 +374,12 @@ with_feature :encoding do
     end
 
     it "removes the final carriage return, newline from a non-ASCII String" do
+      str = "abc\r\n".encode "utf-32be"
+      str.chomp!.should == "abc".encode("utf-32be")
+    end
+
+    it "removes the final carriage return, newline from a non-ASCII String when the record separator is changed" do
+      $/ = "\n".encode("utf-8")
       str = "abc\r\n".encode "utf-32be"
       str.chomp!.should == "abc".encode("utf-32be")
     end

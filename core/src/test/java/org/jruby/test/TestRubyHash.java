@@ -58,8 +58,6 @@ public class TestRubyHash extends TestRubyBase {
      * without the optional default-value argument.
      */
     public void testConstructors() throws Exception {
-        result = eval("hash = {'a', 100}; p hash");
-        assertEquals("{\"a\"=>100}", result);
         result = eval("hash = Hash['b', 200]; p hash");
         assertEquals("{\"b\"=>200}", result);
         result = eval("hash = Hash.new(); p hash['test']");
@@ -98,7 +96,7 @@ public class TestRubyHash extends TestRubyBase {
      */
     public void testConversions() throws Exception {
         result = eval("p $h.to_s");
-        assertEquals("\"foobar\"", result);
+        assertEquals("\"{\\\"foo\\\"=>\\\"bar\\\"}\"", result);
         result = eval("p $h.to_a");
         assertEquals("[[\"foo\", \"bar\"]]", result);
         result = eval("p $h.to_hash");
@@ -189,5 +187,10 @@ public class TestRubyHash extends TestRubyBase {
     public void testGet() {
         RubyHash rubyHash = new RubyHash(Ruby.getGlobalRuntime());
         assertEquals(null, rubyHash.get("Non matching key"));
+    }
+
+    // https://github.com/jruby/jruby/issues/2591
+    public void testDoubleQuotedUtf8HashKey() throws Exception {
+        assertEquals("UTF-8", eval("# encoding: utf-8\n h = { \"Ãa1\": true }\n puts h.keys.first.encoding"));
     }
 }

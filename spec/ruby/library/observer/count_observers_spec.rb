@@ -2,7 +2,7 @@ require File.expand_path('../../../spec_helper', __FILE__)
 require File.expand_path('../fixtures/classes', __FILE__)
 
 describe "Observer#count_observers" do
-  before(:each) do
+  before :each do
     @observable = ObservableSpecs.new
     @observer   = ObserverCallbackSpecs.new
     @observer2  = ObserverCallbackSpecs.new
@@ -16,18 +16,8 @@ describe "Observer#count_observers" do
     @observable.count_observers.should == 2
   end
 
-  ruby_version_is "" ... "1.9" do
-    it "returns the number observers including duplicates" do
-      2.times { @observable.add_observer(@observer) }
-      @observable.count_observers.should == 2
-    end
+  it "returns the number of unique observers" do
+    2.times { @observable.add_observer(@observer) }
+    @observable.count_observers.should == 1
   end
-
-  ruby_version_is "1.9" do
-    it "returns the number of unique observers" do
-      2.times { @observable.add_observer(@observer) }
-      @observable.count_observers.should == 1
-    end
-  end
-
 end

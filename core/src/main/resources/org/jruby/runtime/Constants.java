@@ -30,6 +30,15 @@
  ***** END LICENSE BLOCK *****/
 package org.jruby.runtime;
 
+import org.jruby.FlagRegistry;
+import org.jruby.RubyArray;
+import org.jruby.RubyBasicObject;
+import org.jruby.RubyHash;
+import org.jruby.RubyMatchData;
+import org.jruby.RubyModule;
+import org.jruby.RubyString;
+import org.jruby.ext.stringio.StringIO;
+
 public final class Constants {
     public static final String PLATFORM = "java";
 
@@ -38,17 +47,7 @@ public final class Constants {
 
     public static final String RUBY_MAJOR_VERSION = "@version.ruby.major@";
     public static final String RUBY_VERSION = "@version.ruby@";
-    public static final int    RUBY_PATCHLEVEL = Integer.parseInt("@version.ruby.patchlevel@");
-
-    public static final String RUBY1_9_MAJOR_VERSION = "@version.ruby1_9.major@";
-    public static final String RUBY1_9_VERSION = "@version.ruby1_9@";
-    public static final int    RUBY1_9_PATCHLEVEL = Integer.parseInt("@version.ruby1_9.patchlevel@");
-    public static final int    RUBY1_9_REVISION = Integer.parseInt("@version.ruby1_9.revision@");
-
-    public static final String RUBY2_0_MAJOR_VERSION = "@version.ruby2_0.major@";
-    public static final String RUBY2_0_VERSION = "@version.ruby2_0@";
-    public static final int    RUBY2_0_PATCHLEVEL = Integer.parseInt("@version.ruby2_0.patchlevel@");
-    public static final int    RUBY2_0_REVISION = Integer.parseInt("@version.ruby2_0.revision@");
+    public static final int    RUBY_REVISION = Integer.parseInt("@version.ruby.revision@");
 
     public static final String COMPILE_DATE = "@build.date@";
     public static final String VERSION = "@version.jruby@";
@@ -60,7 +59,7 @@ public final class Constants {
     public static final String JODA_TIME_VERSION = "@joda.time.version@";
     public static final String TZDATA_VERSION = "@tzdata.version@";
     
-    public static final String DEFAULT_RUBY_VERSION;
+    public static final String DEFAULT_RUBY_VERSION = "2.1";
     
     /**
      * Default size for chained compilation.
@@ -75,15 +74,44 @@ public final class Constants {
     /**
      * The max size of JIT-compiled methods (full class size) allowed.
      */
-    public static final int JIT_MAX_SIZE_LIMIT = 30000;
+    public static final int JIT_MAX_SIZE_LIMIT = 2000;
 
     /**
      * The JIT threshold to the specified method invocation count.
      */
     public static final int JIT_THRESHOLD = 50;
+
+    private static final FlagRegistry registry = new FlagRegistry();
+
+    // These flags must be registered from top of hierarchy down to maintain order.
+    // TODO: Replace these during the build with their calculated values.
+    public static final int FALSE_F = registry.newFlag(RubyBasicObject.class);
+    public static final int NIL_F = registry.newFlag(RubyBasicObject.class);
+    public static final int FROZEN_F = registry.newFlag(RubyBasicObject.class);
+    public static final int TAINTED_F = registry.newFlag(RubyBasicObject.class);
+
+    public static final int CACHEPROXY_F = registry.newFlag(RubyModule.class);
+    public static final int NEEDSIMPL_F = registry.newFlag(RubyModule.class);
+    public static final int REFINED_MODULE_F = registry.newFlag(RubyModule.class);
+    public static final int IS_OVERLAID_F = registry.newFlag(RubyModule.class);
+
+    public static final int CR_7BIT_F    = registry.newFlag(RubyString.class);
+    public static final int CR_VALID_F   = registry.newFlag(RubyString.class);
+
+    public static final int STRIO_READABLE = registry.newFlag(StringIO.class);
+    public static final int STRIO_WRITABLE = registry.newFlag(StringIO.class);
+
+    public static final int MATCH_BUSY = registry.newFlag(RubyMatchData.class);
+
+    public static final int COMPARE_BY_IDENTITY_F = registry.newFlag(RubyHash.class);
+    public static final int PROCDEFAULT_HASH_F = registry.newFlag(RubyHash.class);
+
+    private static final boolean DEBUG = false;
+    static {
+        if (DEBUG) registry.printFlags();
+    }
     
     private static String jruby_revision = "@jruby.revision@";
-    private static String jruby_default_ruby_version = "@jruby.default.ruby.version@";
 
     @Deprecated
     public static final String JRUBY_PROPERTIES = "/org/jruby/jruby.properties";
@@ -97,18 +125,10 @@ public final class Constants {
         } else {
             REVISION = jruby_revision;
         }
-        String defaultRubyVersion = jruby_default_ruby_version;
-        if (defaultRubyVersion.equals("1.8")) {
-            DEFAULT_RUBY_VERSION = "1.8";
-        } else if (defaultRubyVersion.equals("1.9")) {
-            DEFAULT_RUBY_VERSION = "1.9";
-        } else if (defaultRubyVersion.equals("2.0")) {
-            DEFAULT_RUBY_VERSION = "2.0";
-        } else {
-            System.err.println("invalid version selected in build (\"" + defaultRubyVersion + "\"), using 1.9");
-            DEFAULT_RUBY_VERSION = "1.9";
-        }
     }
 
     private Constants() {}
+
+    @Deprecated
+    public static final int    RUBY_PATCHLEVEL = 0;
 }

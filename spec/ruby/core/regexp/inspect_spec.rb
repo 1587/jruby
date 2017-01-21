@@ -2,8 +2,10 @@ require File.expand_path('../../../spec_helper', __FILE__)
 
 describe "Regexp#inspect" do
   it "returns a formatted string that would eval to the same regexp" do
-    /ab+c/ix.inspect.should == "/ab+c/ix"
-    /a(.)+s/n.inspect.should =~ %r|/a(.)+s/n?|  # Default 'n' may not appear
+    not_supported_on :opal do
+      /ab+c/ix.inspect.should == "/ab+c/ix"
+      /a(.)+s/n.inspect.should =~ %r|/a(.)+s/n?|  # Default 'n' may not appear
+    end
     # 1.9 doesn't round-trip the encoding flags, such as 'u'. This is
     # seemingly by design.
     /a(.)+s/m.inspect.should == "/a(.)+s/m"     # But a specified one does
@@ -17,20 +19,10 @@ describe "Regexp#inspect" do
     //o.inspect.should == "//"
   end
 
-  ruby_version_is ""..."1.9" do
-    it "includes the character set code after other options" do
-      //xu.inspect.should  == "//xu"
-      //six.inspect.should == "//ixs"
-      //ni.inspect.should  == "//in"
-    end
-  end
-
-  ruby_version_is "1.9" do
-    it "does not include a character set code" do
-      //u.inspect.should == "//"
-      //s.inspect.should == "//"
-      //e.inspect.should == "//"
-    end
+  it "does not include a character set code" do
+    //u.inspect.should == "//"
+    //s.inspect.should == "//"
+    //e.inspect.should == "//"
   end
 
   it "correctly escapes forward slashes /" do
