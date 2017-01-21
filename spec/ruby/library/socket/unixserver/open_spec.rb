@@ -18,9 +18,9 @@ describe "UNIXServer.open" do
 
     it "yields the new UNIXServer object to the block, if given" do
       UNIXServer.open(@path) do |unix|
-	unix.path.should == @path
-	unix.addr.should == ["AF_UNIX", @path]
+        unix.path.should == @path
+        unix.addr.should == ["AF_UNIX", @path]
       end
-    end 
+    end
   end
 end

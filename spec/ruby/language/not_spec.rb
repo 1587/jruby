@@ -12,9 +12,7 @@ describe "The not keyword" do
   end
 
   it "accepts an argument" do
-    lambda do
-      not(true)
-    end.should_not raise_error(SyntaxError)
+    not(true).should be_false
   end
 
   it "returns false if the argument is true" do
@@ -30,8 +28,6 @@ describe "The not keyword" do
   end
 end
 
-language_version __FILE__, "not"
-
 describe "The `!' keyword" do
   it "negates a `true' value" do
     (!true).should be_false
@@ -43,12 +39,12 @@ describe "The `!' keyword" do
     (!nil).should be_true
   end
 
-  it "turns a truthful object into `true'" do
+  it "doubled turns a truthful object into `true'" do
     (!!true).should be_true
     (!!'true').should be_true
   end
 
-  it "turns a not truthful object into `false'" do
+  it "doubled turns a not truthful object into `false'" do
     (!!false).should be_false
     (!!nil).should be_false
   end

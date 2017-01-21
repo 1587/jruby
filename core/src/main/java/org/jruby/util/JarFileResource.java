@@ -1,12 +1,11 @@
 package org.jruby.util;
 
 import jnr.posix.POSIX;
-import org.jruby.Ruby;
-import org.jruby.util.io.ChannelDescriptor;
 import org.jruby.util.io.ModeFlags;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.channels.Channel;
 import java.nio.channels.Channels;
 import java.util.jar.JarEntry;
 
@@ -66,7 +65,7 @@ class JarFileResource extends JarResource {
   }
 
   @Override
-  public ChannelDescriptor openDescriptor(ModeFlags flags, int perm) throws ResourceException {
-    return new ChannelDescriptor(Channels.newChannel(inputStream()), flags);
+  public Channel openChannel(ModeFlags flags, int perm) throws ResourceException {
+    return Channels.newChannel(inputStream());
   }
 }

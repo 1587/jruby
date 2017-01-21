@@ -6,73 +6,80 @@ import org.jruby.ir.IRVisitor;
 import org.jruby.ir.Operation;
 import org.jruby.ir.operands.Operand;
 import org.jruby.ir.operands.Variable;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
+import org.jruby.ir.transformations.inlining.CloneInfo;
 import org.jruby.parser.StaticScope;
-import org.jruby.runtime.Block;
 import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
+import org.jruby.runtime.opto.ConstantCache;
 import org.jruby.runtime.opto.Invalidator;
-
-import java.util.Map;
 
 // Const search:
 // - looks up lexical scopes
 // - then inheritance hierarcy if lexical search fails
 // - then invokes const_missing if inheritance search fails
-public class SearchConstInstr extends Instr implements ResultInstr {
-    private Operand  startingScope;
-    private String   constName;
-    private boolean  noPrivateConsts;
-    private Variable result;
+public class SearchConstInstr extends OneOperandResultBaseInstr implements FixedArityInstr {
+    private final String   constName;
+    private final boolean  noPrivateConsts;
 
     // Constant caching
-    private volatile transient Object cachedConstant = null;
-    private Object generation = -1;
-    private Invalidator invalidator;
+    private volatile transient ConstantCache cache;
 
     public SearchConstInstr(Variable result, String constName, Operand startingScope, boolean noPrivateConsts) {
-        super(Operation.SEARCH_CONST);
+        super(Operation.SEARCH_CONST, result, startingScope);
 
         assert result != null: "SearchConstInstr result is null";
 
-        this.result          = result;
         this.constName       = constName;
-        this.startingScope   = startingScope;
         this.noPrivateConsts = noPrivateConsts;
     }
 
-    public Operand[] getOperands() {
-        return new Operand[] { startingScope };
+
+    public Operand getStartingScope() {
+        return getOperand1();
+    }
+
+    public String getConstName() {
+        return constName;
+    }
+
+    public boolean isNoPrivateConsts() {
+        return noPrivateConsts;
     }
 
     @Override
-    public void simplifyOperands(Map<Operand, Operand> valueMap, boolean force) {
-        startingScope = startingScope.getSimplifiedOperand(valueMap, force);
-    }
-
-    public Variable getResult() {
-        return result;
-    }
-
-    public void updateResult(Variable v) {
-        this.result = v;
-    }
-
-    public Instr cloneForInlining(InlinerInfo ii) {
-        return new SearchConstInstr(ii.getRenamedVariable(result), constName, startingScope.cloneForInlining(ii), noPrivateConsts);
+    public Instr clone(CloneInfo ii) {
+        return new SearchConstInstr(ii.getRenamedVariable(result), constName, getStartingScope().cloneForInlining(ii), noPrivateConsts);
     }
 
     @Override
-    public String toString() {
-        return super.toString() + "(" + constName + ", " + startingScope + ", no-private-consts=" + noPrivateConsts + ")";
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+        e.encode(getConstName());
+        e.encode(getStartingScope());
+        e.encode(isNoPrivateConsts());
     }
 
-    public Object cache(ThreadContext context, DynamicScope currDynScope, IRubyObject self, Object[] temp) {
+    public static SearchConstInstr decode(IRReaderDecoder d) {
+        return new SearchConstInstr(d.decodeVariable(), d.decodeString(), d.decodeOperand(), d.decodeBoolean());
+    }
+
+    @Override
+    public String[] toStringNonOperandArgs() {
+        return new String[] {"name: " + constName, "no_priv: " + noPrivateConsts};
+    }
+
+    public ConstantCache getConstantCache() {
+        return cache;
+    }
+
+    public Object cache(ThreadContext context, StaticScope currScope, DynamicScope currDynScope, IRubyObject self, Object[] temp) {
         // Lexical lookup
         Ruby runtime = context.getRuntime();
         RubyModule object = runtime.getObject();
-        StaticScope staticScope = (StaticScope) startingScope.retrieve(context, self, currDynScope, temp);
+        StaticScope staticScope = (StaticScope) getStartingScope().retrieve(context, self, currScope, currDynScope, temp);
         Object constant = (staticScope == null) ? object.getConstant(constName) : staticScope.getConstantInner(constName);
 
         // Inheritance lookup
@@ -85,53 +92,26 @@ public class SearchConstInstr extends Instr implements ResultInstr {
 
         // Call const_missing or cache
         if (constant == null) {
-            constant = module.callMethod(context, "const_missing", context.runtime.fastNewSymbol(constName));
+            constant = module.callMethod(context, "const_missing", runtime.fastNewSymbol(constName));
         } else {
             // recache
-            generation = runtime.getConstantInvalidator(constName).getData();
-            cachedConstant = constant;
+            Invalidator invalidator = runtime.getConstantInvalidator(constName);
+            cache = new ConstantCache((IRubyObject)constant, invalidator.getData(), invalidator);
         }
 
         return constant;
     }
 
-    public Object getCachedConst() {
-        return cachedConstant;
-    }
-
-    public boolean isCached(ThreadContext context, Object value) {
-        return value != null && generation == invalidator(context.getRuntime()).getData();
-    }
-
     @Override
-    public Object interpret(ThreadContext context, DynamicScope currDynScope, IRubyObject self, Object[] temp, Block block) {
-        Object constant = cachedConstant; // Store to temp so it does null out on us mid-stream
-        if (!isCached(context, constant)) constant = cache(context, currDynScope, self, temp);
+    public Object interpret(ThreadContext context, StaticScope currScope, DynamicScope currDynScope, IRubyObject self, Object[] temp) {
+        ConstantCache cache = this.cache;
+        if (!ConstantCache.isCached(cache)) return cache(context, currScope, currDynScope, self, temp);
 
-        return constant;
+        return cache.value;
     }
 
     @Override
     public void visit(IRVisitor visitor) {
         visitor.SearchConstInstr(this);
-    }
-
-    public Operand getStartingScope() {
-        return startingScope;
-    }
-
-    public String getConstName() {
-        return constName;
-    }
-
-    public boolean isNoPrivateConsts() {
-        return noPrivateConsts;
-    }
-
-    private Invalidator invalidator(Ruby runtime) {
-        if (invalidator == null) {
-            invalidator = runtime.getConstantInvalidator(constName);
-        }
-        return invalidator;
     }
 }

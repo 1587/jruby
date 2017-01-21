@@ -18,6 +18,7 @@ describe Object, "#extended_on" do
   end
 
   before :each do
+    hide_deprecation_warnings
     ScratchPad.clear
   end
 
@@ -50,8 +51,9 @@ end
 
 describe Object, "#extended_on" do
   before :each do
+    hide_deprecation_warnings
     @guard = ExtensionsGuard.new
-    ExtensionsGuard.stub!(:new).and_return(@guard)
+    ExtensionsGuard.stub(:new).and_return(@guard)
   end
 
   it "sets the name of the guard to :extended_on" do

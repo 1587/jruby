@@ -1,7 +1,7 @@
 require File.expand_path('../../../spec_helper', __FILE__)
 require File.expand_path('../fixtures/classes', __FILE__)
 
-describe :kernel_remove_instance_variable, :shared => true do
+describe :kernel_remove_instance_variable, shared: true do
   it "returns the instance variable's value" do
     value = @instance.send :remove_instance_variable, @object
     value.should == "hello"
@@ -18,13 +18,19 @@ describe "Kernel#remove_instance_variable" do
     @instance = KernelSpecs::InstanceVariable.new
   end
 
-  it "is a private method" do
-    Kernel.should have_private_instance_method(:remove_instance_variable)
+  it "is a public method" do
+    Kernel.should have_public_instance_method(:remove_instance_variable, false)
   end
 
   it "raises a NameError if the instance variable is not defined" do
     lambda do
       @instance.send :remove_instance_variable, :@unknown
+    end.should raise_error(NameError)
+  end
+
+  it "raises a NameError if the argument is not a valid instance variable name" do
+    lambda do
+      @instance.send :remove_instance_variable, :"@0"
     end.should raise_error(NameError)
   end
 

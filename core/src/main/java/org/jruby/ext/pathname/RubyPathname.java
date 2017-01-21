@@ -30,7 +30,6 @@ package org.jruby.ext.pathname;
 
 import static org.jruby.anno.FrameField.BACKREF;
 
-import org.jruby.CompatVersion;
 import org.jruby.Ruby;
 import org.jruby.RubyArray;
 import org.jruby.RubyClass;
@@ -58,7 +57,7 @@ public class RubyPathname extends RubyObject {
     private void setPath(RubyString path) {
         this.setInstanceVariable("@path", path);
     }
-
+    
     static void createPathnameClass(Ruby runtime) {
         RubyClass cPathname = runtime.defineClass("Pathname", runtime.getObject(),
                 PATHNAME_ALLOCATOR);
@@ -67,7 +66,8 @@ public class RubyPathname extends RubyObject {
 
         runtime.getKernel().defineAnnotatedMethods(PathnameKernelMethods.class);
 
-        defineDelegateMethods(cPathname, runtime.getFile(), "atime", "ctime", "mtime", "ftype",
+        // FIXME: birthtime is provided separately in stat on some platforms (#2152)
+        defineDelegateMethods(cPathname, runtime.getFile(), "atime", "ctime", "birthtime", "mtime", "ftype",
                 "rename", "stat", "lstat", "truncate", "extname", "open");
         defineDelegateMethodsAppendPath(cPathname, runtime.getFile(), "chmod", "lchmod", "chown",
                 "lchown", "utime");
@@ -198,9 +198,8 @@ public class RubyPathname extends RubyObject {
 
     @JRubyMethod(visibility = Visibility.PRIVATE)
     public IRubyObject initialize(ThreadContext context, IRubyObject path) {
-        String toPath = toPathMethod(context.runtime);
-        if (path.respondsTo(toPath)) {
-            path = path.callMethod(context, toPath);
+        if (path.respondsTo("to_path")) {
+            path = path.callMethod(context, "to_path");
         }
 
         RubyString str = path.convertToString();
@@ -213,10 +212,6 @@ public class RubyPathname extends RubyObject {
         return this;
     }
 
-    private static String toPathMethod(Ruby runtime) {
-        return runtime.is1_8() ? "to_str" : "to_path";
-    }
-
     @JRubyMethod(visibility = Visibility.PRIVATE)
     public IRubyObject initialize_copy(ThreadContext context, IRubyObject pathname) {
         super.initialize_copy(pathname);
@@ -224,12 +219,7 @@ public class RubyPathname extends RubyObject {
         return this;
     }
 
-    @JRubyMethod(compat = CompatVersion.RUBY1_8)
-    public IRubyObject to_str(ThreadContext context) {
-        return getPath();
-    }
-
-    @JRubyMethod(compat = CompatVersion.RUBY1_9)
+    @JRubyMethod
     public IRubyObject to_path(ThreadContext context) {
         return getPath();
     }
@@ -404,12 +394,14 @@ public class RubyPathname extends RubyObject {
 
     @JRubyMethod(name = {"unlink", "delete"})
     public IRubyObject unlink(ThreadContext context) {
+        IRubyObject oldExc = context.runtime.getGlobalVariables().get("$!"); // Save $!
         try {
             return context.runtime.getDir().callMethod(context, "unlink", getPath());
         } catch (RaiseException ex) {
             if (!context.runtime.getErrno().getClass("ENOTDIR").isInstance(ex.getException())) {
                 throw ex;
             }
+            context.runtime.getGlobalVariables().set("$!", oldExc); // Restore $!
             return context.runtime.getFile().callMethod(context, "unlink", getPath());
         }
     }

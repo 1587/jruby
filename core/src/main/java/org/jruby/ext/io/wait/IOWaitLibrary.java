@@ -30,13 +30,15 @@ package org.jruby.ext.io.wait;
 import org.jruby.Ruby;
 import org.jruby.RubyClass;
 import org.jruby.RubyIO;
+import org.jruby.RubyNumeric;
+import org.jruby.RubyTime;
 import org.jruby.anno.JRubyMethod;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.runtime.load.Library;
-import org.jruby.util.io.BadDescriptorException;
-import org.jruby.util.io.ChannelDescriptor;
 import org.jruby.util.io.OpenFile;
+
+import java.nio.channels.SelectionKey;
 
 /**
  * @author Nick Sieger
@@ -48,48 +50,116 @@ public class IOWaitLibrary implements Library {
         ioClass.defineAnnotatedMethods(IOWaitLibrary.class);
     }
 
+    @JRubyMethod
+    public static IRubyObject nread(ThreadContext context, IRubyObject _io) {
+        Ruby runtime = context.runtime;
+        OpenFile fptr;
+        int len;
+//        ioctl_arg n;
+        RubyIO io = (RubyIO)_io;
+
+        fptr = io.getOpenFileChecked();
+        fptr.checkReadable(context);
+        len = fptr.readPending();
+        if (len > 0) return runtime.newFixnum(len);
+        // TODO: better effort to get available bytes from our channel
+//        if (!FIONREAD_POSSIBLE_P(fptr->fd)) return INT2FIX(0);
+//        if (ioctl(fptr->fd, FIONREAD, &n)) return INT2FIX(0);
+//        if (n > 0) return ioctl_arg2num(n);
+        // Because we can't get an actual system-level buffer available count, we fake it by returning 1 if ready
+        return RubyNumeric.int2fix(runtime, fptr.readyNow(context) ? 1 : 0);
+    }
+
     /**
      * returns non-nil if input available without blocking, false if EOF or not open/readable, otherwise nil.
      */
     @JRubyMethod(name = "ready?")
-    public static IRubyObject ready(ThreadContext context, IRubyObject obj) {
-        RubyIO io = (RubyIO)obj;
-        try {
-            OpenFile openFile = io.getOpenFile();
-            ChannelDescriptor descriptor = openFile.getMainStreamSafe().getDescriptor();
-            if (!descriptor.isOpen() || !openFile.getMainStreamSafe().getModes().isReadable() || openFile.getMainStreamSafe().feof()) {
-                return context.runtime.getFalse();
-            }
+    public static IRubyObject ready(ThreadContext context, IRubyObject _io) {
+        RubyIO io = (RubyIO)_io;
+        Ruby runtime = context.runtime;
+        OpenFile fptr;
+//        ioctl_arg n;
 
-            int avail = openFile.getMainStreamSafe().ready();
-            if (avail > 0) {
-                return context.runtime.newFixnum(avail);
-            }
-        } catch (BadDescriptorException e) {
-            throw context.runtime.newErrnoEBADFError();
-        } catch (Exception anyEx) {
-            return context.runtime.getFalse();
+        fptr = io.getOpenFileChecked();
+        fptr.checkReadable(context);
+        if (fptr.readPending() != 0) return runtime.getTrue();
+        // TODO: better effort to get available bytes from our channel
+//        if (!FIONREAD_POSSIBLE_P(fptr->fd)) return Qnil;
+//        if (ioctl(fptr->fd, FIONREAD, &n)) return Qnil;
+//        if (n > 0) return Qtrue;
+        return runtime.newBoolean(fptr.readyNow(context));
+    }
+
+    @JRubyMethod(name = {"wait", "wait_readable"}, optional = 1)
+    public static IRubyObject wait_readable(ThreadContext context, IRubyObject _io, IRubyObject[] argv) {
+        RubyIO io = (RubyIO)_io;
+        Ruby runtime = context.runtime;
+        OpenFile fptr;
+        boolean i;
+//        ioctl_arg n;
+        IRubyObject timeout;
+        long tv;
+
+        fptr = io.getOpenFileChecked();
+        fptr.checkReadable(context);
+
+        switch (argv.length) {
+            case 1:
+                timeout = argv[0];
+                break;
+            default:
+                timeout = context.nil;
         }
-        return context.runtime.getNil();
+
+        if (timeout.isNil()) {
+            tv = -1;
+        }
+        else {
+            tv = (long)(RubyTime.convertTimeInterval(context, timeout) * 1000);
+            if (tv < 0) throw runtime.newArgumentError("time interval must be positive");
+        }
+
+        if (fptr.readPending() != 0) return runtime.getTrue();
+        boolean ready = fptr.ready(runtime, context.getThread(), SelectionKey.OP_READ | SelectionKey.OP_ACCEPT, tv);
+        fptr.checkClosed();
+        if (ready) return io;
+        return context.nil;
     }
 
     /**
      * waits until input available or timed out and returns self, or nil when EOF reached.
      */
-    @JRubyMethod
-    public static IRubyObject io_wait(ThreadContext context, IRubyObject obj) {
-        RubyIO io = (RubyIO)obj;
-        try {
-            OpenFile openFile = io.getOpenFile();
-            if (openFile.getMainStreamSafe().feof()) {
-                return context.runtime.getNil();
-            }
-            openFile.getMainStreamSafe().waitUntilReady();
-        } catch (BadDescriptorException e) {
-            throw context.runtime.newErrnoEBADFError();
-        } catch (Exception anyEx) {
-            return context.runtime.getNil();
+    @JRubyMethod(optional = 1)
+    public static IRubyObject wait_writable(ThreadContext context, IRubyObject _io, IRubyObject[] argv) {
+        RubyIO io = (RubyIO)_io;
+        Ruby runtime = context.runtime;
+        OpenFile fptr;
+        IRubyObject timeout;
+        long tv;
+
+        fptr = io.getOpenFileChecked();
+        fptr.checkWritable(context);
+
+        switch (argv.length) {
+            case 1:
+                timeout = argv[0];
+                break;
+            default:
+                timeout = context.nil;
         }
-        return obj;
+        if (timeout.isNil()) {
+            tv = -1;
+        }
+        else {
+            tv = (long)(RubyTime.convertTimeInterval(context, timeout) * 1000);
+            if (tv < 0) throw runtime.newArgumentError("time interval must be positive");
+        }
+
+        boolean ready = fptr.ready(runtime, context.getThread(), SelectionKey.OP_CONNECT | SelectionKey.OP_WRITE, tv);
+
+        fptr.checkClosed();
+        if (ready)
+            return io;
+        return context.nil;
     }
 }

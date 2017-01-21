@@ -32,8 +32,6 @@ import java.util.List;
 import java.util.Map;
 import org.jruby.Ruby;
 import org.jruby.RubyModule;
-import org.jruby.compiler.ASTInspector;
-import org.jruby.internal.runtime.methods.CallConfiguration;
 import org.jruby.internal.runtime.methods.DynamicMethod;
 import org.jruby.internal.runtime.methods.JavaMethod;
 import org.jruby.runtime.Arity;
@@ -41,27 +39,25 @@ import org.jruby.runtime.MethodFactory;
 import org.jruby.runtime.Visibility;
 
 public abstract class TypePopulator {
-    public static void populateMethod(JavaMethod javaMethod, int arity, String simpleName, boolean isStatic, CallConfiguration callConfig, boolean notImplemented) {
+    public static void populateMethod(JavaMethod javaMethod, int arity, String simpleName, boolean isStatic, boolean notImplemented) {
         javaMethod.setIsBuiltin(true);
         javaMethod.setArity(Arity.createArity(arity));
         javaMethod.setJavaName(simpleName);
         javaMethod.setSingleton(isStatic);
-        javaMethod.setCallConfig(callConfig);
         javaMethod.setNotImplemented(notImplemented);
     }
     
-    public static void populateMethod(JavaMethod javaMethod, int arity, String simpleName, boolean isStatic, CallConfiguration callConfig, boolean notImplemented,
+    public static void populateMethod(JavaMethod javaMethod, int arity, String simpleName, boolean isStatic, boolean notImplemented,
             Class nativeTarget, String nativeName, Class nativeReturn, Class[] nativeArguments) {
         javaMethod.setIsBuiltin(true);
         javaMethod.setArity(Arity.createArity(arity));
         javaMethod.setJavaName(simpleName);
         javaMethod.setSingleton(isStatic);
-        javaMethod.setCallConfig(callConfig);
         javaMethod.setNotImplemented(notImplemented);
         javaMethod.setNativeCall(nativeTarget, nativeName, nativeReturn, nativeArguments, isStatic, false);
     }
     
-    public static DynamicMethod populateModuleMethod(RubyModule cls, JavaMethod javaMethod) {
+    public static DynamicMethod populateModuleMethod(RubyModule cls, DynamicMethod javaMethod) {
         DynamicMethod moduleMethod = javaMethod.dup();
         moduleMethod.setImplementationClass(cls.getSingletonClass());
         moduleMethod.setVisibility(Visibility.PUBLIC);
@@ -73,79 +69,53 @@ public abstract class TypePopulator {
     public static final TypePopulator DEFAULT = new DefaultTypePopulator();
     public static class DefaultTypePopulator extends TypePopulator {
         public void populate(RubyModule clsmod, Class clazz) {
-            // fallback on non-pregenerated logic
-            MethodFactory methodFactory = MethodFactory.createFactory(clsmod.getRuntime().getJRubyClassLoader());
-            Ruby runtime = clsmod.getRuntime();
-            
-            RubyModule.MethodClumper clumper = new RubyModule.MethodClumper();
+            ReflectiveTypePopulator populator = new ReflectiveTypePopulator(clazz);
+            populator.populate(clsmod, clazz);
+        }
+    }
+
+    public static final class ReflectiveTypePopulator extends TypePopulator {
+        private final Class clazz;
+        private final RubyModule.MethodClumper clumper;
+
+        public ReflectiveTypePopulator(Class clazz) {
+            this.clazz = clazz;
+            this.clumper = new RubyModule.MethodClumper();
             clumper.clump(clazz);
+        }
 
-            for (Map.Entry<String, List<JavaMethodDescriptor>> entry : clumper.getAllAnnotatedMethods().entrySet()) {
-                for (JavaMethodDescriptor desc : entry.getValue()) {
-                    JRubyMethod anno = desc.anno;
-                    
-                    // check for frame field reads or writes
-                    if (anno.frame() || (anno.reads() != null && anno.reads().length >= 1) || (anno.writes() != null && anno.writes().length >= 1)) {
-                        // add all names for this annotation
-                        ASTInspector.addFrameAwareMethods(anno.name());
-                    }
-                }
-            }
-            
+        public void populate(final RubyModule target, final Class clazz) {
+            assert clazz == this.clazz : "populator for " + this.clazz + " used for " + clazz;
+
+            // fallback on non-pregenerated logic
+            final Ruby runtime = target.getRuntime();
+            final MethodFactory methodFactory = MethodFactory.createFactory(runtime.getJRubyClassLoader());
+
             for (Map.Entry<String, List<JavaMethodDescriptor>> entry : clumper.getStaticAnnotatedMethods().entrySet()) {
-                clsmod.defineAnnotatedMethod(entry.getKey(), entry.getValue(), methodFactory);
-                for (JavaMethodDescriptor desc : entry.getValue()) {
-                    if (!desc.anno.omit()) runtime.addBoundMethod(desc.declaringClassName, desc.name, entry.getKey());
-                }
+                final String name = entry.getKey();
+                final List<JavaMethodDescriptor> methods = entry.getValue();
+                target.defineAnnotatedMethod(name, methods, methodFactory);
+                addBoundMethodsUnlessOmited(runtime, name, methods);
             }
-            
+
             for (Map.Entry<String, List<JavaMethodDescriptor>> entry : clumper.getAnnotatedMethods().entrySet()) {
-                clsmod.defineAnnotatedMethod(entry.getKey(), entry.getValue(), methodFactory);
-                for (JavaMethodDescriptor desc : entry.getValue()) {
-                    if (!desc.anno.omit()) runtime.addBoundMethod(desc.declaringClassName, desc.name, entry.getKey());
-                }
+                final String name = entry.getKey();
+                final List<JavaMethodDescriptor> methods = entry.getValue();
+                target.defineAnnotatedMethod(name, methods, methodFactory);
+                addBoundMethodsUnlessOmited(runtime, name, methods);
             }
-            
-            for (Map.Entry<String, List<JavaMethodDescriptor>> entry : clumper.getStaticAnnotatedMethods1_8().entrySet()) {
-                clsmod.defineAnnotatedMethod(entry.getKey(), entry.getValue(), methodFactory);
-                for (JavaMethodDescriptor desc : entry.getValue()) {
-                    if (!desc.anno.omit()) runtime.addBoundMethod(desc.declaringClassName, desc.name, entry.getKey());
-                }
-            }
-            
-            for (Map.Entry<String, List<JavaMethodDescriptor>> entry : clumper.getAnnotatedMethods1_8().entrySet()) {
-                clsmod.defineAnnotatedMethod(entry.getKey(), entry.getValue(), methodFactory);
-                for (JavaMethodDescriptor desc : entry.getValue()) {
-                    if (!desc.anno.omit()) runtime.addBoundMethod(desc.declaringClassName, desc.name, entry.getKey());
-                }
-            }
-            
-            for (Map.Entry<String, List<JavaMethodDescriptor>> entry : clumper.getStaticAnnotatedMethods1_9().entrySet()) {
-                clsmod.defineAnnotatedMethod(entry.getKey(), entry.getValue(), methodFactory);
-                for (JavaMethodDescriptor desc : entry.getValue()) {
-                    if (!desc.anno.omit()) runtime.addBoundMethod(desc.declaringClassName, desc.name, entry.getKey());
-                }
-            }
-            
-            for (Map.Entry<String, List<JavaMethodDescriptor>> entry : clumper.getAnnotatedMethods1_9().entrySet()) {
-                clsmod.defineAnnotatedMethod(entry.getKey(), entry.getValue(), methodFactory);
-                for (JavaMethodDescriptor desc : entry.getValue()) {
-                    if (!desc.anno.omit()) runtime.addBoundMethod(desc.declaringClassName, desc.name, entry.getKey());
-                }
-            }
+        }
 
-            for (Map.Entry<String, List<JavaMethodDescriptor>> entry : clumper.getStaticAnnotatedMethods2_0().entrySet()) {
-                clsmod.defineAnnotatedMethod(entry.getKey(), entry.getValue(), methodFactory);
-                for (JavaMethodDescriptor desc : entry.getValue()) {
-                    if (!desc.anno.omit()) runtime.addBoundMethod(desc.declaringClassName, desc.name, entry.getKey());
-                }
+        private static void addBoundMethodsUnlessOmited(final Ruby runtime, final String name, final List<JavaMethodDescriptor> methods) {
+            final int size = methods.size();
+            if ( size == 1 ) {
+                final JavaMethodDescriptor desc = methods.get(0);
+                if (!desc.anno.omit()) runtime.addBoundMethod(desc.declaringClassName, desc.name, name);
+                return;
             }
-
-            for (Map.Entry<String, List<JavaMethodDescriptor>> entry : clumper.getAnnotatedMethods2_0().entrySet()) {
-                clsmod.defineAnnotatedMethod(entry.getKey(), entry.getValue(), methodFactory);
-                for (JavaMethodDescriptor desc : entry.getValue()) {
-                    if (!desc.anno.omit()) runtime.addBoundMethod(desc.declaringClassName, desc.name, entry.getKey());
-                }
+            for ( int i=0; i<size; i++ ) {
+                final JavaMethodDescriptor desc = methods.get(i);
+                if (!desc.anno.omit()) runtime.addBoundMethod(desc.declaringClassName, desc.name, name);
             }
         }
     }

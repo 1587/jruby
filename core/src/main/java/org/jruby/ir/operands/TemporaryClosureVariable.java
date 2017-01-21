@@ -1,37 +1,46 @@
 package org.jruby.ir.operands;
 
-import org.jruby.ir.IRVisitor;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
+import org.jruby.ir.transformations.inlining.SimpleCloneInfo;
 
-public class TemporaryClosureVariable extends TemporaryVariable {
-    final int closureId;
-    final String prefix;
+public class TemporaryClosureVariable extends TemporaryLocalVariable {
+    private final int closureId;
 
     public TemporaryClosureVariable(int closureId, int offset) {
-        super(offset);
+        super(offset);  // Do not save name to prevent constructing string
+
         this.closureId = closureId;
-        this.prefix =  "%cl_" + closureId + "_";
-        this.name = getPrefix() + offset;
     }
 
-    public TemporaryClosureVariable(String name, int offset) {
-        super(name, offset);
-        this.closureId = -1;
-        this.prefix = "";
+    public int getClosureId() {
+        return closureId;
     }
 
     @Override
-    public Variable cloneForCloningClosure(InlinerInfo ii) {
-        return new TemporaryClosureVariable(name, offset);
+    public TemporaryVariableType getType() {
+        return TemporaryVariableType.CLOSURE;
     }
 
     @Override
-    protected String getPrefix() {
-        return this.prefix;
+    public Variable clone(SimpleCloneInfo ii) {
+        return this;
     }
 
     @Override
-    public void visit(IRVisitor visitor) {
-        visitor.TemporaryClosureVariable(this);
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+        e.encode(closureId);
+    }
+
+    public static TemporaryClosureVariable decode(IRReaderDecoder d) {
+        int offset = d.decodeInt();
+        int closureId = d.decodeInt();
+        return new TemporaryClosureVariable(closureId, offset);
+    }
+
+    @Override
+    public String getPrefix() {
+        return "%cl_" + closureId + "_";
     }
 }

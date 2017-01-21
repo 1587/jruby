@@ -45,7 +45,7 @@ public class BlockArgNode extends Node implements INameNode {
     private String name;
 
     public BlockArgNode(ISourcePosition position, int count, String name) {
-        super(position);
+        super(position, false);
         this.count = count;
         this.name = name;
     }
@@ -62,7 +62,7 @@ public class BlockArgNode extends Node implements INameNode {
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitBlockArgNode(this);
     }
 

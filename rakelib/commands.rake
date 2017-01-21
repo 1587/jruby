@@ -1,5 +1,9 @@
 # -*- coding: iso-8859-1 -*-
-require 'ant'
+begin
+  require 'ant'
+rescue LoadError
+  warn 'could not load ant'
+end
 require 'rbconfig'
 
 # Determine if we need to put a 32 or 64 bit flag to the command-line
@@ -32,7 +36,7 @@ def initialize_paths
     #  pathelement :path => "${java.class.path}"/>
     pathelement :path => File.join(LIB_DIR, 'jruby.jar')
     pathelement :location => TEST_CLASSES_DIR
-    pathelement :path => File.join(TEST_DIR, 'requireTest.jar')
+    pathelement :path => File.join(TEST_DIR, 'jruby', 'requireTest.jar')
     pathelement :location => TEST_DIR
   end
 end
@@ -74,7 +78,6 @@ def mspec(mspec_options = {}, java_options = {}, &code)
   mspec_options[:objectspace_enabled] ||= true
   mspec_options[:thread_pooling] ||= false
   mspec_options[:reflection] ||= false
-  mspec_options[:compat] ||= "1.8"
   mspec_options[:format] ||= "m"
   ms = mspec_options
 
@@ -93,14 +96,12 @@ def mspec(mspec_options = {}, java_options = {}, &code)
     env :key => "JAVA_OPTS", :value => "-Demma.verbosity.level=silent"
     env :key => "JRUBY_OPTS", :value => ms[:jruby_opts] || ""
     # launch in the same mode we're testing, since config is loaded by top process
-    arg :line => "--#{ms[:compat]}"
 
-    # if 1.9 mode, add . to load path so mspec config is found
-    arg :line => "-I ." if ms[:compat] == '1.9'
+    # add . to load path so mspec config is found
+    arg :line => "-I ."
 
     arg :line => "#{MSPEC_BIN} ci"
     arg :line => "-T -J-ea"
-    arg :line => "-T -J-Dfile.encoding=UTF-8" if RbConfig::CONFIG['host_os'] =~ /mswin|mingw/
     arg :line => "-T -J-Djruby.launch.inproc=false"
     arg :line => "-T -J-Djruby.compile.mode=#{ms[:compile_mode]}"
     arg :line => "-T -J-Djruby.jit.threshold=#{ms[:jit_threshold]}"
@@ -108,7 +109,6 @@ def mspec(mspec_options = {}, java_options = {}, &code)
     arg :line => "-T -J-Djruby.objectspace.enabled=#{ms[:objectspace_enabled]}"
     arg :line => "-T -J-Djruby.thread.pool.enabled=#{ms[:thread_pooling]}"
     arg :line => "-T -J-Djruby.reflection=#{ms[:reflection]}"
-    arg :line => "-T --#{ms[:compat]}"
     arg :line => "-T -J-Demma.coverage.out.file=#{TEST_RESULTS_DIR}/coverage.emma"
     arg :line => "-T -J-Demma.coverage.out.merge=true"
     arg :line => "-T -J-Demma.verbosity.level=silent"

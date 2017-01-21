@@ -1,4 +1,4 @@
-describe :file_executable_real, :shared => true do
+describe :file_executable_real, shared: true do
   before :each do
     @file1 = tmp('temp1.txt.exe')
     @file2 = tmp('temp2.txt')
@@ -19,10 +19,8 @@ describe :file_executable_real, :shared => true do
       @object.send(@method, @file2).should == false
     end
 
-    ruby_version_is "1.9" do
-      it "accepts an object that has a #to_path method" do
-        @object.send(@method, mock_to_path(@file1)).should == true
-      end
+    it "accepts an object that has a #to_path method" do
+      @object.send(@method, mock_to_path(@file1)).should == true
     end
   end
 
@@ -41,7 +39,7 @@ describe :file_executable_real, :shared => true do
   end
 end
 
-describe :file_executable_real_missing, :shared => true do
+describe :file_executable_real_missing, shared: true do
   it "returns false if the file does not exist" do
     @object.send(@method, 'fake_file').should == false
   end

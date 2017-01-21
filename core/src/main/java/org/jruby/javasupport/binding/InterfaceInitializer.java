@@ -13,17 +13,15 @@ import java.util.Map;
 /**
 * Created by headius on 2/26/15.
 */
-public class InterfaceInitializer extends Initializer {
+final class InterfaceInitializer extends Initializer {
 
-    public InterfaceInitializer(Ruby runtime, Class<?> javaClass) {
+    InterfaceInitializer(Ruby runtime, Class<?> javaClass) {
         super(runtime, javaClass);
     }
 
     @Override
     public RubyModule initialize(RubyModule proxy) {
         final State state = new State(runtime, null);
-
-        super.initializeBase(proxy);
 
         Field[] fields = JavaClass.getDeclaredFields(javaClass);
 
@@ -57,10 +55,6 @@ public class InterfaceInitializer extends Initializer {
         runtime.getJavaSupport().getStaticAssignedNames().get(javaClass).putAll(state.staticNames);
         runtime.getJavaSupport().getInstanceAssignedNames().get(javaClass).clear();
 
-        // flag the class as a Java class proxy.
-        proxy.setJavaProxy(true);
-        proxy.getSingletonClass().setJavaProxy(true);
-
         installClassFields(proxy, state);
         installClassStaticMethods(proxy, state);
         installClassClasses(javaClass, proxy);
@@ -72,16 +66,18 @@ public class InterfaceInitializer extends Initializer {
 
     private static void setupInterfaceMethods(Class<?> javaClass, Initializer.State state) {
         // TODO: protected methods.  this is going to require a rework of some of the mechanism.
-        final List<Method> methods = getMethods(javaClass);
+        final Map<String, List<Method>> nameMethods = getMethods(javaClass);
 
-        for ( int i = methods.size(); --i >= 0; ) {
-            // Java 8 introduced static methods on interfaces, so we just look for those
-            Method method = methods.get(i);
-            String name = method.getName();
+        for (List<Method> methods : nameMethods.values()) {
+            for (int i = methods.size(); --i >= 0; ) {
+                // Java 8 introduced static methods on interfaces, so we just look for those
+                Method method = methods.get(i);
+                String name = method.getName();
 
-            if ( ! Modifier.isStatic( method.getModifiers() ) ) continue;
+                if (!Modifier.isStatic(method.getModifiers())) continue;
 
-            prepareStaticMethod(javaClass, state, method, name);
+                prepareStaticMethod(javaClass, state, method, name);
+            }
         }
 
         // now iterate over all installers and make sure they also have appropriate aliases

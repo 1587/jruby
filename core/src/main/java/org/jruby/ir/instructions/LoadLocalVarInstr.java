@@ -1,72 +1,85 @@
 package org.jruby.ir.instructions;
 
-import org.jruby.ir.IRVisitor;
+import java.util.Map;
 import org.jruby.ir.IRScope;
+import org.jruby.ir.IRVisitor;
 import org.jruby.ir.Interp;
 import org.jruby.ir.Operation;
-import org.jruby.ir.operands.LocalVariable;
-import org.jruby.ir.operands.Operand;
-import org.jruby.ir.operands.TemporaryVariable;
-import org.jruby.ir.operands.Variable;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
-import org.jruby.runtime.Block;
+import org.jruby.ir.operands.*;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.parser.StaticScope;
 import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 
-public class LoadLocalVarInstr extends Instr implements ResultInstr {
-    private IRScope scope;
-    private TemporaryVariable result;
+public class LoadLocalVarInstr extends OneOperandResultBaseInstr implements FixedArityInstr {
+    private final IRScope scope;
 
-    /** This is the variable that is being loaded from the scope.  This variable
-     * doesn't participate in the computation itself.  We just use it as a proxy for
-     * its (a) name (b) offset (c) scope-depth. */
-    private LocalVariable lvar;
-
-    public LoadLocalVarInstr(IRScope scope, TemporaryVariable result, LocalVariable lvar) {
-        super(Operation.BINDING_LOAD);
+    public LoadLocalVarInstr(IRScope scope, TemporaryLocalVariable result, LocalVariable lvar) {
+        super(Operation.BINDING_LOAD, result, lvar);
 
         assert result != null: "LoadLocalVarInstr result is null";
 
-        this.lvar = lvar;
-        this.result = result;
         this.scope = scope;
     }
 
-    public Operand[] getOperands() {
-        return Instr.EMPTY_OPERANDS;
+    /** This is the variable that is being loaded from the scope.  This variable doesn't participate in the
+     * computation itself.  We just use it as a proxy for its (a) name (b) offset (c) scope-depth.
+     */
+    public LocalVariable getLocalVar() {
+        return (LocalVariable) getOperand1();
     }
 
-    public Variable getResult() {
-        return result;
+    public IRScope getScope() {
+        return scope;
     }
 
-    public void updateResult(Variable v) {
-        this.result = (TemporaryVariable)v;
+    /**
+     * getLocalVar is saved for location and should not be simplified so we still know its original
+     * depth/offset.
+     */
+    @Override
+    public void simplifyOperands(Map<Operand, Operand> valueMap, boolean force) {
     }
 
-    public String toString() {
-        return result + " = load_lvar(" + scope.getName() + ", " + lvar + ")";
+    // SSS FIXME: This feels dirty
+    public void decrementLVarScopeDepth() {
+        setOperand(0, getLocalVar().cloneForDepth(getLocalVar().getScopeDepth()-1));
     }
 
     @Override
-    public Instr cloneForInlining(InlinerInfo ii) {
+    public String[] toStringNonOperandArgs() {
+        return new String[] { "scope: " + scope.getName() };
+    }
+
+    @Override
+    public Instr clone(CloneInfo ii) {
         // SSS FIXME: Do we need to rename lvar really?  It is just a name-proxy!
-        return new LoadLocalVarInstr(scope, (TemporaryVariable)ii.getRenamedVariable(result), (LocalVariable)ii.getRenamedVariable(lvar));
+        return new LoadLocalVarInstr(scope, (TemporaryLocalVariable)ii.getRenamedVariable(result),
+                (LocalVariable)ii.getRenamedVariable(getLocalVar()));
+    }
+
+    @Override
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+        e.encode(getScope());
+        e.encode(getLocalVar());
+    }
+
+    public static LoadLocalVarInstr decode(IRReaderDecoder d) {
+        return new LoadLocalVarInstr(d.decodeScope(), (TemporaryLocalVariable) d.decodeVariable(), (LocalVariable) d.decodeVariable());
     }
 
     @Interp
     @Override
-    public Object interpret(ThreadContext context, DynamicScope currDynScope, IRubyObject self, Object[] temp, Block block) {
-        return lvar.retrieve(context, self, currDynScope, temp);
+    public Object interpret(ThreadContext context, StaticScope currScope, DynamicScope currDynScope, IRubyObject self, Object[] temp) {
+        return getLocalVar().retrieve(context, self, currScope, currDynScope, temp);
     }
 
     @Override
     public void visit(IRVisitor visitor) {
         visitor.LoadLocalVarInstr(this);
-    }
-
-    public LocalVariable getLocalVar() {
-        return lvar;
     }
 }

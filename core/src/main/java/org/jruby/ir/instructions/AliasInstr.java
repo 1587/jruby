@@ -1,77 +1,53 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 package org.jruby.ir.instructions;
 
-import org.jruby.RubyFixnum;
-import org.jruby.RubyModule;
-import org.jruby.RubySymbol;
+import org.jruby.ir.IRFlags;
+import org.jruby.ir.IRScope;
 import org.jruby.ir.IRVisitor;
 import org.jruby.ir.Operation;
 import org.jruby.ir.operands.Operand;
-import org.jruby.ir.operands.Variable;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
-import org.jruby.runtime.Block;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
+import org.jruby.ir.runtime.IRRuntimeHelpers;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.parser.StaticScope;
 import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 
-import java.util.Map;
-
-/**
- *
- * @author enebo
- */
-public class AliasInstr extends Instr {
-    private final Variable receiver;
-    private Operand newName;
-    private Operand oldName;
-
-    public AliasInstr(Variable receiver, Operand newName, Operand oldName) {
-        super(Operation.ALIAS);
-
-        this.receiver = receiver;
-        this.newName = newName;
-        this.oldName = oldName;
+public class AliasInstr extends TwoOperandInstr implements FixedArityInstr {
+    // SSS FIXME: Implicit self arg -- make explicit to not get screwed by inlining!
+    public AliasInstr(Operand newName, Operand oldName) {
+        super(Operation.ALIAS, newName, oldName);
     }
 
     @Override
-    public Operand[] getOperands() {
-        return new Operand[] {getReceiver(), getNewName(), getOldName()};
+    public boolean computeScopeFlags(IRScope scope) {
+        scope.getFlags().add(IRFlags.REQUIRES_DYNSCOPE);
+        return true;
     }
 
     @Override
-    public String toString() {
-        return getOperation().toString() + "(" + getReceiver() + ", " + getNewName() + ", " + getOldName() + ")";
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+
+        e.encode(getNewName());
+        e.encode(getOldName());
+    }
+
+    public static AliasInstr decode(IRReaderDecoder d) {
+        return new AliasInstr(d.decodeOperand(), d.decodeOperand());
     }
 
     @Override
-    public void simplifyOperands(Map<Operand, Operand> valueMap, boolean force) {
-        oldName = getOldName().getSimplifiedOperand(valueMap, force);
-        newName = getNewName().getSimplifiedOperand(valueMap, force);
+    public Instr clone(CloneInfo ii) {
+        return new AliasInstr(getNewName().cloneForInlining(ii), getOldName().cloneForInlining(ii));
     }
 
     @Override
-    public Instr cloneForInlining(InlinerInfo ii) {
-        return new AliasInstr((Variable) receiver.cloneForInlining(ii), getNewName().cloneForInlining(ii),
-                getOldName().cloneForInlining(ii));
-    }
-
-    @Override
-    public Object interpret(ThreadContext context, DynamicScope currDynScope, IRubyObject self, Object[] temp, Block block) {
-        IRubyObject object = (IRubyObject) receiver.retrieve(context, self, currDynScope, temp);
-
-        if (object == null || object instanceof RubyFixnum || object instanceof RubySymbol) {
-            throw context.runtime.newTypeError("no class to make alias");
-        }
-
-        String newNameString = getNewName().retrieve(context, self, currDynScope, temp).toString();
-        String oldNameString = getOldName().retrieve(context, self, currDynScope, temp).toString();
-
-        RubyModule module = (object instanceof RubyModule) ? (RubyModule) object : object.getMetaClass();
-        module.defineAlias(newNameString, oldNameString);
-
+    public Object interpret(ThreadContext context, StaticScope currScope, DynamicScope currDynScope, IRubyObject self, Object[] temp) {
+        String newNameString = getNewName().retrieve(context, self, currScope, currDynScope, temp).toString();
+        String oldNameString = getOldName().retrieve(context, self, currScope, currDynScope, temp).toString();
+        IRRuntimeHelpers.defineAlias(context, self, currDynScope, newNameString, oldNameString);
         return null;
     }
 
@@ -80,15 +56,11 @@ public class AliasInstr extends Instr {
         visitor.AliasInstr(this);
     }
 
-    public Variable getReceiver() {
-        return receiver;
-    }
-
     public Operand getNewName() {
-        return newName;
+        return getOperand1();
     }
 
     public Operand getOldName() {
-        return oldName;
+        return getOperand2();
     }
 }

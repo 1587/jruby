@@ -46,6 +46,9 @@ public class Random {
     private final int[] state = new int[N];
     private int left = 1;
 
+    public Random() {
+    }
+
     public Random(int s) {
         initGenrand(s);
     }
@@ -81,7 +84,7 @@ public class Random {
     @Override
     public int hashCode() {
         // Using 17 as the initializer, 37 as the multiplier.
-        return (629 + left) * 37 + state.hashCode();
+        return (629 + left) * 37 + Arrays.hashCode(state);
     }
     
     private void initGenrand(int s) {

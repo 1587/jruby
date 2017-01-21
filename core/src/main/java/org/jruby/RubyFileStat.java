@@ -35,6 +35,8 @@ package org.jruby;
 
 import java.io.FileDescriptor;
 import java.io.IOException;
+import java.nio.file.attribute.FileTime;
+import java.util.concurrent.TimeUnit;
 
 import org.jruby.anno.JRubyClass;
 import org.jruby.anno.JRubyMethod;
@@ -48,7 +50,6 @@ import org.jruby.runtime.Visibility;
 import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.util.FileResource;
 import org.jruby.util.JRubyFile;
-import org.jruby.util.JRubyNonExistentFile;
 import org.jruby.util.StringSupport;
 
 /**
@@ -70,6 +71,7 @@ public class RubyFileStat extends RubyObject {
     }
 
     private static ObjectAllocator ALLOCATOR = new ObjectAllocator() {
+        @Override
         public IRubyObject allocate(Ruby runtime, RubyClass klass) {
             return new RubyFileStat(runtime, klass);
         }
@@ -107,8 +109,20 @@ public class RubyFileStat extends RubyObject {
         return stat;
     }
 
+    public static RubyFileStat newFileStat(Ruby runtime, int fileno) {
+        RubyFileStat stat = new RubyFileStat(runtime, runtime.getFileStat());
+
+        stat.setup(fileno);
+
+        return stat;
+    }
+
     private void setup(FileDescriptor descriptor) {
         stat = getRuntime().getPosix().fstat(descriptor);
+    }
+
+    private void setup(int fileno) {
+        stat = getRuntime().getPosix().fstat(fileno);
     }
     
     private void setup(String filename, boolean lstat) {
@@ -119,25 +133,24 @@ public class RubyFileStat extends RubyObject {
             filename += '/';
         }
 
-        file = JRubyFile.createResource(runtime.getPosix(), runtime.getCurrentDirectory(), filename);
+        file = JRubyFile.createResource(runtime, filename);
         stat = lstat ? file.lstat() : file.stat();
 
         if (stat == null) throw runtime.newErrnoFromInt(file.errno(), filename);
     }
 
-    @JRubyMethod(name = "initialize", required = 1, visibility = Visibility.PRIVATE, compat = CompatVersion.RUBY1_8)
     public IRubyObject initialize(IRubyObject fname, Block unusedBlock) {
+        return initialize19(fname, unusedBlock);
+    }
+
+    @JRubyMethod(name = "initialize", required = 1, visibility = Visibility.PRIVATE)
+    public IRubyObject initialize19(IRubyObject fname, Block unusedBlock) {
         Ruby runtime = getRuntime();
         ThreadContext context = runtime.getCurrentContext();
         RubyString path = StringSupport.checkEmbeddedNulls(runtime, RubyFile.get_path(context, fname));
-        setup(fname.convertToString().toString(), false);
+        setup(path.convertToString().toString(), false);
 
-        return this;
-    }
-
-    @JRubyMethod(name = "initialize", required = 1, visibility = Visibility.PRIVATE, compat = CompatVersion.RUBY1_9)
-    public IRubyObject initialize19(IRubyObject fname, Block unusedBlock) {
-        return initialize(RubyFile.get_path(getRuntime().getCurrentContext(), fname), unusedBlock);
+        return this;    
     }
     
     @JRubyMethod(name = "atime")
@@ -199,6 +212,14 @@ public class RubyFileStat extends RubyObject {
     public IRubyObject ctime() {
         checkInitialized();
         return getRuntime().newTime(stat.ctime() * 1000);
+    }
+
+    @JRubyMethod(name = "birthtime")
+    public IRubyObject birthtime() {
+        checkInitialized();
+        FileTime btime = RubyFile.getBirthtimeWithNIO(file.absolutePath());
+        if (btime != null) return getRuntime().newTime(btime.toMillis());
+        return ctime();
     }
 
     @JRubyMethod(name = "dev")
@@ -265,10 +286,13 @@ public class RubyFileStat extends RubyObject {
     }
     
     @JRubyMethod(name = "initialize_copy", required = 1, visibility = Visibility.PRIVATE)
+    @Override
     public IRubyObject initialize_copy(IRubyObject original) {
         if (!(original instanceof RubyFileStat)) {
             throw getRuntime().newTypeError("wrong argument class");
         }
+
+        checkFrozen();
         
         RubyFileStat originalFileStat = (RubyFileStat) original;
         
@@ -285,6 +309,7 @@ public class RubyFileStat extends RubyObject {
     }
 
     @JRubyMethod(name = "inspect")
+    @Override
     public IRubyObject inspect() {
         StringBuilder buf = new StringBuilder("#<");
         buf.append(getMetaClass().getRealClass().getName());
@@ -479,12 +504,12 @@ public class RubyFileStat extends RubyObject {
         return getRuntime().newBoolean(stat.isEmpty());
     }
 
-    @JRubyMethod(name = "world_readable?", compat = CompatVersion.RUBY1_9)
+    @JRubyMethod(name = "world_readable?")
     public IRubyObject worldReadable(ThreadContext context) {
         return getWorldMode(context, FileStat.S_IROTH);
     }
 
-    @JRubyMethod(name = "world_writable?", compat = CompatVersion.RUBY1_9)
+    @JRubyMethod(name = "world_writable?")
     public IRubyObject worldWritable(ThreadContext context) {
         return getWorldMode(context, FileStat.S_IWOTH);
     }

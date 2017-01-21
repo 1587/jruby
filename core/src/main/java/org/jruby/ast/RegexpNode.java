@@ -34,14 +34,9 @@ package org.jruby.ast;
 import java.util.List;
 import org.jcodings.Encoding;
 
-import org.jruby.Ruby;
-import org.jruby.RubyRegexp;
 import org.jruby.ast.types.ILiteralNode;
 import org.jruby.ast.visitor.NodeVisitor;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.util.ByteList;
 import org.jruby.util.RegexpOptions;
 
@@ -49,12 +44,11 @@ import org.jruby.util.RegexpOptions;
  * Represents a simple regular expression literal.
  */
 public class RegexpNode extends Node implements ILiteralNode {
-    private RubyRegexp pattern;
     private final ByteList value;
     private final RegexpOptions options;
 
     public RegexpNode(ISourcePosition position, ByteList value, RegexpOptions options) {
-        super(position);
+        super(position, false);
 
         this.value = value;
         this.options = options;
@@ -68,7 +62,7 @@ public class RegexpNode extends Node implements ILiteralNode {
         return NodeType.REGEXPNODE;
     }
 
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitRegexpNode(this);
     }
 
@@ -86,31 +80,8 @@ public class RegexpNode extends Node implements ILiteralNode {
     public ByteList getValue() {
         return value;
     }
-
-    public RubyRegexp loadPattern(Ruby runtime) {
-        // FIXME: 1.9 should care about internal or external encoding and not kcode.
-        if (pattern == null || runtime.getKCode() != pattern.getKCode()) {
-            setPattern(RubyRegexp.newRegexp(runtime, value, options));
-        }
-
-        return pattern;
-    }
-
-    public void setPattern(RubyRegexp p) {
-        this.pattern = p;
-        this.pattern.setLiteral();
-    }
-
-    public RubyRegexp getPattern() {
-        return pattern;
-    }
     
     public List<Node> childNodes() {
         return EMPTY_LIST;
-    }
-
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        return loadPattern(runtime);
     }
 }

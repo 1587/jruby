@@ -1,43 +1,47 @@
 package org.jruby.ir.representations;
 
-import java.util.ArrayList;
-import java.util.List;
 import org.jruby.RubyInstanceConfig;
+import org.jruby.dirgra.ExplicitVertexID;
 import org.jruby.ir.IRManager;
-import org.jruby.ir.IRScope;
-import org.jruby.ir.instructions.CallBase;
 import org.jruby.ir.instructions.Instr;
 import org.jruby.ir.instructions.YieldInstr;
 import org.jruby.ir.listeners.InstructionsListener;
 import org.jruby.ir.listeners.InstructionsListenerDecorator;
 import org.jruby.ir.operands.Label;
-import org.jruby.ir.operands.Operand;
-import org.jruby.ir.operands.WrappedIRClosure;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
-import org.jruby.ir.util.ExplicitVertexID;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.ir.transformations.inlining.InlineCloneInfo;
+import org.jruby.ir.transformations.inlining.SimpleCloneInfo;
 
-public class BasicBlock implements ExplicitVertexID {
+import java.util.ArrayList;
+import java.util.List;
+
+public class BasicBlock implements ExplicitVertexID, Comparable {
     private int         id;             // Basic Block id
     private CFG         cfg;            // CFG that this basic block belongs to
     private Label       label;          // All basic blocks have a starting label
     private List<Instr> instrs;         // List of non-label instructions
     private boolean     isRescueEntry;  // Is this basic block entry of a rescue?
-    private Instr[]     instrsArray;
 
-    public BasicBlock(CFG c, Label l) {
-        label         = l;
-        cfg           = c;
-        id            = c.getNextBBID();
-        instrs        = new ArrayList<Instr>();
+    public BasicBlock(CFG cfg, Label label) {
+        this.label = label;
+        this.cfg = cfg;
+        id = cfg.getNextBBID();
+        isRescueEntry = false;
+
+        assert label != null : "label is null";
+
+        initInstrs();
+    }
+
+    private void initInstrs() {
+        instrs = new ArrayList<>();
         if (RubyInstanceConfig.IR_COMPILER_DEBUG || RubyInstanceConfig.IR_VISUALIZER) {
-            IRManager irManager = cfg.getScope().getManager();
+            IRManager irManager = cfg.getManager();
             InstructionsListener listener = irManager.getInstructionsListener();
             if (listener != null) {
                 instrs = new InstructionsListenerDecorator(instrs, listener);
             }
         }
-        instrsArray   = null;
-        isRescueEntry = false;
     }
 
     @Override
@@ -49,12 +53,29 @@ public class BasicBlock implements ExplicitVertexID {
         return label;
     }
 
+    @Override
+    public int hashCode() {
+        return id;
+    }
+
+    public boolean isEntryBB() {
+        return cfg.getEntryBB() == this;
+    }
+
+    public boolean isExitBB() {
+        return cfg.getExitBB() == this;
+    }
+
     public void markRescueEntryBB() {
         this.isRescueEntry = true;
     }
 
     public boolean isRescueEntry() {
         return this.isRescueEntry;
+    }
+
+    public void replaceInstrs(List<Instr> instrs) {
+        this.instrs = instrs;
     }
 
     public void addInstr(Instr i) {
@@ -65,18 +86,12 @@ public class BasicBlock implements ExplicitVertexID {
         instrs.add(0, i);
     }
 
+    public void insertInstr(int index, Instr i) {
+        instrs.add(index, i);
+    }
+
     public List<Instr> getInstrs() {
         return instrs;
-    }
-
-    public int instrCount() {
-        return instrs.size();
-    }
-
-    public Instr[] getInstrsArray() {
-        if (instrsArray == null) instrsArray = instrs.toArray(new Instr[instrs.size()]);
-
-        return instrsArray;
     }
 
     public Instr getLastInstr() {
@@ -85,24 +100,26 @@ public class BasicBlock implements ExplicitVertexID {
     }
 
     public boolean removeInstr(Instr i) {
-       return i == null? false : instrs.remove(i);
+       return i != null && instrs.remove(i);
     }
 
     public boolean isEmpty() {
         return instrs.isEmpty();
     }
 
+    // FIXME: inline branch fixes this by using callsiteID and not ipc.  Temporary change until it is
+    // merged (this is only for inlining and inlining does not work on master currently).
     public BasicBlock splitAtInstruction(Instr splitPoint, Label newLabel, boolean includeSplitPointInstr) {
         BasicBlock newBB = new BasicBlock(cfg, newLabel);
         int idx = 0;
         int numInstrs = instrs.size();
         boolean found = false;
         for (Instr i: instrs) {
-            if (i == splitPoint) found = true;
+            //if (i.getIPC() == splitPoint.getIPC()) found = true;
 
             // Move instructions from split point into the new bb
             if (found) {
-                if (includeSplitPointInstr || i != splitPoint) newBB.addInstr(i);
+                //if (includeSplitPointInstr || i.getIPC() != splitPoint.getIPC()) newBB.addInstr(i);
             } else {
                 idx++;
             }
@@ -121,40 +138,47 @@ public class BasicBlock implements ExplicitVertexID {
         this.instrs.addAll(foodBB.instrs);
     }
 
-    public BasicBlock cloneForInlinedMethod(InlinerInfo ii) {
-        IRScope hostScope = ii.getInlineHostScope();
-        BasicBlock clonedBB = ii.getOrCreateRenamedBB(this);
-        for (Instr i: getInstrs()) {
-            Instr clonedInstr = i.cloneForInlinedScope(ii);
-            if (clonedInstr != null) {
-                clonedBB.addInstr(clonedInstr);
-                if (clonedInstr instanceof YieldInstr) ii.recordYieldSite(clonedBB, (YieldInstr)clonedInstr);
-                if (clonedInstr instanceof CallBase) {
-                    CallBase call = (CallBase)clonedInstr;
-                    Operand block = call.getClosureArg(null);
-                    if (block instanceof WrappedIRClosure) hostScope.addClosure(((WrappedIRClosure)block).getClosure());
+    // FIXME: Untested in inliner (and we need to replace cloneInstrs(InlineCloneInfo) with this).
+    public BasicBlock clone(CloneInfo info, CFG newCFG) {
+        BasicBlock newBB = new BasicBlock(newCFG, info.getRenamedLabel(label));
+        boolean isClosureClone = info instanceof InlineCloneInfo && ((InlineCloneInfo) info).isClosure();
+
+        for (Instr instr: instrs) {
+            Instr newInstr = instr.clone(info);
+
+            if (newInstr != null) {  // inliner may kill off unneeded instr
+                newBB.addInstr(newInstr);
+                if (isClosureClone && newInstr instanceof YieldInstr) {
+                    ((InlineCloneInfo) info).recordYieldSite(newBB, (YieldInstr) newInstr);
                 }
             }
         }
 
-        return clonedBB;
+        return newBB;
     }
 
-    public BasicBlock cloneForInlinedClosure(InlinerInfo ii) {
-        // Update cfg for this bb
-        IRScope hostScope = ii.getInlineHostScope();
+    public void cloneInstrs(SimpleCloneInfo ii) {
+        if (!isEmpty()) {
+            List<Instr> oldInstrs = instrs;
+            initInstrs();
+
+            for (Instr i: oldInstrs) {
+                instrs.add(i.clone(ii));
+            }
+        }
+
+        // Rename the label as well!
+        this.label = ii.getRenamedLabel(this.label);
+    }
+
+    public BasicBlock cloneForInlining(InlineCloneInfo ii) {
         BasicBlock clonedBB = ii.getOrCreateRenamedBB(this);
 
-        // Process instructions
         for (Instr i: getInstrs()) {
-            Instr clonedInstr = i.cloneForInlinedClosure(ii);
+            Instr clonedInstr = i.clone(ii);
             if (clonedInstr != null) {
                 clonedBB.addInstr(clonedInstr);
-                if (clonedInstr instanceof CallBase) {
-                    CallBase call = (CallBase)clonedInstr;
-                    Operand block = call.getClosureArg(null);
-                    if (block instanceof WrappedIRClosure) hostScope.addClosure(((WrappedIRClosure)block).getClosure());
-                }
+                if (clonedInstr instanceof YieldInstr) ii.recordYieldSite(clonedBB, (YieldInstr)clonedInstr);
             }
         }
 
@@ -162,12 +186,22 @@ public class BasicBlock implements ExplicitVertexID {
     }
 
     @Override
+    public int compareTo(Object o) {
+        BasicBlock other = (BasicBlock) o;
+
+        if (id == other.id) return 0;
+        if (id < other.id) return -1;
+
+        return 1;
+    }
+
+    @Override
     public String toString() {
-        return "BB [" + id + ":" + label + "]";
+        return "BB [" + id + ':' + label + ']';
     }
 
     public String toStringInstrs() {
-        StringBuilder buf = new StringBuilder(toString() + "\n");
+        StringBuilder buf = new StringBuilder(toString()).append('\n');
 
         for (Instr instr : getInstrs()) {
             buf.append('\t').append(instr).append('\n');

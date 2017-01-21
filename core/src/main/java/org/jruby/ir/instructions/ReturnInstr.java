@@ -1,36 +1,44 @@
 package org.jruby.ir.instructions;
 
 import org.jruby.ir.IRVisitor;
-import org.jruby.ir.IRMethod;
 import org.jruby.ir.Operation;
 import org.jruby.ir.operands.Operand;
 import org.jruby.ir.operands.Variable;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.ir.transformations.inlining.InlineCloneInfo;
+import org.jruby.ir.transformations.inlining.SimpleCloneInfo;
 
-public class ReturnInstr extends ReturnBase {
+public class ReturnInstr extends ReturnBase implements FixedArityInstr {
     public ReturnInstr(Operand returnValue) {
-        super(Operation.RETURN, returnValue);
+        this(Operation.RETURN, returnValue);
+    }
+
+    public ReturnInstr(Operation operation, Operand returnValue) {
+        super(operation, returnValue);
     }
 
     @Override
-    public String toString() {
-        return getOperation() + "(" + returnValue + ")";
-    }
+    public Instr clone(CloneInfo info) {
+        if (info instanceof SimpleCloneInfo) return new ReturnInstr(getReturnValue().cloneForInlining(info));
 
-    @Override
-    public Instr cloneForInlining(InlinerInfo ii) {
-        return new ReturnInstr(returnValue.cloneForInlining(ii));
-    }
+        InlineCloneInfo ii = (InlineCloneInfo) info;
 
-    @Override
-    public Instr cloneForInlinedScope(InlinerInfo ii) {
+        if (ii.isClosure()) return new CopyInstr(ii.getYieldResult(), getReturnValue().cloneForInlining(ii));
+
         Variable v = ii.getCallResultVariable();
-        return v == null ? null : new CopyInstr(v, returnValue.cloneForInlining(ii));
+        return v == null ? null : new CopyInstr(v, getReturnValue().cloneForInlining(ii));
     }
 
     @Override
-    public Instr cloneForInlinedClosure(InlinerInfo ii) {
-        return new CopyInstr(ii.getYieldResult(), returnValue.cloneForInlining(ii));
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+        e.encode(getReturnValue());
+    }
+
+    public static ReturnInstr decode(IRReaderDecoder d) {
+        return new ReturnInstr(d.decodeOperand());
     }
 
     @Override

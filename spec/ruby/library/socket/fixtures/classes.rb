@@ -23,20 +23,27 @@ module SocketSpecs
     Socket.getaddrinfo(host, nil)[0][3]
   end
 
+  def self.find_available_port
+    begin
+      s = TCPServer.open(0)
+      port = s.addr[1]
+      s.close
+      port
+    rescue
+      43191
+    end
+  end
+
   def self.port
-    43191
+    @@_port ||= find_available_port
   end
 
   def self.str_port
-    "43191"
+    port.to_s
   end
 
   def self.local_port
-    @base ||= $$
-    @base += 1
-    local_port = (@base % (0xffff-1024)) + 1024
-    local_port += 1 if local_port == port
-    local_port
+    find_available_port
   end
 
   def self.sockaddr_in(port, host)
@@ -47,124 +54,49 @@ module SocketSpecs
     tmp("unix_server_spec.socket", false)
   end
 
-  # TCPServer that does not block waiting for connections. Each
-  # connection is serviced in a separate thread. The data read
-  # from the socket is echoed back. The server is shutdown when
-  # the spec process exits.
+  # TCPServer echo server accepting one connection
   class SpecTCPServer
-    @spec_server = nil
-
-    def self.start(host=nil, port=nil, logger=nil)
-      return if @spec_server
-
-      @spec_server = new host, port, logger
-      @spec_server.start
-
-      at_exit do
-        SocketSpecs::SpecTCPServer.shutdown
-      end
-    end
-
-    def self.get
-      @spec_server
-    end
-
-    # Clean up any waiting handlers.
-    def self.cleanup
-      @spec_server.cleanup if @spec_server
-    end
-
-    # Exit completely.
-    def self.shutdown
-      @spec_server.shutdown if @spec_server
-    end
-
     attr_accessor :hostname, :port, :logger
 
     def initialize(host=nil, port=nil, logger=nil)
       @hostname = host || SocketSpecs.hostname
       @port = port || SocketSpecs.port
       @logger = logger
-      @cleanup = false
-      @shutdown = false
-      @accepted = false
-      @main = nil
-      @server = nil
-      @threads = []
+
+      start
     end
 
     def start
-      @main = Thread.new do
-        log "SpecTCPServer starting on #{@hostname}:#{@port}"
-        @server = TCPServer.new @hostname, @port
+      log "SpecTCPServer starting on #{@hostname}:#{@port}"
+      @server = TCPServer.new @hostname, @port
 
-        wait_for @server do
-          socket = @server.accept
-          log "SpecTCPServer accepted connection: #{socket}"
-          service socket
-
-          @accepted = true
-        end
+      @thread = Thread.new do
+        socket = @server.accept
+        log "SpecTCPServer accepted connection: #{socket}"
+        service socket
       end
-
-      Thread.pass until @server
+      self
     end
 
     def service(socket)
-      thr = Thread.new do
-        begin
-          wait_for socket do
-            break if cleanup?
+      begin
+        data = socket.recv(1024)
 
-            data = socket.recv(1024)
-            break if data.empty?
-            log "SpecTCPServer received: #{data.inspect}"
+        return if data.empty?
+        log "SpecTCPServer received: #{data.inspect}"
 
-            break if data == "QUIT"
+        return if data == "QUIT"
 
-            socket.send data, 0
-          end
-        ensure
-          socket.close unless socket.closed?
-        end
+        socket.send data, 0
+      ensure
+        socket.close
       end
-
-      @threads << thr
-    end
-
-    def wait_for(io)
-      return unless io
-
-      loop do
-        read, _, _ = IO.select([io], [], [], 0.25)
-        return false if shutdown?
-        yield if read
-      end
-    end
-
-    def shutdown?
-      @shutdown
-    end
-
-    def cleanup?
-      @cleanup
-    end
-
-    def cleanup
-      @cleanup = true
-      log "SpecTCPServer cleaning up"
-
-      @threads.each { |thr| thr.join }
-      @cleanup = false
     end
 
     def shutdown
-      @shutdown = true
       log "SpecTCPServer shutting down"
-
-      @threads.each { |thr| thr.join }
-      @main.join
-      @server.close if @accepted and !@server.closed?
+      @thread.join
+      @server.close
     end
 
     def log(message)

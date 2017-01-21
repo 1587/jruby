@@ -19,7 +19,6 @@ describe "Literal Regexps" do
   it "caches the Regexp object" do
     rs = []
     2.times do |i|
-      x = 1
       rs << /foo/
     end
     rs[0].should equal(rs[1])
@@ -103,6 +102,47 @@ describe "Literal Regexps" do
     /foo(?#comment)bar/.match("foobar").to_a.should == ["foobar"]
     /foo(?#)bar/.match("foobar").to_a.should == ["foobar"]
   end
-end
 
-language_version __FILE__, "regexp"
+  it "supports (?<= ) (positive lookbehind)" do
+    /foo.(?<=\d)/.match("fooA foo1").to_a.should == ["foo1"]
+  end
+
+  it "supports (?<! ) (negative lookbehind)" do
+    /foo.(?<!\d)/.match("foo1 fooA").to_a.should == ["fooA"]
+  end
+
+  it "supports \\g (named backreference)" do
+    /(?<foo>foo.)bar\g<foo>/.match("foo1barfoo2").to_a.should == ["foo1barfoo2", "foo2"]
+  end
+
+  it "supports character class composition" do
+    /[a-z&&[^a-c]]+/.match("abcdef").to_a.should == ["def"]
+    /[a-z&&[^d-i&&[^d-f]]]+/.match("abcdefghi").to_a.should == ["abcdef"]
+  end
+
+  it "supports possessive quantifiers" do
+    /fooA++bar/.match("fooAAAbar").to_a.should == ["fooAAAbar"]
+
+    /fooA++Abar/.match("fooAAAbar").should be_nil
+    /fooA?+Abar/.match("fooAAAbar").should be_nil
+    /fooA*+Abar/.match("fooAAAbar").should be_nil
+  end
+
+  it "supports conditional regular expressions with positional capture groups" do
+    pattern = /\A(foo)?(?(1)(T)|(F))\z/
+
+    pattern.should =~ 'fooT'
+    pattern.should =~ 'F'
+    pattern.should_not =~ 'fooF'
+    pattern.should_not =~ 'T'
+  end
+
+  it "supports conditional regular expressions with positional capture groups" do
+    pattern = /\A(?<word>foo)?(?(<word>)(T)|(F))\z/
+
+    pattern.should =~ 'fooT'
+    pattern.should =~ 'F'
+    pattern.should_not =~ 'fooF'
+    pattern.should_not =~ 'T'
+  end
+end

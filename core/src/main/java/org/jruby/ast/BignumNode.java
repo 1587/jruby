@@ -35,19 +35,13 @@ package org.jruby.ast;
 import java.math.BigInteger;
 import java.util.List;
 
-import org.jruby.Ruby;
-import org.jruby.RubyBignum;
-import org.jruby.ast.types.ILiteralNode;
 import org.jruby.ast.visitor.NodeVisitor;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
 
 /** 
  * Represents a big integer literal.
  */
-public class BignumNode extends Node implements ILiteralNode {
+public class BignumNode extends NumericNode implements SideEffectFree {
     private BigInteger value;
 
     public BignumNode(ISourcePosition position, BigInteger value) {
@@ -59,7 +53,7 @@ public class BignumNode extends Node implements ILiteralNode {
         return NodeType.BIGNUMNODE;
     }
 
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitBignumNode(this);
     }
 
@@ -77,10 +71,5 @@ public class BignumNode extends Node implements ILiteralNode {
 
     public void setValue(BigInteger value) {
         this.value = value;
-    }
-
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        return RubyBignum.newBignum(runtime, value);
     }
 }

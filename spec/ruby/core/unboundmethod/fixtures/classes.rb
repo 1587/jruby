@@ -30,6 +30,9 @@ module UnboundMethodSpecs
     def foo
       true
     end
+
+    def with_block(&block); end
+
     alias bar foo
     alias alias_1 foo
     alias alias_2 foo
@@ -70,11 +73,14 @@ module UnboundMethodSpecs
     def baz(a, b)
       return [__FILE__, self.class]
     end
+    def overridden; end
   end
 
   class B < A
+    def overridden; end
   end
 
   class C < B
+    def overridden; end
   end
 end

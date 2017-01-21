@@ -33,57 +33,41 @@ package org.jruby.ast;
 
 import java.util.List;
 
-import org.jruby.Ruby;
 import org.jruby.ast.visitor.NodeVisitor;
 import org.jruby.lexer.yacc.ISourcePosition;
 import org.jruby.parser.StaticScope;
-import org.jruby.runtime.Arity;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.BlockBody;
-import org.jruby.runtime.Interpreted19Block;
-import org.jruby.runtime.InterpretedBlock;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
 
 /**
  * Represents a block.  
  */
-public class IterNode extends Node {
+public class IterNode extends Node implements DefNode {
     private final Node varNode;
     private final Node bodyNode;
-    private final Node blockVarNode; // This is only for 1.8 blocks
     
     // What static scoping relationship exists when it comes into being.
     private StaticScope scope;
-    private BlockBody blockBody;
-    
+
+    /**
+     *  Used by Truffle 'for' and by ForNode only.
+     * This is to support 1.8-style assignments which only 'for' expressions use.
+     */
     public IterNode(ISourcePosition position, Node args, StaticScope scope, Node body) {
-        super(position);
-
-        if (args instanceof BlockArg18Node) {
-            this.varNode = ((BlockArg18Node) args).getArgs();
-            this.blockVarNode = ((BlockArg18Node) args).getBlockArg();
-        } else {
-            this.varNode = args;
-            this.blockVarNode = null;
-        }
-        this.scope = scope;
-        this.bodyNode = body;
-        this.blockBody = InterpretedBlock.newBlockBody(this, Arity.procArityOf(varNode), getArgumentType());
-    }
-
-    public IterNode(ISourcePosition position, ArgsNode args, Node body, StaticScope scope) {
-        super(position);
+        super(position, args != null && args.containsVariableAssignment || body != null && body.containsVariableAssignment);
 
         this.varNode = args;
-        this.blockVarNode = null; // This is only for 1.8 blocks
-        this.bodyNode = body;
         this.scope = scope;
-        this.blockBody = Interpreted19Block.newBlockBody(this);
+        this.bodyNode = body;
     }
 
-    public final int getArgumentType() {
-        return BlockBody.asArgumentType(BlockBody.getArgumentTypeWackyHack(this));
+    /**
+     * Used for all non-for types of blocks.
+     */
+    public IterNode(ISourcePosition position, ArgsNode args, Node body, StaticScope scope) {
+        super(position, args != null && args.containsVariableAssignment || body != null && body.containsVariableAssignment);
+
+        this.varNode = args;
+        this.bodyNode = body == null ? NilImplicitNode.NIL : body;
+        this.scope = scope;
     }
 
     public NodeType getNodeType() {
@@ -94,12 +78,13 @@ public class IterNode extends Node {
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitIterNode(this);
     }
 
-    public Node getBlockVarNode() {
-        return blockVarNode;
+    @Override
+    public ArgsNode getArgsNode() {
+        return (ArgsNode) varNode;
     }
 
     public StaticScope getScope() {
@@ -122,17 +107,11 @@ public class IterNode extends Node {
         return varNode;
     }
     
-    public BlockBody getBlockBody() {
-        return blockBody;
-    }
-    
     public List<Node> childNodes() {
-        return Node.createList(varNode, blockVarNode, bodyNode);
+        return Node.createList(varNode, bodyNode);
     }
-    
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        assert false : "Call nodes deal with these directly";
-        return null;
+
+    public int getEndLine() {
+        return -1;
     }
 }

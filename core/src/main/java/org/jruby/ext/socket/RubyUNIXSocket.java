@@ -12,7 +12,7 @@
  * rights and limitations under the License.
  *
  * Copyright (C) 2008 Ola Bini <ola.bini@gmail.com>
- * 
+ *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
  * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
@@ -36,10 +36,15 @@ import jnr.unixsocket.UnixServerSocket;
 import jnr.unixsocket.UnixServerSocketChannel;
 import jnr.unixsocket.UnixSocketAddress;
 import jnr.unixsocket.UnixSocketChannel;
+import jnr.posix.CmsgHdr;
+import jnr.posix.MsgHdr;
+import jnr.posix.POSIX;
 import org.jruby.Ruby;
 import org.jruby.RubyClass;
 import org.jruby.RubyNumeric;
 import org.jruby.RubyString;
+import org.jruby.RubyIO;
+import org.jruby.RubyFixnum;
 import org.jruby.anno.JRubyClass;
 import org.jruby.anno.JRubyMethod;
 import org.jruby.runtime.Helpers;
@@ -49,13 +54,16 @@ import org.jruby.runtime.Visibility;
 import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.util.ByteList;
 import org.jruby.util.io.BadDescriptorException;
-import org.jruby.util.io.ChannelDescriptor;
-import org.jruby.util.io.ChannelStream;
 import org.jruby.util.io.ModeFlags;
+import org.jruby.util.io.OpenFile;
+import org.jruby.util.io.FilenoUtil;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.nio.channels.Channel;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
 
 @JRubyClass(name="UNIXSocket", parent="BasicSocket")
@@ -69,12 +77,24 @@ public class RubyUNIXSocket extends RubyBasicSocket {
     static void createUNIXSocket(Ruby runtime) {
         RubyClass rb_cUNIXSocket = runtime.defineClass("UNIXSocket", runtime.getClass("BasicSocket"), UNIXSOCKET_ALLOCATOR);
         runtime.getObject().setConstant("UNIXsocket", rb_cUNIXSocket);
-        
+
         rb_cUNIXSocket.defineAnnotatedMethods(RubyUNIXSocket.class);
     }
 
     public RubyUNIXSocket(Ruby runtime, RubyClass type) {
         super(runtime, type);
+    }
+
+    @JRubyMethod(meta = true)
+    public static IRubyObject for_fd(ThreadContext context, IRubyObject recv, IRubyObject _fileno) {
+        Ruby runtime = context.runtime;
+        int fileno = (int)_fileno.convertToInteger().getLongValue();
+
+        RubyClass klass = (RubyClass)recv;
+        RubyUNIXSocket unixSocket = (RubyUNIXSocket)(Helpers.invoke(context, klass, "allocate"));
+        UnixSocketChannel channel = UnixSocketChannel.fromFD(fileno);
+        unixSocket.init_sock(runtime, channel);
+        return unixSocket;
     }
 
     @JRubyMethod(visibility = Visibility.PRIVATE)
@@ -91,20 +111,17 @@ public class RubyUNIXSocket extends RubyBasicSocket {
 
     @JRubyMethod
     public IRubyObject addr(ThreadContext context) {
-        Ruby runtime = context.runtime;
+        final Ruby runtime = context.runtime;
 
-        return runtime.newArray(
-                runtime.newString("AF_UNIX"),
-                RubyString.newEmptyString(runtime));
+        return runtime.newArray( runtime.newString("AF_UNIX"),  RubyString.newEmptyString(runtime) );
     }
 
     @JRubyMethod
     public IRubyObject peeraddr(ThreadContext context) {
-        Ruby runtime = context.runtime;
-
-        return runtime.newArray(
-                runtime.newString("AF_UNIX"),
-                runtime.newString(fpath));
+        final Ruby runtime = context.runtime;
+        final String _path = getUnixRemoteSocket().path();
+        final RubyString path = (_path == null) ? RubyString.newEmptyString(runtime) : runtime.newString(_path);
+        return runtime.newArray( runtime.newString("AF_UNIX"), path );
     }
 
     @JRubyMethod(name = "recvfrom", required = 1, optional = 1)
@@ -136,21 +153,120 @@ public class RubyUNIXSocket extends RubyBasicSocket {
                 peeraddr(context));
     }
 
-    @JRubyMethod(notImplemented = true)
-    public IRubyObject send_io(IRubyObject path) {
-        //TODO: implement, won't do this now
-        return  getRuntime().getNil();
+    @JRubyMethod
+    public IRubyObject send_io(ThreadContext context, IRubyObject arg) {
+        final Ruby runtime = context.runtime;
+        final POSIX posix = runtime.getPosix();
+        OpenFile fptr = getOpenFileChecked();
+        int fd;
+
+        if (arg.callMethod(context, "kind_of?", runtime.getIO()).isTrue()) {
+          fd = ((RubyIO) arg).getOpenFileChecked().getFileno();
+        } else if (arg.callMethod(context, "kind_of?", runtime.getFixnum()).isTrue()) {
+          fd = ((RubyFixnum) arg).getIntValue();
+        } else {
+          throw runtime.newTypeError("neither IO nor file descriptor");
+        }
+
+        if (FilenoUtil.isFake(fd)) {
+          throw runtime.newTypeError("file descriptor is not native");
+        }
+
+        byte[] dataBytes = new byte[1];
+        dataBytes[0] = 0;
+
+        MsgHdr outMessage = posix.allocateMsgHdr();
+
+        ByteBuffer[] outIov = new ByteBuffer[1];
+        outIov[0] = ByteBuffer.allocateDirect(dataBytes.length);
+        outIov[0].put(dataBytes);
+        outIov[0].flip();
+
+        outMessage.setIov(outIov);
+
+        CmsgHdr outControl = outMessage.allocateControl(4);
+        outControl.setLevel(SocketLevel.SOL_SOCKET.intValue());
+        outControl.setType(0x01);
+
+        ByteBuffer fdBuf = ByteBuffer.allocateDirect(4);
+        fdBuf.order(ByteOrder.nativeOrder());
+        fdBuf.putInt(0, fd);
+        outControl.setData(fdBuf);
+
+        boolean locked = fptr.lock();
+        try {
+            while (posix.sendmsg(fptr.getFileno(), outMessage, 0) == -1) {
+                if (!fptr.waitWritable(context)) {
+                    throw runtime.newErrnoFromInt(posix.errno(), "sendmsg(2)");
+                }
+            }
+        } finally {
+            if (locked) fptr.unlock();
+        }
+
+        return runtime.getNil();
     }
 
-    @JRubyMethod(rest = true, notImplemented = true)
-    public IRubyObject recv_io(IRubyObject[] args) {
-        //TODO: implement, won't do this now
-        return  getRuntime().getNil();
+    @JRubyMethod(optional = 2)
+    public IRubyObject recv_io(ThreadContext context, IRubyObject[] args) {
+        final Ruby runtime = context.runtime;
+        final POSIX posix = runtime.getPosix();
+        OpenFile fptr = getOpenFileChecked();
+
+        IRubyObject klass = runtime.getIO();
+        IRubyObject mode = runtime.getNil();
+        if (args.length > 0) {
+            klass = args[0];
+        }
+        if (args.length > 1) {
+            mode = args[1];
+        }
+
+        MsgHdr inMessage = posix.allocateMsgHdr();
+        ByteBuffer[] inIov = new ByteBuffer[1];
+        inIov[0] = ByteBuffer.allocateDirect(1);
+        inMessage.setIov(inIov);
+
+        CmsgHdr inControl = inMessage.allocateControl(4);
+        inControl.setLevel(SocketLevel.SOL_SOCKET.intValue());
+        inControl.setType(0x01);
+
+        ByteBuffer fdBuf = ByteBuffer.allocateDirect(4);
+        fdBuf.order(ByteOrder.nativeOrder());
+        fdBuf.putInt(0, -1);
+        inControl.setData(fdBuf);
+
+        boolean locked = fptr.lock();
+        try {
+            while (posix.recvmsg(fptr.getFileno(), inMessage, 0) == -1) {
+                if (!fptr.waitReadable(context)) {
+                    throw runtime.newErrnoFromInt(posix.errno(), "recvmsg(2)");
+                }
+            }
+        } finally {
+            if (locked) fptr.unlock();
+        }
+
+
+        ByteBuffer inFdBuf = inMessage.getControls()[0].getData();
+        inFdBuf.order(ByteOrder.nativeOrder());
+
+        IRubyObject fd = runtime.newFixnum(inFdBuf.getInt());
+
+        if (klass.isNil()) {
+            return fd;
+        } else {
+            if (mode.isNil()) {
+              return Helpers.invoke(context, klass, "for_fd", fd);
+            } else {
+              return Helpers.invoke(context, klass, "for_fd", fd, mode);
+            }
+        }
     }
 
     @JRubyMethod(name = {"socketpair", "pair"}, optional = 2, meta = true)
     public static IRubyObject socketpair(ThreadContext context, IRubyObject recv, IRubyObject[] args) {
-        Ruby runtime = context.runtime;
+        final Ruby runtime = context.runtime;
 
         // TODO: type and protocol
 
@@ -159,44 +275,24 @@ public class RubyUNIXSocket extends RubyBasicSocket {
         try {
             sp = UnixSocketChannel.pair();
 
-            RubyUNIXSocket sock = (RubyUNIXSocket)(Helpers.invoke(context, runtime.getClass("UNIXSocket"), "allocate"));
-            sock.channel = sp[0];
-            sock.fpath = "";
-            sock.init_sock(runtime);
+            final RubyClass UNIXSocket = runtime.getClass("UNIXSocket");
+            RubyUNIXSocket sock = (RubyUNIXSocket)(Helpers.invoke(context, UNIXSocket, "allocate"));
+            sock.init_sock(runtime, sp[0], "");
 
-            RubyUNIXSocket sock2 = (RubyUNIXSocket)(Helpers.invoke(context, runtime.getClass("UNIXSocket"), "allocate"));
-            sock2.channel = sp[1];
-            sock2.fpath = "";
-            sock2.init_sock(runtime);
+            RubyUNIXSocket sock2 = (RubyUNIXSocket)(Helpers.invoke(context, UNIXSocket, "allocate"));
+            sock2.init_sock(runtime, sp[1], "");
 
             return runtime.newArray(sock, sock2);
 
         } catch (IOException ioe) {
             throw runtime.newIOErrorFromException(ioe);
-
         }
-    }
-
-    @Override
-    public IRubyObject close() {
-        Ruby runtime = getRuntime();
-
-        super.close();
-
-        try {
-            channel.close();
-
-        } catch (IOException ioe) {
-            throw runtime.newIOErrorFromException(ioe);
-        }
-
-        return runtime.getNil();
     }
 
     @Override
     public IRubyObject setsockopt(ThreadContext context, IRubyObject _level, IRubyObject _opt, IRubyObject val) {
-        SocketLevel level = levelFromArg(_level);
-        SocketOption opt = optionFromArg(_opt);
+        SocketLevel level = SocketUtils.levelFromArg(_level);
+        SocketOption opt = SocketUtils.optionFromArg(_opt);
 
         switch(level) {
             case SOL_SOCKET:
@@ -231,7 +327,7 @@ public class RubyUNIXSocket extends RubyBasicSocket {
 
     protected void init_unixsock(Ruby runtime, IRubyObject _path, boolean server) {
         ByteList path = _path.convertToString().getByteList();
-        fpath = Helpers.decodeByteList(runtime, path);
+        String fpath = Helpers.decodeByteList(runtime, path);
 
         int maxSize = 103; // Max size from Darwin, lowest common value we know of
         if (fpath.length() > 103) {
@@ -239,13 +335,15 @@ public class RubyUNIXSocket extends RubyBasicSocket {
         }
 
         try {
-            if(server) {
+            if (server) {
                 UnixServerSocketChannel channel = UnixServerSocketChannel.open();
                 UnixServerSocket socket = channel.socket();
 
+                // TODO: listen backlog
+
                 socket.bind(new UnixSocketAddress(new File(fpath)));
 
-                this.channel = channel;
+                init_sock(runtime, channel, fpath);
 
             } else {
                 File fpathFile = new File(fpath);
@@ -253,51 +351,38 @@ public class RubyUNIXSocket extends RubyBasicSocket {
                 if (!fpathFile.exists()) {
                     throw runtime.newErrnoENOENTError("unix socket");
                 }
-                
+
                 UnixSocketChannel channel = UnixSocketChannel.open();
 
                 channel.connect(new UnixSocketAddress(fpathFile));
 
-                this.channel = channel;
+                init_sock(runtime, channel);
 
             }
 
         } catch (IOException ioe) {
             throw runtime.newIOErrorFromException(ioe);
         }
-
-        if(server) {
-            // TODO: listen backlog
-        }
-
-        init_sock(runtime);
-
-        if(server) {
-            openFile.setPath(fpath);
-        }
     }
 
-    protected void init_sock(Ruby runtime) {
-        try {
-            ModeFlags modes = newModeFlags(runtime, ModeFlags.RDWR);
-            MakeOpenFile();
+    protected void init_sock(Ruby runtime, Channel channel, String path) {
+        MakeOpenFile();
 
-            openFile.setMainStream(ChannelStream.open(runtime, new ChannelDescriptor(channel, modes)));
-            openFile.setPipeStream(openFile.getMainStreamSafe());
-            openFile.setMode(modes.getOpenFileFlags());
-            openFile.getMainStreamSafe().setSync(true);
+        ModeFlags modes = newModeFlags(runtime, ModeFlags.RDWR);
 
-        } catch (BadDescriptorException e) {
-            throw runtime.newErrnoEBADFError();
-        }
+        openFile.setFD(newChannelFD(runtime, channel));
+        openFile.setMode(modes.getOpenFileFlags());
+        openFile.setSync(true);
+        openFile.setPath(path);
     }
 
-    private UnixSocketChannel asUnixSocket() {
-        return (UnixSocketChannel)channel;
+    protected void init_sock(Ruby runtime, Channel channel) {
+        init_sock(runtime, channel, null);
     }
 
-    protected Channel channel;
-    protected String fpath;
+    //private UnixSocketChannel asUnixSocket() {
+    //    return (UnixSocketChannel)getOpenFile().fd().ch;
+    //}
 
     protected final static int F_GETFL = Fcntl.F_GETFL.intValue();
     protected final static int F_SETFL = Fcntl.F_SETFL.intValue();

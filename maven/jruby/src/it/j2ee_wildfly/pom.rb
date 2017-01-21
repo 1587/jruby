@@ -1,8 +1,8 @@
 # it is war-file
 packaging 'war'
 
-# get jruby dependencies
-properties( 'jruby.version' => '@project.version@',
+# default versions will be overwritten by pom.rb from root directory
+properties( 'jruby.plugins.version' => '1.0.10',
             'wildfly.version' => '9.0.2.Final',
             'project.build.sourceEncoding' => 'utf-8' )
 
@@ -14,18 +14,9 @@ gem 'virtus', '0.5.5'
 repository( :url => 'https://otto.takari.io/content/repositories/rubygems/maven/releases',
             :id => 'rubygems-releases' )
 
-jruby_plugin :gem, :includeRubygemsInResources => true do
+jruby_plugin :gem, :includeRubygemsInResources => true, :jrubyVersion => '9.0.0.0' do
   execute_goal :initialize
 end
-
-execute 'jrubydir', 'initialize' do |ctx|
-  require 'jruby/commands'
-  JRuby::Commands.generate_dir_info( ctx.project.build.directory.to_pathname + '/rubygems' )
-end
-
-# ruby-maven will dump an equivalent pom.xml
-properties( 'tesla.dump.pom' => 'pom.xml',
-            'jruby.home' => '../../../../../' )
 
 plugin( 'org.wildfly.plugins:wildfly-maven-plugin:1.0.2.Final' ) do
   execute_goals( :start,
@@ -84,7 +75,7 @@ execute 'check download', :phase => :verify do
     unless result.match( /#{expected}/ )
       raise "missed expected string in download: #{expected}"
     end
-    expected = 'snakeyaml-1.13.0'
+    expected = 'snakeyaml-1.14.0'
     unless result.match( /#{expected}/ )
       raise "missed expected string in download: #{expected}"
     end

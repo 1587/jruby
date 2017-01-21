@@ -31,101 +31,71 @@
  ***** END LICENSE BLOCK *****/
 package org.jruby.ast;
 
+import java.util.ArrayList;
 import java.util.List;
 
-import org.jruby.Ruby;
-import org.jruby.RubyHash;
+import org.jruby.ast.types.ILiteralNode;
 import org.jruby.ast.visitor.NodeVisitor;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.util.TypeConverter;
+import org.jruby.util.KeyValuePair;
 
 /**
  * A Literal Hash that can represent either a {a=&amp;b, c=&amp;d} type expression or the list 
  * of default values in a method call.
  */
-public class HashNode extends Node {
-    private final ListNode listNode;
+public class HashNode extends Node implements ILiteralNode {
+    private final List<KeyValuePair<Node,Node>> pairs;
+
+    public HashNode(ISourcePosition position) {
+        super(position, false);
+
+        pairs = new ArrayList<KeyValuePair<Node,Node>>();
+    }
     
-    public HashNode(ISourcePosition position, ListNode listNode) {
-        super(position);
-        this.listNode = listNode;
+    public HashNode(ISourcePosition position, KeyValuePair<Node,Node> pair) {
+        this(position);
+
+        pairs.add(pair);
     }
 
     public NodeType getNodeType() {
         return NodeType.HASHNODE;
     }
 
+    public HashNode add(KeyValuePair<Node,Node> pair) {
+        if (pair.getKey() != null && pair.getKey().containsVariableAssignment() ||
+                pair.getValue() != null && pair.getValue().containsVariableAssignment()) {
+            containsVariableAssignment = true;
+        }
+        pairs.add(pair);
+
+        return this;
+    }
+
     /**
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitHashNode(this);
     }
 
-    /**
-     * Gets the listNode.
-     * @return Returns a IListNode
-     */
-    public ListNode getListNode() {
-        return listNode;
+    public boolean isEmpty() {
+        return pairs.isEmpty();
     }
-    
+
+    public List<KeyValuePair<Node,Node>> getPairs() {
+        return pairs;
+    }
+
     public List<Node> childNodes() {
-        return createList(listNode);
-    }
-    
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        RubyHash hash;
+        List<Node> children = new ArrayList<Node>();
 
-        ListNode list = this.listNode;
-        if (list != null) {
-            int size = list.size();
-
-            // Enebo: Innefficient impl here should not matter since this interp will not be used in 9k
-            hash = size <= 10 && !runtime.is2_0() ?
-                    RubyHash.newSmallHash(runtime) :
-                    RubyHash.newHash(runtime);
-
-            for (int i = 0; i < size;) {
-                // insert all nodes in sequence, hash them in the final instruction
-                // KEY
-                Node keyNode = list.get(i++);
-                Node valueNode = list.get(i++);
-
-                if (valueNode instanceof NilImplicitNode) {
-                    IRubyObject kwargsVar = keyNode.interpret(runtime, context, self, aBlock);
-                    IRubyObject kwargsHash = TypeConverter.convertToType19(kwargsVar, runtime.getHash(), "to_hash");
-
-                    hash.merge_bang19(context, kwargsHash, aBlock);
-                    continue;
-                } 
-                    
-                IRubyObject key = keyNode.interpret(runtime, context, self, aBlock);
-                IRubyObject value = valueNode.interpret(runtime, context, self, aBlock);
-
-                if (size <= 10) {
-                    asetSmall(runtime, hash, key, value);
-                } else {
-                    aset(runtime, hash, key, value);
-                }
-            }
-        } else {
-            hash = RubyHash.newSmallHash(runtime);
+        for (KeyValuePair<Node,Node> pair: pairs) {
+            children.add(pair.getKey());
+            children.add(pair.getValue());
         }
-      
-        return hash;
-    }
-    
-    protected void aset(Ruby runtime, RubyHash hash, IRubyObject key, IRubyObject value) {
-        hash.fastASetCheckString(runtime, key, value);
-    }
 
-    protected void asetSmall(Ruby runtime, RubyHash hash, IRubyObject key, IRubyObject value) {
-        hash.fastASetSmallCheckString(runtime, key, value);
+        return children;
     }
 }

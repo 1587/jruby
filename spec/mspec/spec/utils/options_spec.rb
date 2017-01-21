@@ -320,8 +320,8 @@ describe MSpecOptions, "#parse" do
 
   it "raises MSpecOptions::ParseError if passed an unrecognized option" do
     @opt.should_receive(:raise).with(MSpecOptions::ParseError, an_instance_of(String))
-    @opt.stub!(:puts)
-    @opt.stub!(:exit)
+    @opt.stub(:puts)
+    @opt.stub(:exit)
     @opt.parse "-u"
   end
 end
@@ -538,7 +538,7 @@ describe "The -t, --target TARGET option" do
   end
 
   it "is enabled with #targets" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("-t", "--target", "TARGET",
         an_instance_of(String))
     @options.targets
@@ -604,6 +604,16 @@ describe "The -t, --target TARGET option" do
     end
   end
 
+  it "sets the target to 'topaz' with TARGET 't' or 'topaz'" do
+    ["-t", "--target"].each do |opt|
+      ["t", "topaz"].each do |t|
+        @config[:target] = nil
+        @options.parse [opt, t]
+        @config[:target].should == "topaz"
+      end
+    end
+  end
+
   it "sets the target to TARGET" do
     ["-t", "--target"].each do |opt|
       @config[:target] = nil
@@ -620,7 +630,7 @@ describe "The -T, --target-opt OPT option" do
   end
 
   it "is enabled with #targets" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("-T", "--target-opt", "OPT",
         an_instance_of(String))
     @options.targets
@@ -642,7 +652,7 @@ describe "The -I, --include DIR option" do
   end
 
   it "is enabled with #targets" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("-I", "--include", "DIR",
         an_instance_of(String))
     @options.targets
@@ -664,7 +674,7 @@ describe "The -r, --require LIBRARY option" do
   end
 
   it "is enabled with #targets" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("-r", "--require", "LIBRARY",
         an_instance_of(String))
     @options.targets
@@ -686,7 +696,7 @@ describe "The -f, --format FORMAT option" do
   end
 
   it "is enabled with #formatters" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("-f", "--format", "FORMAT",
         an_instance_of(String))
     @options.formatters
@@ -810,7 +820,7 @@ describe "The -o, --output FILE option" do
   end
 
   it "is enabled with #formatters" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("-o", "--output", "FILE",
         an_instance_of(String))
     @options.formatters
@@ -832,7 +842,7 @@ describe "The -e, --example STR" do
   end
 
   it "is enabled with #filters" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("-e", "--example", "STR",
         an_instance_of(String))
     @options.filters
@@ -854,7 +864,7 @@ describe "The -E, --exclude STR" do
   end
 
   it "is enabled with #filters" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("-E", "--exclude", "STR",
         an_instance_of(String))
     @options.filters
@@ -876,7 +886,7 @@ describe "The -p, --pattern PATTERN" do
   end
 
   it "is enabled with #filters" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("-p", "--pattern", "PATTERN",
         an_instance_of(String))
     @options.filters
@@ -898,7 +908,7 @@ describe "The -P, --excl-pattern PATTERN" do
   end
 
   it "is enabled with #filters" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("-P", "--excl-pattern", "PATTERN",
         an_instance_of(String))
     @options.filters
@@ -920,7 +930,7 @@ describe "The -g, --tag TAG" do
   end
 
   it "is enabled with #filters" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("-g", "--tag", "TAG",
         an_instance_of(String))
     @options.filters
@@ -942,7 +952,7 @@ describe "The -G, --excl-tag TAG" do
   end
 
   it "is enabled with #filters" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("-G", "--excl-tag", "TAG",
         an_instance_of(String))
     @options.filters
@@ -964,7 +974,7 @@ describe "The -w, --profile FILE option" do
   end
 
   it "is enabled with #filters" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("-w", "--profile", "FILE",
         an_instance_of(String))
     @options.filters
@@ -986,7 +996,7 @@ describe "The -W, --excl-profile FILE option" do
   end
 
   it "is enabled with #filters" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("-W", "--excl-profile", "FILE",
         an_instance_of(String))
     @options.filters
@@ -1044,7 +1054,7 @@ describe "The --unguarded option" do
   end
 
   it "is enabled with #unguarded" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("--unguarded", an_instance_of(String))
     @options.unguarded
   end
@@ -1062,7 +1072,7 @@ describe "The --no-ruby_guard option" do
   end
 
   it "is enabled with #unguarded" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("--no-ruby_bug", an_instance_of(String))
     @options.unguarded
   end
@@ -1123,7 +1133,7 @@ describe "The -V, --verbose option" do
   end
 
   it "is enabled with #verbose" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("-V", "--verbose", an_instance_of(String))
     @options.verbose
   end
@@ -1144,7 +1154,7 @@ describe "The -m, --marker MARKER option" do
   end
 
   it "is enabled with #verbose" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("-m", "--marker", "MARKER",
         an_instance_of(String))
     @options.verbose
@@ -1183,7 +1193,7 @@ describe "The -Y, --verify option" do
   end
 
   it "is enabled with #interrupt" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("-Y", "--verify", an_instance_of(String))
     @options.verify
   end
@@ -1203,7 +1213,7 @@ describe "The -O, --report option" do
   end
 
   it "is enabled with #interrupt" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("-O", "--report", an_instance_of(String))
     @options.verify
   end
@@ -1218,7 +1228,7 @@ end
 
 describe "The --report-on GUARD option" do
   before :all do
-    MSpec.stub!(:register_mode)
+    MSpec.stub(:register_mode)
   end
 
   before :each do
@@ -1233,7 +1243,7 @@ describe "The --report-on GUARD option" do
   end
 
   it "is enabled with #interrupt" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("--report-on", "GUARD", an_instance_of(String))
     @options.verify
   end
@@ -1244,7 +1254,7 @@ describe "The --report-on GUARD option" do
   end
 
   it "converts the guard name to a symbol" do
-    name = mock("ruby_bug")
+    name = double("ruby_bug")
     name.should_receive(:to_sym)
     @options.parse ["--report-on", name]
   end
@@ -1262,7 +1272,7 @@ describe "The -K, --action-tag TAG option" do
   end
 
   it "is enabled with #action_filters" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("-K", "--action-tag", "TAG",
         an_instance_of(String))
     @options.action_filters
@@ -1284,7 +1294,7 @@ describe "The -S, --action-string STR option" do
   end
 
   it "is enabled with #action_filters" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("-S", "--action-string", "STR",
         an_instance_of(String))
     @options.action_filters
@@ -1299,50 +1309,6 @@ describe "The -S, --action-string STR option" do
   end
 end
 
-describe "The --spec-debug option" do
-  before :each do
-    @options, @config = new_option
-    @options.actions
-  end
-
-  it "is enabled with #actions" do
-    @options.stub!(:on)
-    @options.should_receive(:on).with("--spec-debug", an_instance_of(String))
-    @options.actions
-  end
-
-  it "enables the triggering the ruby debugger" do
-    @options.action_filters
-    @options.parse ["-S", "some spec"]
-
-    @config[:debugger] = nil
-    @options.parse "--spec-debug"
-    @config[:debugger].should == true
-  end
-end
-
-describe "The --spec-gdb option" do
-  before :each do
-    @options, @config = new_option
-    @options.actions
-  end
-
-  it "is enabled with #actions" do
-    @options.stub!(:on)
-    @options.should_receive(:on).with("--spec-gdb", an_instance_of(String))
-    @options.actions
-  end
-
-  it "enables triggering the gdb debugger" do
-    @options.action_filters
-    @options.parse ["-S", "some spec"]
-
-    @config[:gdb] = nil
-    @options.parse "--spec-gdb"
-    @config[:gdb].should == true
-  end
-end
-
 describe "The -d, --debug option" do
   before :each do
     @options, @config = new_option
@@ -1354,7 +1320,7 @@ describe "The -d, --debug option" do
   end
 
   it "is enabled with #debug" do
-    @options.stub!(:on)
+    @options.stub(:on)
     @options.should_receive(:on).with("-d", "--debug", an_instance_of(String))
     @options.debug
   end

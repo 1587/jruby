@@ -1,5 +1,4 @@
 require File.expand_path('../../../spec_helper', __FILE__)
-require File.expand_path('../fixtures/common', __FILE__)
 require 'tempfile'
 
 describe "Tempfile#open" do
@@ -9,7 +8,7 @@ describe "Tempfile#open" do
   end
 
   after :each do
-    TempfileSpecs.cleanup @tempfile
+    @tempfile.close!
   end
 
   it "reopens self" do
@@ -29,7 +28,7 @@ end
 
 describe "Tempfile.open" do
   after :each do
-    TempfileSpecs.cleanup @tempfile
+    @tempfile.close! if @tempfile
   end
 
   it "returns a new, open Tempfile instance" do
@@ -38,11 +37,9 @@ describe "Tempfile.open" do
     @tempfile.instance_of?(Tempfile).should be_true
   end
 
-  ruby_version_is "1.8.7" do
-    it "is passed an array [base, suffix] as first argument" do
-      Tempfile.open(["specs", ".tt"]) { |tempfile| @tempfile = tempfile }
-      @tempfile.path.should =~ /specs.*\.tt$/
-    end
+  it "is passed an array [base, suffix] as first argument" do
+    Tempfile.open(["specs", ".tt"]) { |tempfile| @tempfile = tempfile }
+    @tempfile.path.should =~ /specs.*\.tt$/
   end
 end
 
@@ -52,7 +49,8 @@ describe "Tempfile.open when passed a block" do
   end
 
   after :each do
-    TempfileSpecs.cleanup @tempfile
+    # Tempfile.open with block does not unlink
+    @tempfile.close! if @tempfile
   end
 
   it "yields a new, open Tempfile instance to the block" do
@@ -67,25 +65,15 @@ describe "Tempfile.open when passed a block" do
 
     ScratchPad.recorded.should == :yielded
   end
-  
-  ruby_version_is ""..."1.9" do
-    it "returns nil" do
-      value = Tempfile.open("specs") do |tempfile|
-        true
-      end
-      value.should be_nil
+
+  it "returns the value of the block" do
+    value = Tempfile.open("specs") do |tempfile|
+      @tempfile = tempfile
+      "return"
     end
+    value.should == "return"
   end
 
-  ruby_version_is "1.9" do
-    it "returns the value of the block" do
-      value = Tempfile.open("specs") do |tempfile|
-        "return"
-      end
-      value.should == "return"
-    end
-  end
-  
   it "closes the yielded Tempfile after the block" do
     Tempfile.open("specs") { |tempfile| @tempfile = tempfile }
     @tempfile.closed?.should be_true

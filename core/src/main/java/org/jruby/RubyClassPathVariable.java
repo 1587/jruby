@@ -51,7 +51,7 @@ public class RubyClassPathVariable extends RubyObject {
     private RubyClassPathVariable(Ruby runtime) {
         super(runtime, runtime.getObject());
     }
-
+    
     @Deprecated
     public IRubyObject append(IRubyObject obj) {
         return append(obj.getRuntime().getCurrentContext(), obj);
@@ -66,20 +66,18 @@ public class RubyClassPathVariable extends RubyObject {
             paths = context.runtime.newArray(obj).toJavaArray();
         }
 
-        boolean is1_8 = context.getRuntime().is1_8();
         for (IRubyObject path: paths) {
             try {
                 URL url = getURL(path.convertToString().toString());
                 if (url.getProtocol().equals("file")) {
-                    path = is1_8 ? RubyFile.expand_path(context, null, new IRubyObject[]{ path })
-                            : RubyFile.expand_path19(context, null, new IRubyObject[]{ path });
+                    path = RubyFile.expand_path19(context, null, new IRubyObject[]{ path });
                     url = getURL(path.convertToString().toString());
                 }
                 getRuntime().getJRubyClassLoader().addURL(url);
             } catch (MalformedURLException mue) {
                 throw getRuntime().newArgumentError(mue.getLocalizedMessage());
             }
-
+            
         }
         return this;
     }
@@ -93,7 +91,7 @@ public class RubyClassPathVariable extends RubyObject {
             File f = new File(target);
             String path = target;
             if (f.exists() && f.isDirectory() && !path.endsWith("/")) {
-                // URLClassLoader requires that directores end with slashes
+                // URLClassLoader requires that directories end with slashes
                 path = path + '/';
             }
             return new URL("file", null, path);

@@ -11,7 +11,6 @@ public interface ConfigMBean {
     public int getJitMax();
     public int getJitMaxSize();
     public boolean isRunRubyInProcess();
-    public String getCompatVersion();
     public String getCurrentDirectory();
     public boolean isObjectSpaceEnabled();
     public String getEnvironment();
@@ -34,7 +33,9 @@ public interface ConfigMBean {
     public String getOptionGlobals();
     public boolean isManagementEnabled();
     public boolean isFullTraceEnabled();
-    public boolean isLazyHandlesEnabled();
     public boolean isShowBytecode();
     public String getExcludedMethods();
+
+    @Deprecated
+    public String getCompatVersion();
 }

@@ -33,21 +33,14 @@ package org.jruby.ast;
 
 import java.util.List;
 
-import org.jruby.Ruby;
-import org.jruby.RubyString;
 import org.jruby.ast.types.INameNode;
 import org.jruby.ast.visitor.NodeVisitor;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.util.ByteList;
-import org.jruby.util.DefinedMessage;
 
 /**
  * Access a local variable 
  */
-public class LocalVarNode extends Node implements INameNode {
+public class LocalVarNode extends Node implements INameNode, IScopedNode, SideEffectFree {
     // The name of the variable
     private String name;
     
@@ -56,12 +49,9 @@ public class LocalVarNode extends Node implements INameNode {
     private final int location;
 
     public LocalVarNode(ISourcePosition position, int location, String name) {
-        super(position);
+        super(position, false);
         this.location = location;
         this.name = name;
-        long blah;
-        
-        blah = System.currentTimeMillis();
     }
 
     public NodeType getNodeType() {
@@ -72,7 +62,7 @@ public class LocalVarNode extends Node implements INameNode {
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitLocalVarNode(this);
     }
 
@@ -117,15 +107,7 @@ public class LocalVarNode extends Node implements INameNode {
     }
 
     @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        //        System.out.println("DGetting: " + iVisited.getName() + " at index " + iVisited.getIndex() + " and at depth " + iVisited.getDepth());
-        IRubyObject result = context.getCurrentScope().getValue(getIndex(), getDepth());
-
-        return result == null ? runtime.getNil() : result;
-    }
-    
-    @Override
-    public RubyString definition(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        return runtime.getDefinedMessage(DefinedMessage.LOCAL_VARIABLE);
+    public boolean needsDefinitionCheck() {
+        return false;
     }
 }

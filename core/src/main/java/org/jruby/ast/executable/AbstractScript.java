@@ -5,10 +5,8 @@
 
 package org.jruby.ast.executable;
 
-import java.math.BigInteger;
 import org.jcodings.Encoding;
 import org.jcodings.EncodingDB;
-import org.jruby.Ruby;
 import org.jruby.RubyFixnum;
 import org.jruby.RubyFloat;
 import org.jruby.RubyModule;
@@ -18,13 +16,13 @@ import org.jruby.RubySymbol;
 import org.jruby.internal.runtime.methods.DynamicMethod;
 import org.jruby.parser.StaticScope;
 import org.jruby.runtime.Block;
-import org.jruby.runtime.BlockBody;
-import org.jruby.runtime.CompiledBlockCallback;
 import org.jruby.runtime.CallSite;
 import org.jruby.runtime.MethodIndex;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.util.ByteList;
+
+import java.math.BigInteger;
 
 /**
  *
@@ -105,46 +103,6 @@ public abstract class AbstractScript implements Script {
     public final CallSite getCallSite8() {return runtimeCache.callSites[8];}
     public final CallSite getCallSite9() {return runtimeCache.callSites[9];}
 
-    public static final int NUMBERED_BLOCKBODY_COUNT = 10;
-
-    public final BlockBody getBlockBody(ThreadContext context, StaticScope scope, int i, String descriptor) {return runtimeCache.getBlockBody(this, context, scope, i, descriptor);}
-    public final BlockBody getBlockBody0(ThreadContext context, StaticScope scope, String descriptor) {return runtimeCache.getBlockBody(this, context, scope, 0, descriptor);}
-    public final BlockBody getBlockBody1(ThreadContext context, StaticScope scope, String descriptor) {return runtimeCache.getBlockBody(this, context, scope, 1, descriptor);}
-    public final BlockBody getBlockBody2(ThreadContext context, StaticScope scope, String descriptor) {return runtimeCache.getBlockBody(this, context, scope, 2, descriptor);}
-    public final BlockBody getBlockBody3(ThreadContext context, StaticScope scope, String descriptor) {return runtimeCache.getBlockBody(this, context, scope, 3, descriptor);}
-    public final BlockBody getBlockBody4(ThreadContext context, StaticScope scope, String descriptor) {return runtimeCache.getBlockBody(this, context, scope, 4, descriptor);}
-    public final BlockBody getBlockBody5(ThreadContext context, StaticScope scope, String descriptor) {return runtimeCache.getBlockBody(this, context, scope, 5, descriptor);}
-    public final BlockBody getBlockBody6(ThreadContext context, StaticScope scope, String descriptor) {return runtimeCache.getBlockBody(this, context, scope, 6, descriptor);}
-    public final BlockBody getBlockBody7(ThreadContext context, StaticScope scope, String descriptor) {return runtimeCache.getBlockBody(this, context, scope, 7, descriptor);}
-    public final BlockBody getBlockBody8(ThreadContext context, StaticScope scope, String descriptor) {return runtimeCache.getBlockBody(this, context, scope, 8, descriptor);}
-    public final BlockBody getBlockBody9(ThreadContext context, StaticScope scope, String descriptor) {return runtimeCache.getBlockBody(this, context, scope, 9, descriptor);}
-
-    public final BlockBody getBlockBody19(ThreadContext context, StaticScope scope, int i, String descriptor) {return runtimeCache.getBlockBody19(this, context, scope, i, descriptor);}
-    public final BlockBody getBlockBody190(ThreadContext context, StaticScope scope, String descriptor) {return runtimeCache.getBlockBody19(this, context, scope, 0, descriptor);}
-    public final BlockBody getBlockBody191(ThreadContext context, StaticScope scope, String descriptor) {return runtimeCache.getBlockBody19(this, context, scope, 1, descriptor);}
-    public final BlockBody getBlockBody192(ThreadContext context, StaticScope scope, String descriptor) {return runtimeCache.getBlockBody19(this, context, scope, 2, descriptor);}
-    public final BlockBody getBlockBody193(ThreadContext context, StaticScope scope, String descriptor) {return runtimeCache.getBlockBody19(this, context, scope, 3, descriptor);}
-    public final BlockBody getBlockBody194(ThreadContext context, StaticScope scope, String descriptor) {return runtimeCache.getBlockBody19(this, context, scope, 4, descriptor);}
-    public final BlockBody getBlockBody195(ThreadContext context, StaticScope scope, String descriptor) {return runtimeCache.getBlockBody19(this, context, scope, 5, descriptor);}
-    public final BlockBody getBlockBody196(ThreadContext context, StaticScope scope, String descriptor) {return runtimeCache.getBlockBody19(this, context, scope, 6, descriptor);}
-    public final BlockBody getBlockBody197(ThreadContext context, StaticScope scope, String descriptor) {return runtimeCache.getBlockBody19(this, context, scope, 7, descriptor);}
-    public final BlockBody getBlockBody198(ThreadContext context, StaticScope scope, String descriptor) {return runtimeCache.getBlockBody19(this, context, scope, 8, descriptor);}
-    public final BlockBody getBlockBody199(ThreadContext context, StaticScope scope, String descriptor) {return runtimeCache.getBlockBody19(this, context, scope, 9, descriptor);}
-
-    public static final int NUMBERED_BLOCKCALLBACK_COUNT = 10;
-
-    public final CompiledBlockCallback getBlockCallback(int i, String method) {return runtimeCache.getBlockCallback(this, i, method);}
-    public final CompiledBlockCallback getBlockCallback0(String method) {return runtimeCache.getBlockCallback(this, 0, method);}
-    public final CompiledBlockCallback getBlockCallback1(String method) {return runtimeCache.getBlockCallback(this, 1, method);}
-    public final CompiledBlockCallback getBlockCallback2(String method) {return runtimeCache.getBlockCallback(this, 2, method);}
-    public final CompiledBlockCallback getBlockCallback3(String method) {return runtimeCache.getBlockCallback(this, 3, method);}
-    public final CompiledBlockCallback getBlockCallback4(String method) {return runtimeCache.getBlockCallback(this, 4, method);}
-    public final CompiledBlockCallback getBlockCallback5(String method) {return runtimeCache.getBlockCallback(this, 5, method);}
-    public final CompiledBlockCallback getBlockCallback6(String method) {return runtimeCache.getBlockCallback(this, 6, method);}
-    public final CompiledBlockCallback getBlockCallback7(String method) {return runtimeCache.getBlockCallback(this, 7, method);}
-    public final CompiledBlockCallback getBlockCallback8(String method) {return runtimeCache.getBlockCallback(this, 8, method);}
-    public final CompiledBlockCallback getBlockCallback9(String method) {return runtimeCache.getBlockCallback(this, 9, method);}
-
     public static final int NUMBERED_SYMBOL_COUNT = 10;
 
     public final RubySymbol getSymbol(ThreadContext context, int i, String name, String encoding) {return runtimeCache.getSymbol(context, i, name, encoding);}
@@ -172,6 +130,18 @@ public abstract class AbstractScript implements Script {
     public final RubyString getString7(ThreadContext context, int codeRange) {return runtimeCache.getString(context, 7, codeRange);}
     public final RubyString getString8(ThreadContext context, int codeRange) {return runtimeCache.getString(context, 8, codeRange);}
     public final RubyString getString9(ThreadContext context, int codeRange) {return runtimeCache.getString(context, 9, codeRange);}
+
+    public final RubyString getFrozenString(ThreadContext context, int i, int j, int codeRange) {return runtimeCache.getFrozenString(context, i, j, codeRange);}
+    public final RubyString getFrozenString0(ThreadContext context, int j, int codeRange) {return runtimeCache.getFrozenString(context, 0, j, codeRange);}
+    public final RubyString getFrozenString1(ThreadContext context, int j, int codeRange) {return runtimeCache.getFrozenString(context, 1, j, codeRange);}
+    public final RubyString getFrozenString2(ThreadContext context, int j, int codeRange) {return runtimeCache.getFrozenString(context, 2, j, codeRange);}
+    public final RubyString getFrozenString3(ThreadContext context, int j, int codeRange) {return runtimeCache.getFrozenString(context, 3, j, codeRange);}
+    public final RubyString getFrozenString4(ThreadContext context, int j, int codeRange) {return runtimeCache.getFrozenString(context, 4, j, codeRange);}
+    public final RubyString getFrozenString5(ThreadContext context, int j, int codeRange) {return runtimeCache.getFrozenString(context, 5, j, codeRange);}
+    public final RubyString getFrozenString6(ThreadContext context, int j, int codeRange) {return runtimeCache.getFrozenString(context, 6, j, codeRange);}
+    public final RubyString getFrozenString7(ThreadContext context, int j, int codeRange) {return runtimeCache.getFrozenString(context, 7, j, codeRange);}
+    public final RubyString getFrozenString8(ThreadContext context, int j, int codeRange) {return runtimeCache.getFrozenString(context, 8, j, codeRange);}
+    public final RubyString getFrozenString9(ThreadContext context, int j, int codeRange) {return runtimeCache.getFrozenString(context, 9, j, codeRange);}
 
     public final ByteList getByteList(int i) {return runtimeCache.getByteList(i);}
     public final ByteList getByteList0() {return runtimeCache.getByteList(0);}

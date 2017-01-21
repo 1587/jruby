@@ -6,7 +6,8 @@ describe "GzipReader#read" do
 
   before :each do
     @data = '12345abcde'
-    @zip = "\037\213\b\000,\334\321G\000\00334261MLJNI\005\000\235\005\000$\n\000\000\000"
+    @zip = [31, 139, 8, 0, 44, 220, 209, 71, 0, 3, 51, 52, 50, 54, 49, 77,
+            76, 74, 78, 73, 5, 0, 157, 5, 0, 36, 10, 0, 0, 0].pack('C*')
     @io = StringIO.new @zip
   end
 
@@ -37,16 +38,14 @@ describe "GzipReader#read" do
     gz = Zlib::GzipReader.new @io
     gz.read(0).should == ""
   end
-  
-  ruby_version_is "1.9" do
-    it "respects :external_encoding option" do
-      gz = Zlib::GzipReader.new(@io, :external_encoding => 'UTF-8')
-      gz.read.encoding.should == Encoding::UTF_8
-      
-      @io.rewind
-      gz = Zlib::GzipReader.new(@io, :external_encoding => 'UTF-16LE')
-      gz.read.encoding.should == Encoding::UTF_16LE
-    end
+
+  it "respects :external_encoding option" do
+    gz = Zlib::GzipReader.new(@io, external_encoding: 'UTF-8')
+    gz.read.encoding.should == Encoding::UTF_8
+
+    @io.rewind
+    gz = Zlib::GzipReader.new(@io, external_encoding: 'UTF-16LE')
+    gz.read.encoding.should == Encoding::UTF_16LE
   end
 
   describe "at the end of data" do

@@ -1,4 +1,4 @@
-describe :process_exit, :shared => true do
+describe :process_exit, shared: true do
   it "raises a SystemExit with status 0" do
     lambda { @object.exit }.should raise_error(SystemExit) { |e|
       e.status.should == 0
@@ -43,22 +43,52 @@ describe :process_exit, :shared => true do
     lambda { @object.exit([0]) }.should raise_error(TypeError)
     lambda { @object.exit(nil) }.should raise_error(TypeError)
   end
+
+  it "raises the SystemExit in the main thread if it reaches the top-level handler of another thread" do
+    ScratchPad.record []
+
+    ready = false
+    t = Thread.new {
+      Thread.pass until ready
+
+      begin
+        @object.exit 42
+      rescue SystemExit => e
+        ScratchPad << :in_thread
+        raise e
+      end
+    }
+
+    begin
+      ready = true
+      sleep
+    rescue SystemExit
+      ScratchPad << :in_main
+    end
+
+    ScratchPad.recorded.should == [:in_thread, :in_main]
+
+    # the thread also keeps the exception as its value
+    lambda { t.value }.should raise_error(SystemExit)
+  end
 end
 
-describe :process_exit!, :shared => true do
-  platform_is_not :windows do
+describe :process_exit!, shared: true do
+  with_feature :fork do
     it "exits with the given status" do
       pid = Process.fork { @object.exit!(1) }
       pid, status = Process.waitpid2(pid)
       status.exitstatus.should == 1
     end
 
-    it "exits immediately when called from a thread" do
+    it "exits when called from a thread" do
       pid = Process.fork do
-        Thread.new { @object.exit!(1) }
-        sleep 1
-        Process.exit!(2)
+        Thread.new { @object.exit!(1) }.join
+
+        # Do not let the main thread complete
+        sleep
       end
+
       pid, status = Process.waitpid2(pid)
       status.exitstatus.should == 1
     end

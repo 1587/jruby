@@ -33,15 +33,9 @@
 package org.jruby.ast;
 
 import org.jcodings.Encoding;
-import org.jruby.Ruby;
-import org.jruby.RubyRegexp;
-import org.jruby.RubyString;
 import org.jruby.ast.types.ILiteralNode;
 import org.jruby.ast.visitor.NodeVisitor;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.util.RegexpOptions;
 
 /**
@@ -50,12 +44,6 @@ import org.jruby.util.RegexpOptions;
  */
 public class DRegexpNode extends DNode implements ILiteralNode {
     private final RegexpOptions options;
-    private RubyRegexp onceRegexp;
-
-    // 1.8 constructor
-    public DRegexpNode(ISourcePosition position, RegexpOptions options) {
-        this(position, options, null);
-    }
 
     // 1.9 constructor
     public DRegexpNode(ISourcePosition position, RegexpOptions options, Encoding encoding) {
@@ -73,7 +61,7 @@ public class DRegexpNode extends DNode implements ILiteralNode {
      * @param iVisitor the visitor
      **/
     @Override
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitDRegxNode(this);
     }
 
@@ -90,40 +78,5 @@ public class DRegexpNode extends DNode implements ILiteralNode {
      */
     public RegexpOptions getOptions() {
         return options;
-    }
-    
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        if (getOnce() && onceRegexp != null) return onceRegexp;
-
-        RubyString string;
-        
-        if (runtime.is1_9()) {
-            string = buildDRegexpString19(runtime, context, self, aBlock);
-        } else {
-            string = buildDynamicString(runtime, context, self, aBlock);
-        }
-
-        RubyRegexp regexp = RubyRegexp.newDRegexp(runtime, string, options);
-        
-        if (getOnce() && onceRegexp == null) onceRegexp = regexp;
-
-        return regexp;
-    }
-
-    private RubyString buildDRegexpString19(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        RubyString string = null;
-
-        int size = size();
-        RubyString[] strings = new RubyString[size];
-        for (int i = 0; i < size; i++) {
-            strings[i] = getString(runtime, context, self, aBlock, string, get(i));
-        }
-        
-        return RubyRegexp.preprocessDRegexp(runtime, strings, options);
-    }
-
-    public RubyString getString(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock, RubyString string, Node node) {
-        return node.interpret(runtime, context, self, aBlock).convertToString();
     }
 }

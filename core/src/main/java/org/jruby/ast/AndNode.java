@@ -33,15 +33,8 @@ package org.jruby.ast;
 
 import java.util.List;
 
-import org.jruby.Ruby;
-import org.jruby.RubyString;
 import org.jruby.ast.visitor.NodeVisitor;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.util.ByteList;
-import org.jruby.util.DefinedMessage;
 
 /** 
  * Represents a && (and) operator.
@@ -51,7 +44,7 @@ public class AndNode extends Node implements BinaryOperatorNode {
     private final Node secondNode;
 
     public AndNode(ISourcePosition position, Node firstNode, Node secondNode) {
-        super(position);
+        super(position, firstNode.containsVariableAssignment() || secondNode.containsVariableAssignment());
         
         assert firstNode != null : "AndNode.first == null";
         assert secondNode != null : "AndNode.second == null";
@@ -64,7 +57,7 @@ public class AndNode extends Node implements BinaryOperatorNode {
         return NodeType.ANDNODE;
     }
 
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitAndNode(this);
     }
 
@@ -86,23 +79,5 @@ public class AndNode extends Node implements BinaryOperatorNode {
     
     public List<Node> childNodes() {
         return Node.createList(firstNode, secondNode);
-    }
-    
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        IRubyObject result = firstNode.interpret(runtime, context, self, aBlock);
-        
-        if (!result.isTrue()) return result;
-        
-        return secondNode.interpret(runtime, context, self, aBlock);
-    }
-
-    @Override
-    public RubyString definition(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        if (!context.runtime.is1_9()) {
-            return super.definition(runtime, context, self, aBlock);
-        } else {
-            return runtime.getDefinedMessage(DefinedMessage.EXPRESSION);
-        }
     }
 }

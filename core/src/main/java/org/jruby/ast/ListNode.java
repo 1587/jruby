@@ -29,7 +29,7 @@
  ***** END LICENSE BLOCK *****/
 package org.jruby.ast;
 
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import org.jruby.ast.visitor.NodeVisitor;
 import org.jruby.lexer.yacc.ISourcePosition;
@@ -41,58 +41,76 @@ import org.jruby.lexer.yacc.ISourcePosition;
  * the editor projects who want position info saved.
  */
 public class ListNode extends Node {
-    private List<Node> list;
+    private static final Node[] EMPTY = new Node[0];
+    private static final int INITIAL_SIZE = 4;
+    private Node[] list;
+    private int size = 0;
 
     /**
      * Create a new ListNode.
      * 
-     * @param id type of listnode
+     * @param position where list is
      * @param firstNode first element of the list
      */
     public ListNode(ISourcePosition position, Node firstNode) {
-        this(position);
+        super(position, firstNode != null && firstNode.containsVariableAssignment);
         
-        list = new ArrayList<Node>(4);
-        list.add(firstNode);
+        list = new Node[INITIAL_SIZE];
+        addInternal(firstNode);
     }
     
     public ListNode(ISourcePosition position) {
-        super(position);
+        super(position, false);
         
-        list = new ArrayList<Node>(0);
+        list = EMPTY;
     }
 
     public NodeType getNodeType() {
         return NodeType.LISTNODE;
     }
+
+    protected void growList(int mustBeDelta) {
+        int newSize = list.length * 2;
+        // Fairly arbitrary to scale 1.5 here but this means we are adding a lot so I think
+        // we can taper the multiplier
+        if (size + mustBeDelta >= newSize) newSize = (int) ((size + mustBeDelta) * 1.5);
+
+        Node[] newList = new Node[newSize];
+        System.arraycopy(list, 0, newList, 0, size);
+        list = newList;
+    }
+
+    protected void addInternal(Node node) {
+        if (size >= list.length) growList(1);
+
+        list[size++] = node;
+    }
+
+    protected void addAllInternal(ListNode other) {
+        if (size + other.size() >= list.length) growList(other.size);
+
+        System.arraycopy(other.list, 0, list, size, other.size);
+        size += other.size;
+    }
     
     public ListNode add(Node node) {
         // Ruby Grammar productions return plenty of nulls.
         if (node == null || node == NilImplicitNode.NIL) {
-            list.add(NilImplicitNode.NIL);
+            addInternal(NilImplicitNode.NIL);
 
             return this;
         }
 
-        list.add(node);
+        if (node.containsVariableAssignment()) containsVariableAssignment = true;
+        addInternal(node);
 
         if (getPosition() == null) setPosition(node.getPosition());
 
         return this;
     }
     
-    public ListNode prepend(Node node) {
-        // Ruby Grammar productions return plenty of nulls.
-        if (node == null) return this;
-        
-        list.add(0, node);
-        
-        setPosition(node.getPosition());
-        return this;
-    }
-    
     public int size() {
-        return list.size();
+        return size;
     }
     
     
@@ -104,10 +122,19 @@ public class ListNode extends Node {
      */
     public ListNode addAll(ListNode other) {
         if (other != null && other.size() > 0) {
-            list.addAll(other.list);
+            if (other.containsVariableAssignment()) containsVariableAssignment = true;
+            addAllInternal(other);
 
             if (getPosition() == null) setPosition(other.getPosition());
         }
+        return this;
+    }
+
+    public ListNode addAll(Node[] other, int index, int length) {
+        for (int i = 0; i < length; i++) {
+            addInternal(other[index + i]);
+        }
+
         return this;
     }
     
@@ -122,18 +149,29 @@ public class ListNode extends Node {
     }
     
     public Node getLast() {
-    	return list.size() == 0 ? null : list.get(list.size() - 1);
+    	return size == 0 ? null : list[size - 1];
     }
-    
+
+    public boolean isEmpty() {
+        return size == 0;
+    }
+
+    public Node[] children() {
+        Node[] properList = new Node[size];
+        System.arraycopy(list, 0, properList, 0, size);
+        return properList;
+    }
+
+    @Deprecated
     public List<Node> childNodes() {
-        return list;
+        return Arrays.asList(children());
     }
     
-    public Object accept(NodeVisitor visitor) {
+    public <T> T accept(NodeVisitor<T> visitor) {
         return visitor.visitListNode(this);
     }
     
     public Node get(int idx) {
-        return list.get(idx);
+        return list[idx];
     }
 }

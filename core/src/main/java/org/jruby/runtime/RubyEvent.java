@@ -6,6 +6,9 @@
  */
 package org.jruby.runtime;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public enum RubyEvent {
     LINE     ("line", 1),
     CLASS    ("class", 1),
@@ -19,10 +22,21 @@ public enum RubyEvent {
     THREAD_BEGIN   ("thread-begin", 1),
     THREAD_END ("thread-end", 1),
     RAISE    ("raise", 1),
-    COVERAGE ("coverage", 1);
+    COVERAGE ("coverage", 1),
+    // A_CALL is CALL + B_CALL + C_CALL
+    A_CALL   ("a-call", 1),
+    // A_RETURN is RETURN + B_RETURN + C_RETURN
+    A_RETURN ("a-return", 1);
 
     private final String event_name;
     private final int line_number_offset;
+
+    private static final Map<String, RubyEvent> fromName = new HashMap<>();
+    static {
+        for (RubyEvent event : RubyEvent.values()) {
+            fromName.put(event.getName(), event);
+        }
+    }
 
     RubyEvent(String event_name, int line_number_offset){
         this.event_name = event_name;
@@ -35,6 +49,14 @@ public enum RubyEvent {
 	
     public String getName(){
         return event_name;
+    }
+
+    public static RubyEvent fromOrdinal(int value) {
+        return value < 0 || value >= values().length ? null : values()[value];
+    }
+
+    public static RubyEvent fromName(String name) {
+        return fromName.get(name);
     }
 }
 

@@ -37,6 +37,7 @@ import org.jruby.runtime.ExecutionContext;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.Visibility;
 import org.jruby.runtime.builtin.IRubyObject;
+import org.jruby.runtime.Visibility;
 
 public abstract class JRubyExecutionContextLocal extends RubyObject {
     private IRubyObject default_value;

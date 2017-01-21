@@ -3,8 +3,9 @@ $CLASSPATH << File.expand_path('../../../test/target/test-classes', __FILE__)
 require 'rspec'
 
 RSpec.configure do |config|
-  require File.expand_path('../../../test/test_helper', __FILE__)
+  require File.expand_path('../../../test/jruby/test_helper', __FILE__)
   config.include TestHelper
+  # config.extend TestHelper # so that TestHelper constants work
 end
 
 # Works like 'should include('str1', 'str2') but for arrays of
@@ -13,9 +14,7 @@ end
 RSpec::Matchers.define :have_strings_or_symbols do |*strings|
   match do |container|
     @included, @missing = [], []
-    if RUBY_VERSION.to_f >= 1.9
-      strings.map!(&:to_sym)
-    end
+    strings.map!(&:to_sym)
     strings.flatten.each do |s|
       if container.include?(s)
         @included << s
@@ -26,12 +25,12 @@ RSpec::Matchers.define :have_strings_or_symbols do |*strings|
     @missing.empty?
   end
 
-  failure_message_for_should do |container|
+  failure_message do |container|
     "expected array of #{container.length} elements to include #{@missing.inspect}.\n" +
       "#{closest_match_message(@missing, container)}"
   end
 
-  failure_message_for_should_not do |container|
+  failure_message_when_negated do |container|
     "expected array of #{container.length} elements to not include #{@included.inspect}."
   end
 

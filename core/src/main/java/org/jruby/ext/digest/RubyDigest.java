@@ -31,14 +31,13 @@
  ***** END LICENSE BLOCK *****/
 package org.jruby.ext.digest;
 
-import java.security.AccessController;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.security.PrivilegedAction;
 import java.security.Provider;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.jcodings.specific.USASCIIEncoding;
 import org.jruby.Ruby;
 import org.jruby.RubyClass;
 import org.jruby.RubyFixnum;
@@ -55,6 +54,7 @@ import org.jruby.runtime.ObjectAllocator;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.Visibility;
 import org.jruby.runtime.builtin.IRubyObject;
+import org.jruby.util.ArraySupport;
 import org.jruby.util.ByteList;
 import org.jruby.util.log.Logger;
 import org.jruby.util.log.LoggerFactory;
@@ -80,25 +80,16 @@ public class RubyDigest {
         }
     }
 
-    private static Logger logger() { return LoggerFactory.getLogger("RubyDigest"); }
+    private static Logger logger() { return LoggerFactory.getLogger(RubyDigest.class); }
 
+    private static final String PROVIDER = "org.bouncycastle.jce.provider.BouncyCastleProvider";
     private static Provider provider = null;
 
     public static void createDigest(Ruby runtime) {
-        // We're not setting the provider or anything, but it seems that BouncyCastle does some internal things in its
-        // provider's constructor which require it to be executed in a secure context.
-        // Ideally this hack should be removed. See JRUBY-3919 and this BC bug:
-        //   http://www.bouncycastle.org/jira/browse/BJA-227
-        provider = (Provider) AccessController.doPrivileged(new PrivilegedAction() {
-            public Object run() {
-                try {
-                    return Class.forName("org.bouncycastle.jce.provider.BouncyCastleProvider").newInstance();
-                } catch(Throwable t) {
-                    // provider is not available
-                    return null;
-                }
-            }
-        });
+        try {
+            provider = (Provider) Class.forName(PROVIDER).newInstance();
+        }
+        catch (Throwable t) { /* provider is not available */ }
 
         RubyModule mDigest = runtime.defineModule("Digest");
         mDigest.defineAnnotatedMethods(RubyDigest.class);
@@ -156,12 +147,7 @@ public class RubyDigest {
     }
 
     private static RubyString toHexString(Ruby runtime, byte[] val) {
-        return RubyString.newStringNoCopy(runtime, ByteList.plain(toHex(val)));
-    }
-
-    @Deprecated
-    public static IRubyObject s_hexencode(IRubyObject recv, IRubyObject arg) {
-        return hexencode(recv, arg);
+        return RubyString.newStringNoCopy(runtime, new ByteList(ByteList.plain(toHex(val)), USASCIIEncoding.INSTANCE));
     }
 
     @JRubyMethod(name = "hexencode", required = 1, meta = true)
@@ -255,6 +241,14 @@ public class RubyDigest {
         SHA512.setInternalVariable("metadata", new Metadata("SHA-512", 128));
     }
 
+    public static void createDigestBubbleBabble(Ruby runtime) {
+        runtime.getLoadService().require("digest");
+        RubyModule Digest = runtime.getModule("Digest");
+        RubyClass Base = Digest.getClass("Base");
+        RubyClass MD5 = Digest.defineClassUnder("BubbleBabble", Base, Base.getAllocator());
+        MD5.setInternalVariable("metadata", new Metadata("BubbleBabble", 64));
+    }
+
     @JRubyModule(name = "Digest::Instance")
     public static class DigestInstance {
 
@@ -264,104 +258,106 @@ public class RubyDigest {
 
         /* instance methods that should be overridden */
         @JRubyMethod(name = {"update", "<<"}, required = 1)
-        public static IRubyObject update(ThreadContext ctx, IRubyObject self, IRubyObject arg) {
+        public static IRubyObject update(ThreadContext context, IRubyObject self, IRubyObject arg) {
             return throwUnimplError(self, "update");
         }
 
         @JRubyMethod()
-        public static IRubyObject finish(ThreadContext ctx, IRubyObject self) {
+        public static IRubyObject finish(ThreadContext context, IRubyObject self) {
             return throwUnimplError(self, "finish");
         }
 
         @JRubyMethod()
-        public static IRubyObject reset(ThreadContext ctx, IRubyObject self) {
+        public static IRubyObject reset(ThreadContext context, IRubyObject self) {
             return throwUnimplError(self, "reset");
         }
 
         @JRubyMethod()
-        public static IRubyObject digest_length(ThreadContext ctx, IRubyObject self) {
-            return digest(ctx, self, null).convertToString().length();
+        public static IRubyObject digest_length(ThreadContext context, IRubyObject self) {
+            return digest(context, self, null).convertToString().bytesize();
         }
 
         @JRubyMethod()
-        public static IRubyObject block_length(ThreadContext ctx, IRubyObject self) {
+        public static IRubyObject block_length(ThreadContext context, IRubyObject self) {
             return throwUnimplError(self, "block_length");
         }
 
         /* instance methods that may be overridden */
         @JRubyMethod(name = "==", required = 1)
-        public static IRubyObject op_equal(ThreadContext ctx, IRubyObject self, IRubyObject oth) {
+        public static IRubyObject op_equal(ThreadContext context, IRubyObject self, IRubyObject oth) {
+            if(oth.isNil()) return context.runtime.getFalse();
+
             RubyString str1, str2;
-            RubyModule instance = (RubyModule)self.getRuntime().getModule("Digest").getConstantAt("Instance");
+            RubyModule instance = (RubyModule)context.runtime.getModule("Digest").getConstantAt("Instance");
             if (oth.getMetaClass().getRealClass().hasModuleInHierarchy(instance)) {
-                str1 = digest(ctx, self, null).convertToString();
-                str2 = digest(ctx, oth, null).convertToString();
+                str1 = digest(context, self, null).convertToString();
+                str2 = digest(context, oth, null).convertToString();
             } else {
-                str1 = to_s(ctx, self).convertToString();
+                str1 = to_s(context, self).convertToString();
                 str2 = oth.convertToString();
             }
-            boolean ret = str1.length().eql(str2.length()) && (str1.eql(str2));
-            return ret ? self.getRuntime().getTrue() : self.getRuntime().getFalse();
+            boolean ret = str1.bytesize().eql(str2.bytesize()) && (str1.eql(str2));
+            return ret ? context.runtime.getTrue() : context.runtime.getFalse();
         }
 
         @JRubyMethod()
-        public static IRubyObject inspect(ThreadContext ctx, IRubyObject self) {
-            return RubyString.newStringNoCopy(self.getRuntime(), ByteList.plain("#<" + self.getMetaClass().getRealClass().getName() + ": " + hexdigest(ctx, self, null) + ">"));
+        public static IRubyObject inspect(ThreadContext context, IRubyObject self) {
+            return RubyString.newStringNoCopy(self.getRuntime(), ByteList.plain("#<" + self.getMetaClass().getRealClass().getName() + ": " + hexdigest(context, self, null) + ">"));
         }
 
         /* instance methods that need not usually be overridden */
         @JRubyMethod(name = "new")
-        public static IRubyObject newObject(ThreadContext ctx, IRubyObject self) {
-            return self.rbClone().callMethod(ctx, "reset");
+        public static IRubyObject newObject(ThreadContext context, IRubyObject self) {
+            return self.rbClone().callMethod(context, "reset");
         }
 
         @JRubyMethod(optional = 1)
-        public static IRubyObject digest(ThreadContext ctx, IRubyObject self, IRubyObject[] args) {
+        public static IRubyObject digest(ThreadContext context, IRubyObject self, IRubyObject[] args) {
             final IRubyObject value;
             if (args != null && args.length > 0) {
-                self.callMethod(ctx, "reset");
-                self.callMethod(ctx, "update", args[0]);
-                value = self.callMethod(ctx, "finish");
-                self.callMethod(ctx, "reset");
+                self.callMethod(context, "reset");
+                self.callMethod(context, "update", args[0]);
+                value = self.callMethod(context, "finish");
+                self.callMethod(context, "reset");
             } else {
                 IRubyObject clone = self.rbClone();
-                value = clone.callMethod(ctx, "finish");
-                clone.callMethod(ctx, "reset");
+                value = clone.callMethod(context, "finish");
+                clone.callMethod(context, "reset");
             }
             return value;
         }
 
         @JRubyMethod(name = "digest!")
-        public static IRubyObject digest_bang(ThreadContext ctx, IRubyObject self) {
-            IRubyObject value = self.callMethod(ctx, "finish");
-            self.callMethod(ctx, "reset");
+        public static IRubyObject digest_bang(ThreadContext context, IRubyObject self) {
+            IRubyObject value = self.callMethod(context, "finish");
+            self.callMethod(context, "reset");
             return value;
         }
 
         @JRubyMethod(optional = 1)
-        public static IRubyObject hexdigest(ThreadContext ctx, IRubyObject self, IRubyObject[] args) {
-            return toHexString(ctx.runtime, digest(ctx, self, args).convertToString().getBytes());
+        public static IRubyObject hexdigest(ThreadContext context, IRubyObject self, IRubyObject[] args) {
+            return toHexString(context.runtime, digest(context, self, args).convertToString().getBytes());
         }
 
         @JRubyMethod(name = "hexdigest!")
-        public static IRubyObject hexdigest_bang(ThreadContext ctx, IRubyObject self) {
-            return toHexString(ctx.runtime, digest_bang(ctx, self).convertToString().getBytes());
+        public static IRubyObject hexdigest_bang(ThreadContext context, IRubyObject self) {
+            return toHexString(context.runtime, digest_bang(context, self).convertToString().getBytes());
         }
 
         @JRubyMethod(name = "bubblebabble", required = 1, optional = 1, meta = true)
-        public static IRubyObject bubblebabble(ThreadContext ctx, IRubyObject recv, IRubyObject[] args, Block unusedBlock) {
-            byte[] digest = recv.callMethod(ctx, "digest", args, Block.NULL_BLOCK).convertToString().getBytes();
+        public static IRubyObject bubblebabble(ThreadContext context, IRubyObject recv, IRubyObject[] args, Block unusedBlock) {
+            byte[] digest = recv.callMethod(context, "digest", args, Block.NULL_BLOCK).convertToString().getBytes();
             return RubyString.newString(recv.getRuntime(), BubbleBabble.bubblebabble(digest, 0, digest.length));
         }
 
         @JRubyMethod()
-        public static IRubyObject to_s(ThreadContext ctx, IRubyObject self) {
-            return self.callMethod(ctx, "hexdigest");
+        public static IRubyObject to_s(ThreadContext context, IRubyObject self) {
+            return self.callMethod(context, "hexdigest");
         }
 
         @JRubyMethod(name = {"length", "size"})
-        public static IRubyObject length(ThreadContext ctx, IRubyObject self) {
-            return self.callMethod(ctx, "digest_length");
+        public static IRubyObject length(ThreadContext context, IRubyObject self) {
+            return self.callMethod(context, "digest_length");
         }
     }
 
@@ -379,23 +375,28 @@ public class RubyDigest {
         }
 
         @JRubyMethod(name = "digest", required = 1, rest = true, meta = true)
-        public static IRubyObject s_digest(ThreadContext ctx, IRubyObject recv, IRubyObject[] args, Block unusedBlock) {
-            Ruby runtime = recv.getRuntime();
+        public static IRubyObject s_digest(ThreadContext context, IRubyObject recv, IRubyObject[] args, Block unusedBlock) {
+            final Ruby runtime = context.runtime;
             if (args.length < 1) {
                 throw runtime.newArgumentError("no data given");
             }
             RubyString str = args[0].convertToString();
-            IRubyObject[] newArgs = new IRubyObject[args.length - 1];
-            System.arraycopy(args, 1, newArgs, 0, args.length - 1);
-            IRubyObject obj = ((RubyClass)recv).newInstance(ctx, newArgs, Block.NULL_BLOCK);
-            return obj.callMethod(ctx, "digest", str);
+            args = ArraySupport.newCopy(args, 1, args.length - 1); // skip first arg
+            IRubyObject obj = ((RubyClass) recv).newInstance(context, args, Block.NULL_BLOCK);
+            return obj.callMethod(context, "digest", str);
         }
 
         @JRubyMethod(name = "hexdigest", required = 1, optional = 1, meta = true)
-        public static IRubyObject s_hexdigest(ThreadContext ctx, IRubyObject recv, IRubyObject[] args, Block unusedBlock) {
+        public static IRubyObject s_hexdigest(ThreadContext context, IRubyObject recv, IRubyObject[] args, Block unusedBlock) {
             Ruby runtime = recv.getRuntime();
-            byte[] digest = recv.callMethod(ctx, "digest", args, Block.NULL_BLOCK).convertToString().getBytes();
+            byte[] digest = recv.callMethod(context, "digest", args, Block.NULL_BLOCK).convertToString().getBytes();
             return RubyDigest.toHexString(runtime, digest);
+        }
+
+        @JRubyMethod(name = "bubblebabble", required = 1, meta = true)
+        public static RubyString bubblebabble(IRubyObject recv, IRubyObject arg) {
+            byte[] digest = recv.callMethod(recv.getRuntime().getCurrentContext(), "digest", arg).convertToString().getBytes();
+            return RubyString.newString(recv.getRuntime(), BubbleBabble.bubblebabble(digest, 0, digest.length));
         }
     }
 

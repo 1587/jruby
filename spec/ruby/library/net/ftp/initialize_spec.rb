@@ -1,8 +1,8 @@
 require File.expand_path('../../../../spec_helper', __FILE__)
-require 'net/ftp'
+require File.expand_path('../spec_helper', __FILE__)
 
 describe "Net::FTP#initialize" do
-  before(:each) do
+  before :each do
     @ftp = Net::FTP.allocate
     @ftp.stub!(:connect)
   end

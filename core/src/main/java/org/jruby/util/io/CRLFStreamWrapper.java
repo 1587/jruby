@@ -4,6 +4,7 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
 import java.nio.channels.Channel;
 import org.jcodings.Encoding;
 import org.jcodings.specific.UTF16BEEncoding;
@@ -16,7 +17,8 @@ import org.jruby.util.ByteList;
  * Wrapper around Stream that packs and unpacks LF <=> CRLF.
  * @author nicksieger
  */
-public class CRLFStreamWrapper implements Stream, NonblockWritingStream {
+@Deprecated
+public class CRLFStreamWrapper implements Stream {
     private final Stream stream;
     private final boolean isWindows;
     private boolean binmode = false;
@@ -33,12 +35,13 @@ public class CRLFStreamWrapper implements Stream, NonblockWritingStream {
         return stream.getDescriptor();
     }
 
-    public Stream getOriginalStream() {
-        return stream;
-    }
-
     public void clearerr() {
         stream.clearerr();
+    }
+
+    @Override
+    public ByteBuffer getBuffer() {
+        return stream.getBuffer();
     }
 
     public ModeFlags getModes() {
@@ -55,6 +58,11 @@ public class CRLFStreamWrapper implements Stream, NonblockWritingStream {
 
     public void setSync(boolean sync) {
         stream.setSync(sync);
+    }
+
+    @Override
+    public int bufferedAvailable() {
+        return stream.bufferedAvailable();
     }
 
     public void setBinmode() {
@@ -126,12 +134,6 @@ public class CRLFStreamWrapper implements Stream, NonblockWritingStream {
             return null;
         }
         return bl;
-    }
-
-    public synchronized int writenonblock(ByteList buf) throws IOException, BadDescriptorException {
-        if (!(stream instanceof ChannelStream)) throw new IOException("write_nonblock from a stream which does not support it");
-
-        return ((ChannelStream) stream).writenonblock(convertLFToCRLF(buf));
     }
 
     public int fwrite(ByteList string) throws IOException, BadDescriptorException {
@@ -347,5 +349,9 @@ public class CRLFStreamWrapper implements Stream, NonblockWritingStream {
 
     public Channel getChannel() {
         return stream.getChannel();
+    }
+
+    public final int refillBuffer() throws IOException {
+        return stream.refillBuffer();
     }
 }

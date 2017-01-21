@@ -1,28 +1,38 @@
 package org.jruby.ir.operands;
 
 import org.jruby.ir.IRVisitor;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.parser.StaticScope;
 import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
+import org.jcodings.Encoding;
 
 import java.util.List;
 import java.util.Map;
 
 public class DynamicSymbol extends Operand {
-    // SSS FIXME: Should this be Operand or CompoundString?
-    // Can it happen that symbols are built out of other than compound strings?
-    // Or can it happen during optimizations that this becomes a generic operand?
-    final private CompoundString symbolName;
+    final private Operand symbolName;
 
-    public DynamicSymbol(CompoundString n) { symbolName = n; }
+    public DynamicSymbol(Operand n) {
+        super();
 
-    public String toString() {
-        return ":" + symbolName.toString();
+        symbolName = n;
+   }
+
+    @Override
+    public OperandType getOperandType() {
+        return OperandType.DYNAMIC_SYMBOL;
+    }
+
+    public Operand getSymbolName() {
+        return symbolName;
     }
 
     public Operand getSimplifiedOperand(Map<Operand, Operand> valueMap, boolean force) {
-        CompoundString newSymbol = (CompoundString)symbolName.getSimplifiedOperand(valueMap, force);
+        Operand newSymbol = symbolName.getSimplifiedOperand(valueMap, force);
         return symbolName == newSymbol ? this : new DynamicSymbol(newSymbol);
     }
 
@@ -32,17 +42,37 @@ public class DynamicSymbol extends Operand {
         symbolName.addUsedVariables(l);
     }
 
-    public Operand cloneForInlining(InlinerInfo ii) {
-        return symbolName.cloneForInlining(ii);
+    public Operand cloneForInlining(CloneInfo ii) {
+        Operand clonedSymbolName = symbolName.cloneForInlining(ii);
+
+        return clonedSymbolName == symbolName ? this : new DynamicSymbol(clonedSymbolName);
     }
 
     @Override
-    public Object retrieve(ThreadContext context, IRubyObject self, DynamicScope currDynScope, Object[] temp) {
-        return context.runtime.newSymbol(((IRubyObject) symbolName.retrieve(context, self, currDynScope, temp)).asJavaString());
+    public Object retrieve(ThreadContext context, IRubyObject self, StaticScope currScope, DynamicScope currDynScope, Object[] temp) {
+        IRubyObject obj = (IRubyObject) symbolName.retrieve(context, self, currScope, currDynScope, temp);
+        String str = obj.asJavaString();
+        Encoding encoding = obj.asString().getByteList().getEncoding();
+        return context.runtime.newSymbol(str, encoding);
     }
 
     @Override
     public void visit(IRVisitor visitor) {
         visitor.DynamicSymbol(this);
+    }
+
+    @Override
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+        e.encode(symbolName);
+    }
+
+    public static DynamicSymbol decode(IRReaderDecoder d) {
+        return new DynamicSymbol(d.decodeOperand());
+    }
+
+    @Override
+    public String toString() {
+        return ":" + symbolName.toString();
     }
 }

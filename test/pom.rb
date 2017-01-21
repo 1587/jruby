@@ -1,98 +1,72 @@
-class TargetBuilder
-  attr_reader :targets
-  def initialize( version, basedir )
-    @version = version
-    @basedir = basedir
-    @names = ""
-    @targets = ""
-    @rake = 'lib/ruby/gems/shared/gems/rake-10.1.0/lib/rake/rake_test_loader.rb'
-    # TODO
-    #Dir[File.join(@basedir, "../lib/ruby/gems/shared/gems/rake-*/lib/rake/rake_test_loader.rb")]).first.sub( /.*\/..\/lib\//, 'lib/' )
-  end
-  def names
-    @names[0..-2]
-  end
-  def create_target( name, complete )
-    files = ""
-    File.open(File.join(@basedir, name + '.index')) do |f|
-      f.each_line.each do |line|
-        filename = "#{@basedir}/#{line.chomp}.rb"
-        next unless File.exist? filename
-        next if filename =~ /externals\/ruby1.9\/ruby\/test_class/
-        next if filename =~ /externals\/ruby1.9\/ruby\/test_io/
-        next if filename =~ /externals\/ruby1.9\/ruby\/test_econv/
-        next if filename =~ /externals\/ruby1.9\/test_open3/
-        filename.sub!( /.*\/test\//, 'test/' )
-        files << "<arg value='#{filename}'/>\n"
-      end
-    end
-
-    if complete
-      name = "test-jruby-complete-#{name}"
-      jars = "maven/jruby-complete/target/jruby-complete-#{@version}.jar"
-    else
-      name = "test-jruby-jars-#{name}"
-      jars = "lib/jruby.jar:maven/jruby-stdlib/target/jruby-stdlib-#{@version}.jar"
-    end
-    @names << name + ","
-    @targets << "<target name='#{name}'>\n<exec executable='java' failonerror='true' vmlauncher='false'>\n<env key='GEM_PATH' value='lib/ruby/gems/shared'/>\n<arg value='-Djruby.home=uri:classloader://META-INF/jruby.home'/>\n<arg value='-cp'/>\n<arg value='core/target/test-classes:test/target/test-classes:#{jars}'/>\n<arg value='org.jruby.Main'/>\n<arg value='-I.:test/externals/ruby1.9:test/externals/ruby1.9/ruby'/>\n<arg value='-r./test/ruby19_env.rb'/>\n<arg value='-rminitest/excludes'/>\n<arg value='#{@rake}'/>\n#{files}<!--arg value='-v'/-->\n</exec>\n</target>\n"
-  end
-end
+version = ENV['JRUBY_VERSION'] ||
+  File.read( File.join( basedir, '..', 'VERSION' ) ).strip
 
 project 'JRuby Integration Tests' do
-  
-  version = File.read( File.join( basedir, '..', 'VERSION' ) ).strip
 
   model_version '4.0.0'
-  id 'jruby-tests'
+
   inherit 'org.jruby:jruby-parent', version
-  packaging 'jar'
+  id 'org.jruby:jruby-tests'
 
-  repository( :id => 'rubygems-releases',
-              :url => 'https://otto.takari.io/content/repositories/rubygems/maven/releases' )
+  extension 'org.torquebox.mojo:mavengem-wagon:0.2.0'
 
-  plugin_repository( :id => 'sonatype',
-                     :url => 'https://oss.sonatype.org/content/repositories/snapshots/' ) do
-    releases false
-    snapshots true
+  repository :id => :mavengems, :url => 'mavengem:http://rubygems.org'
+  plugin_repository :id => :mavengems, :url => 'mavengem:http://rubygems.org'
+
+  plugin_repository( :url => 'https://oss.sonatype.org/content/repositories/snapshots/',
+                     :id => 'sonatype' ) do
+    releases 'false'
+    snapshots 'true'
   end
-  plugin_repository( :id => 'rubygems-releases',
-                     :url => 'https://otto.takari.io/content/repositories/rubygems/maven/releases' )
 
-  properties( 'jruby.basedir' => '${basedir}/..',
-              'gem.home' => '${jruby.basedir}/lib/ruby/gems/shared' )
+  properties( 'polyglot.dump.pom' => 'pom.xml',
+              'jruby.home' => '${basedir}/..',
+              'gem.home' => '${jruby.home}/lib/ruby/gems/shared' )
 
-  jar 'org.jruby:jruby-core:${project.version}'
-  jar( 'junit:junit:4.11',
-       :scope => 'test' )
-  jar( 'org.apache.ant:ant:${ant.version}',
-       :scope => 'provided' )
-  jar( 'bsf:bsf:2.4.0',
-       :scope => 'provided' )
-  jar( 'commons-logging:commons-logging:1.1.3',
-       :scope => 'test' )
-  jar( 'org.livetribe:livetribe-jsr223:2.0.7',
-       :scope => 'test' )
+  scope :test do
+    jar 'junit:junit:4.11'
+    jar 'commons-logging:commons-logging:1.1.3'
+    jar 'org.livetribe:livetribe-jsr223:2.0.7'
+    jar 'org.jruby:jruby-core', '${project.version}'
+  end
+  scope :provided do
+    jar 'org.apache.ant:ant:${ant.version}'
+    jar 'bsf:bsf:2.4.0'
+  end
   jar( 'org.jruby:requireTest:1.0',
-       :systemPath => '${project.basedir}/requireTest-1.0.jar',
-       :scope => 'system' )
+       :scope => 'system',
+       :systemPath => '${project.basedir}/jruby/requireTest-1.0.jar' )
   gem 'rspec', '${rspec.version}'
-  gem 'rubygems:minitest:${minitest.version}'
-  gem 'rubygems:minitest-excludes:${minitest-excludes.version}'
 
-  profile 'bootstrap' do
-    gem 'rubygems:jruby-launcher:${jruby-launcher.version}'
+  overrides do
+    plugin( 'org.eclipse.m2e:lifecycle-mapping:1.0.0',
+            'lifecycleMappingMetadata' => {
+              'pluginExecutions' => [ { 'pluginExecutionFilter' => {
+                                          'groupId' =>  'de.saumya.mojo',
+                                          'artifactId' =>  'gem-maven-plugin',
+                                          'versionRange' =>  '[1.0.0-rc3,)',
+                                          'goals' => [ 'initialize' ]
+                                        },
+                                        'action' => {
+                                          'ignore' =>  ''
+                                        } } ]
+            } )
   end
 
-  plugin 'de.saumya.mojo:gem-maven-plugin:${jruby.plugins.version}' do
-    execute_goals( 'initialize',
-                   :phase => 'initialize',
-                   'gemPath' =>  '${gem.home}',
-                   'gemHome' =>  '${gem.home}',
-                   'binDirectory' =>  '${jruby.basedir}/bin',
-                   'includeRubygemsInTestResources' =>  'false',
-                   'libDirectory' =>  '${jruby.basedir}/lib',
-                   'jrubyJvmArgs' =>  '-Djruby.home=${jruby.basedir}' )
+  jruby_plugin :gem, '${jruby.plugins.version}' do
+    options = { :phase => 'initialize',
+      'gemPath' => '${gem.home}',
+      'gemHome' => '${gem.home}',
+      'binDirectory' => '${jruby.home}/bin',
+      'includeRubygemsInTestResources' => 'false' }
+
+    if version =~ /-SNAPSHOT/
+      options[ 'jrubyVersion' ] = '1.7.12'
+    else
+      options[ 'libDirectory' ] = '${jruby.home}/lib'
+      options[ 'jrubyJvmArgs' ] = '-Djruby.home=${jruby.home}'
+    end
+    execute_goals( 'initialize', options )
   end
 
   plugin( :compiler,
@@ -103,7 +77,8 @@ project 'JRuby Integration Tests' do
           'showWarnings' =>  'true',
           'showDeprecation' =>  'true',
           'source' =>  '${base.java.version}',
-          'target' =>  '${base.java.version}' )
+          'target' =>  '${base.java.version}',
+          'testExcludes' => ['truffle/**/*.java'] )
   plugin :dependency do
     execute_goals( 'copy',
                    :id => 'copy jars for testing',
@@ -142,13 +117,50 @@ project 'JRuby Integration Tests' do
     test_source_directory '.'
   end
 
-  builder = TargetBuilder.new( version, basedir )
-  builder.create_target( 'jruby.1.9', false )
-  builder.create_target( 'slow', true )
-  builder.create_target( 'objectspace', false )
-  builder.create_target( 'mri.1.9', false )
-  builder.create_target( 'rubicon.1.9', true )
-        
-  File.write(File.join(basedir, '..', 'antlib', 'extra.xml'), "<project basedir='..'>\n<target name='mvn'>\n<exec executable='mvn' vmlauncher='false'>\n<arg line='-q'/>\n<arg line='-Ptest,bootstrap'/>\n<arg line='-DskipTests'/>\n</exec>\n<echo>\nbuild jruby maven artifact\n</echo>\n<exec executable='mvn' vmlauncher='false'>\n<arg line='-q'/>\n<arg line='-Pmain'/>\n</exec>\n<echo>\nbuild jruby-complete.jar\n</echo>\n<exec executable='mvn' vmlauncher='false'>\n<arg line='-q'/>\n<arg line='-Pcomplete'/>\n</exec>\n</target>\n#{builder.targets}<target description='test using jruby-complete or jruby-core/jruby-stdlib jars' name='test-jruby-jars' depends='mvn,#{builder.names}'/></project>")
+  profile 'bootstrap' do
+    unless version =~ /-SNAPSHOT/
+      gem 'rubygems:jruby-launcher:${jruby-launcher.version}'
+    end
+  end
+
+  profile 'rake' do
+
+    plugin :antrun do
+      execute_goals( 'run',
+                     :id => 'rake',
+                     :phase => 'test',
+                     :configuration => [ xml( '<target><exec dir="${jruby.home}" executable="${jruby.home}/bin/jruby" failonerror="true"><env key="JRUBY_OPTS" value=""/><arg value="-S"/><arg value="rake"/><arg value="${task}"/></exec></target>' ) ] )
+    end
+
+  end
+
+  profile 'jruby_complete_jar_extended' do
+
+    jar 'org.jruby:jruby-complete', '${project.version}', :scope => :provided
+
+    plugin :antrun do
+      [ 'jruby','objectspace', 'slow' ].each do |index|
+        files = ""
+        File.open(File.join(basedir, index + '.index')) do |f|
+          f.each_line.each do |line|
+            next if line =~ /^#/ or line.strip.empty?
+            filename = "mri/#{line.chomp}"
+            filename = "jruby/#{line.chomp}.rb" unless File.exist? File.join(basedir, filename)
+            filename = "#{line.chomp}.rb" unless File.exist? File.join(basedir, filename)
+            next if filename =~ /mri\/psych\//
+            next if filename =~ /mri\/net\/http\//
+            next unless File.exist? File.join(basedir, filename)
+            files << "<arg value='test/#{filename}'/>"
+          end
+        end
+
+        execute_goals( 'run',
+                       :id => 'jruby_complete_jar_' + index,
+                       :phase => 'test',
+                       :configuration => [ xml( "<target><exec dir='${jruby.home}' executable='java' failonerror='true'><arg value='-cp'/><arg value='core/target/test-classes:test/target/test-classes:maven/jruby-complete/target/jruby-complete-${project.version}.jar'/><arg value='-Djruby.aot.loadClasses=true'/><arg value='org.jruby.Main'/><arg value='-I.'/><arg value='-Itest/mri/ruby'/><arg value='-Itest/mri'/><arg value='-Itest'/><arg value='-rtest/mri_test_env'/><arg value='lib/ruby/stdlib/rake/rake_test_loader.rb'/>#{files}<arg value='-v'/></exec></target>" ) ] )
+      end
+    end
+
+  end
 
 end

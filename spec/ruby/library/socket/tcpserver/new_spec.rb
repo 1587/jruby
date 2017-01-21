@@ -2,7 +2,7 @@ require File.expand_path('../../../../spec_helper', __FILE__)
 require File.expand_path('../../fixtures/classes', __FILE__)
 
 describe "TCPServer.new" do
-  after(:each) do
+  after :each do
     @server.close if @server && !@server.closed?
   end
 
@@ -36,8 +36,7 @@ describe "TCPServer.new" do
     addr = @server.addr
     addr[0].should == 'AF_INET'
     addr[1].should == SocketSpecs.port
-    expected = ['', '0.0.0.0']
-    expected.should include(addr[2])
+    addr[2].should == '0.0.0.0'
     addr[3].should == '0.0.0.0'
   end
 
@@ -46,8 +45,7 @@ describe "TCPServer.new" do
     addr = @server.addr
     addr[0].should == 'AF_INET'
     addr[1].should == SocketSpecs.port
-    expected = ['', '0.0.0.0']
-    expected.should include(addr[2])
+    addr[2].should == '0.0.0.0'
     addr[3].should == '0.0.0.0'
   end
 
@@ -85,5 +83,12 @@ describe "TCPServer.new" do
       @server = TCPServer.new('127.0.0.1', SocketSpecs.port)
       @server = TCPServer.new('127.0.0.1', SocketSpecs.port)
     }.should raise_error(Errno::EADDRINUSE)
+  end
+
+  platform_is_not :windows do
+    it "sets SO_REUSEADDR on the resulting server" do
+      @server = TCPServer.new('127.0.0.1', SocketSpecs.port)
+      @server.getsockopt(:SOCKET, :REUSEADDR).int.should_not == 0
+    end
   end
 end

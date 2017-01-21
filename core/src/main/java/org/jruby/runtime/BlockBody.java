@@ -17,7 +17,7 @@
  * Copyright (C) 2002 Benoit Cerrina <b.cerrina@wanadoo.fr>
  * Copyright (C) 2004-2007 Thomas E Enebo <enebo@acm.org>
  * Copyright (C) 2004 Stefan Matthias Aust <sma@3plus4.de>
- * 
+ *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
  * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
@@ -33,125 +33,197 @@
 
 package org.jruby.runtime;
 
+import com.headius.invokebinder.Binder;
+import org.jruby.EvalType;
 import org.jruby.RubyArray;
-import org.jruby.RubyModule;
-import org.jruby.ast.IterNode;
-import org.jruby.ast.MultipleAsgnNode;
-import org.jruby.ast.NodeType;
-import org.jruby.common.IRubyWarnings.ID;
+import org.jruby.RubyProc;
+import org.jruby.ir.runtime.IRRuntimeHelpers;
 import org.jruby.parser.StaticScope;
 import org.jruby.runtime.builtin.IRubyObject;
+
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 
 /**
  * The executable body portion of a closure.
  */
 public abstract class BlockBody {
-    // FIXME: Maybe not best place, but move it to a good home
-    public static final int ZERO_ARGS = 0;
-    public static final int MULTIPLE_ASSIGNMENT = 1;
-    public static final int ARRAY = 2;
-    public static final int SINGLE_RESTARG = 3;
 
-    public static final String[] EMPTY_PARAMETER_LIST = new String[0];
-    public static final String[] ANON_REST_PARAMETER_LIST = {"r"};
-    
-    protected final int argumentType;
+    protected final Signature signature;
+    protected volatile MethodHandle testBlockBody;
 
-    public BlockBody(int argumentType) {
-        this.argumentType = argumentType;
+    public BlockBody(Signature signature) {
+        this.signature = signature;
     }
 
-    public IRubyObject call(ThreadContext context, IRubyObject[] args, Binding binding, Block.Type type) {
-        args = prepareArgumentsForCall(context, args, type);
-
-        return yield(context, RubyArray.newArrayNoCopy(context.runtime, args), null, null, true, binding, type);
+    public Signature getSignature() {
+        return signature;
     }
 
-    public IRubyObject call(ThreadContext context, IRubyObject[] args, Binding binding,
-            Block.Type type, Block block) {
-        args = prepareArgumentsForCall(context, args, type);
-
-        return yield(context, RubyArray.newArrayNoCopy(context.runtime, args), null, null, true, binding, type, block);
+    public void setEvalType(EvalType evalType) {
     }
 
-    public abstract IRubyObject yield(ThreadContext context, IRubyObject value, Binding binding, Block.Type type);
+    public boolean canCallDirect() {
+        return false;
+    }
 
-    public abstract IRubyObject yield(ThreadContext context, IRubyObject value, IRubyObject self,
-            RubyModule klass, boolean aValue, Binding binding, Block.Type type);
+    public MethodHandle getTestBlockBody() {
+        if (testBlockBody != null) return testBlockBody;
 
-    // FIXME: This should replace blockless abstract versions of yield above and become abstract.
+        return testBlockBody = Binder.from(boolean.class, ThreadContext.class, Block.class).drop(0).append(this).invoke(TEST_BLOCK_BODY);
+    }
+
+    private static final MethodHandle TEST_BLOCK_BODY = Binder.from(boolean.class, Block.class, BlockBody.class).invokeStaticQuiet(MethodHandles.lookup(), BlockBody.class, "testBlockBody");
+
+    public static boolean testBlockBody(Block block, BlockBody body) {
+        return block.getBody() == body;
+    }
+
+    protected IRubyObject callDirect(ThreadContext context, Block block, IRubyObject[] args, Block blockArg) {
+        throw new RuntimeException("callDirect not implemented in base class. We should never get here.");
+    }
+
+    protected IRubyObject yieldDirect(ThreadContext context, Block block, IRubyObject[] args, IRubyObject self) {
+        throw new RuntimeException("yieldDirect not implemented in base class. We should never get here.");
+    }
+
+    public IRubyObject call(ThreadContext context, Block block, IRubyObject[] args) {
+        if (canCallDirect()) {
+            return callDirect(context, block, args, Block.NULL_BLOCK);
+        } else {
+            return yield(context, block, prepareArgumentsForCall(context, args, block.type), null);
+        }
+    }
+
+    public IRubyObject call(ThreadContext context, Block block, IRubyObject[] args, Block blockArg) {
+        if (canCallDirect()) {
+            return callDirect(context, block, args, blockArg);
+        } else {
+            return yield(context, block, prepareArgumentsForCall(context, args, block.type), null, blockArg);
+        }
+    }
+
+    public final IRubyObject yield(ThreadContext context, Block block, IRubyObject value) {
+        if (canCallDirect()) {
+            return yieldDirect(context, block, new IRubyObject[] { value }, null);
+        } else {
+            return doYield(context, block, value);
+        }
+    }
+
+    public final IRubyObject yield(ThreadContext context, Block block, IRubyObject[] args, IRubyObject self) {
+        if (canCallDirect()) {
+            return yieldDirect(context, block, args, self);
+        } else {
+            IRubyObject[] preppedValue = RubyProc.prepareArgs(context, block.type, this, args);
+            return doYield(context, block, preppedValue, self);
+        }
+    }
+
+    /**
+     * Subclass specific yield implementation.
+     * <p>
+     * Should not be called directly. Gets called by {@link #yield(ThreadContext, Block, org.jruby.runtime.builtin.IRubyObject)}
+     * after ensuring that any common yield logic is taken care of.
+     */
+    protected abstract IRubyObject doYield(ThreadContext context, Block block, IRubyObject value);
+
+    /**
+     * Subclass specific yield implementation.
+     * <p>
+     * Should not be called directly. Gets called by {@link #yield(ThreadContext, Block, org.jruby.runtime.builtin.IRubyObject[], org.jruby.runtime.builtin.IRubyObject)}
+     * after ensuring that all common yield logic is taken care of.
+     */
+    protected abstract IRubyObject doYield(ThreadContext context, Block block, IRubyObject[] args, IRubyObject self);
+
+    // FIXME: This should be unified with the final versions above
     // Here to allow incremental replacement. Overriden by subclasses which support it.
-    public IRubyObject yield(ThreadContext context, IRubyObject value, IRubyObject self,
-            RubyModule klass, boolean aValue, Binding binding, Block.Type type, Block block) {
-        return yield(context, value, self, klass, aValue, binding, type);
+    public IRubyObject yield(ThreadContext context, Block block, IRubyObject[] args, IRubyObject self, Block blockArg) {
+        return yield(context, block, args, self);
     }
 
-    // FIXME: This should replace blockless abstract versions of yield above and become abstract.
+    // FIXME: This should be unified with the final versions above
     // Here to allow incremental replacement. Overriden by subclasses which support it.
-    public IRubyObject yield(ThreadContext context, IRubyObject value,
-            Binding binding, Block.Type type, Block block) {
-        return yield(context, value, binding, type);
+    public IRubyObject yield(ThreadContext context, Block block, IRubyObject value, Block blockArg) {
+        return yield(context, block, value);
     }
 
-    public int getArgumentType() {
-        return argumentType;
-    }
-
-    public IRubyObject call(ThreadContext context, Binding binding, Block.Type type) {
+    public IRubyObject call(ThreadContext context, Block block) {
         IRubyObject[] args = IRubyObject.NULL_ARRAY;
-        args = prepareArgumentsForCall(context, args, type);
-
-        return yield(context, RubyArray.newArrayNoCopy(context.runtime, args), null, null, true, binding, type);
-    }
-    public IRubyObject call(ThreadContext context, Binding binding,
-            Block.Type type, Block unusedBlock) {
-        return call(context, binding, type);
+        if (canCallDirect()) {
+            return callDirect(context, block, args, Block.NULL_BLOCK);
+        } else {
+            return yield(context, block, prepareArgumentsForCall(context, args, block.type), null);
+        }
     }
 
-    public IRubyObject yieldSpecific(ThreadContext context, Binding binding, Block.Type type) {
-        return yield(context, null, null, null, true, binding, type);
+    public IRubyObject call(ThreadContext context, Block block, Block unusedBlock) {
+        return call(context, block);
     }
-    public IRubyObject call(ThreadContext context, IRubyObject arg0, Binding binding, Block.Type type) {
+
+    public IRubyObject yieldSpecific(ThreadContext context, Block block) {
+        if (canCallDirect()) {
+            return yieldDirect(context, block, null, null);
+        } else {
+            return yield(context, block, null);
+        }
+    }
+    public IRubyObject call(ThreadContext context, Block block, IRubyObject arg0) {
         IRubyObject[] args = new IRubyObject[] {arg0};
-        args = prepareArgumentsForCall(context, args, type);
+        if (canCallDirect()) {
+            return callDirect(context, block, args, Block.NULL_BLOCK);
+        } else {
+            return yield(context, block, prepareArgumentsForCall(context, args, block.type), null);
+        }
+    }
+    public IRubyObject call(ThreadContext context, Block block, IRubyObject arg0, Block unusedBlock) {
+        return call(context, block, arg0);
+    }
 
-        return yield(context, RubyArray.newArrayNoCopy(context.runtime, args), null, null, true, binding, type);
+    public IRubyObject yieldSpecific(ThreadContext context, Block block, IRubyObject arg0) {
+        if (canCallDirect()) {
+            return yieldDirect(context, block, new IRubyObject[] { arg0 }, null);
+        } else {
+            return yield(context, block, arg0);
+        }
     }
-    public IRubyObject call(ThreadContext context, IRubyObject arg0, Binding binding,
-            Block.Type type, Block unusedBlock) {
-        return call(context, arg0, binding, type);
-    }
-
-    public IRubyObject yieldSpecific(ThreadContext context, IRubyObject arg0, Binding binding, Block.Type type) {
-        return yield(context, arg0, null, null, true, binding, type);
-    }
-    public IRubyObject call(ThreadContext context, IRubyObject arg0, IRubyObject arg1, Binding binding, Block.Type type) {
+    public IRubyObject call(ThreadContext context, Block block, IRubyObject arg0, IRubyObject arg1) {
         IRubyObject[] args = new IRubyObject[] {arg0, arg1};
-        args = prepareArgumentsForCall(context, args, type);
+        if (canCallDirect()) {
+            return callDirect(context, block, args, Block.NULL_BLOCK);
+        } else {
+            return yield(context, block, prepareArgumentsForCall(context, args, block.type), null);
+        }
+    }
+    public IRubyObject call(ThreadContext context, Block block, IRubyObject arg0, IRubyObject arg1, Block unusedBlock) {
+        return call(context, block, arg0, arg1);
+    }
 
-        return yield(context, RubyArray.newArrayNoCopy(context.runtime, args), null, null, true, binding, type);
+    public IRubyObject yieldSpecific(ThreadContext context, Block block, IRubyObject arg0, IRubyObject arg1) {
+        if (canCallDirect()) {
+            return yieldDirect(context, block, new IRubyObject[] { arg0, arg1 }, null);
+        } else {
+            return yield(context, block, new IRubyObject[] { arg0, arg1 }, null);
+        }
     }
-    public IRubyObject call(ThreadContext context, IRubyObject arg0, IRubyObject arg1, Binding binding,
-            Block.Type type, Block unusedBlock) {
-        return call(context, arg0, arg1, binding, type);
-    }
-
-    public IRubyObject yieldSpecific(ThreadContext context, IRubyObject arg0, IRubyObject arg1, Binding binding, Block.Type type) {
-        return yield(context, context.runtime.newArrayNoCopyLight(arg0, arg1), null, null, true, binding, type);
-    }
-    public IRubyObject call(ThreadContext context, IRubyObject arg0, IRubyObject arg1, IRubyObject arg2, Binding binding, Block.Type type) {
+    public IRubyObject call(ThreadContext context, Block block, IRubyObject arg0, IRubyObject arg1, IRubyObject arg2) {
         IRubyObject[] args = new IRubyObject[] {arg0, arg1, arg2};
-        args = prepareArgumentsForCall(context, args, type);
-
-        return yield(context, RubyArray.newArrayNoCopy(context.runtime, args), null, null, true, binding, type);
+        if (canCallDirect()) {
+            return callDirect(context, block, args, Block.NULL_BLOCK);
+        } else {
+            return yield(context, block, prepareArgumentsForCall(context, args, block.type), null);
+        }
     }
-    public IRubyObject call(ThreadContext context, IRubyObject arg0, IRubyObject arg1, IRubyObject arg2, Binding binding,
-            Block.Type type, Block unusedBlock) {
-        return call(context, arg0, arg1, arg2, binding, type);
+    public IRubyObject call(ThreadContext context, Block block, IRubyObject arg0, IRubyObject arg1, IRubyObject arg2, Block unusedBlock) {
+        return call(context, block, arg0, arg1, arg2);
     }
 
-    public IRubyObject yieldSpecific(ThreadContext context, IRubyObject arg0, IRubyObject arg1, IRubyObject arg2, Binding binding, Block.Type type) {
-        return yield(context, context.runtime.newArrayNoCopyLight(arg0, arg1, arg2), null, null, true, binding, type);
+    public IRubyObject yieldSpecific(ThreadContext context, Block block, IRubyObject arg0, IRubyObject arg1, IRubyObject arg2) {
+        if (canCallDirect()) {
+            return yieldDirect(context, block, new IRubyObject[] { arg0, arg1, arg2 }, null);
+        } else {
+            return yield(context, block, new IRubyObject[] { arg0, arg1, arg2 }, null);
+        }
     }
 
 
@@ -163,7 +235,10 @@ public abstract class BlockBody {
      *
      * @return the arity
      */
-    public abstract Arity arity();
+    @Deprecated
+    public Arity arity() {
+        return signature.arity();
+    }
 
     /**
      * Is the current block a real yield'able block instead a null one
@@ -184,103 +259,27 @@ public abstract class BlockBody {
      */
     public abstract int getLine();
 
-    /**
-     * Compiled codes way of examining arguments
-     *
-     * @param nodeId to be considered
-     * @return something not linked to AST and a constant to make compiler happy
-     */
-    public static int asArgumentType(NodeType nodeId) {
-        if (nodeId == null) return ZERO_ARGS;
-
-        switch (nodeId) {
-        case ZEROARGNODE: return ZERO_ARGS;
-        case MULTIPLEASGNNODE: return MULTIPLE_ASSIGNMENT;
-        case SVALUENODE: return SINGLE_RESTARG;
-        }
-        return ARRAY;
-    }
-
     public IRubyObject[] prepareArgumentsForCall(ThreadContext context, IRubyObject[] args, Block.Type type) {
-        switch (type) {
-        case NORMAL: {
-//            assert false : "can this happen?";
-            if (args.length == 1 && args[0] instanceof RubyArray) {
-                if (argumentType == MULTIPLE_ASSIGNMENT || argumentType == SINGLE_RESTARG) {
-                    args = ((RubyArray) args[0]).toJavaArray();
-                }
-                break;
+        if (type == Block.Type.LAMBDA) {
+            signature.checkArity(context.runtime, args);
+        } else {
+            // SSS FIXME: How is it even possible to "call" a NORMAL block?
+            // I thought only procs & lambdas can be called, and blocks are yielded to.
+            if (args.length == 1) {
+                // Convert value to arg-array, unwrapping where necessary
+                args = IRRuntimeHelpers.convertValueIntoArgArray(context, args[0], signature, type == Block.Type.NORMAL && args[0] instanceof RubyArray);
+            } else if (getSignature().arityValue() == 1 && !getSignature().restKwargs()) {
+                // discard excess arguments
+                args = args.length == 0 ? context.runtime.getSingleNilArray() : new IRubyObject[] { args[0] };
             }
-        }
-        case PROC: {
-            if (args.length == 1 && args[0] instanceof RubyArray) {
-                if (argumentType == MULTIPLE_ASSIGNMENT && argumentType != SINGLE_RESTARG) {
-                    args = ((RubyArray) args[0]).toJavaArray();
-                }
-            }
-            break;
-        }
-        case LAMBDA:
-            if (argumentType == ARRAY && args.length != 1) {
-                context.runtime.getWarnings().warn(ID.MULTIPLE_VALUES_FOR_BLOCK, "multiple values for a block parameter (" + args.length + " for " + arity().getValue() + ")");
-                if (args.length == 0) {
-                    args = context.runtime.getSingleNilArray();
-                } else {
-                    args = new IRubyObject[] {context.runtime.newArrayNoCopy(args)};
-                }
-            } else {
-                arity().checkArity(context.runtime, args);
-            }
-            break;
         }
 
         return args;
     }
 
-    public String[] getParameterList() {
-        return EMPTY_PARAMETER_LIST;
-    }
-
-    public static NodeType getArgumentTypeWackyHack(IterNode iterNode) {
-        NodeType argsNodeId = null;
-        if (iterNode.getVarNode() != null && iterNode.getVarNode().getNodeType() != NodeType.ZEROARGNODE) {
-            // if we have multiple asgn with just *args, need a special type for that
-            argsNodeId = iterNode.getVarNode().getNodeType();
-            if (argsNodeId == NodeType.MULTIPLEASGNNODE) {
-                MultipleAsgnNode multipleAsgnNode = (MultipleAsgnNode)iterNode.getVarNode();
-                if (multipleAsgnNode.getHeadNode() == null && multipleAsgnNode.getArgsNode() != null) {
-                    // FIXME: This is gross. Don't do this.
-                    argsNodeId = NodeType.SVALUENODE;
-                }
-            }
-        }
-
-        return argsNodeId;
+    public ArgumentDescriptor[] getArgumentDescriptors() {
+        return ArgumentDescriptor.EMPTY_ARRAY;
     }
 
     public static final BlockBody NULL_BODY = new NullBlockBody();
-
-    public IRubyObject newArgsArrayFromArgsWithUnbox(IRubyObject[] args, ThreadContext context) {
-        IRubyObject value;
-        if (args.length == 0) {
-            value = context.runtime.getEmptyFrozenArray();
-        } else {
-            if (args.length == 1) {
-                value = args[0];
-            } else {
-                value = context.runtime.newArrayNoCopyLight(args);
-            }
-        }
-        return value;
-    }
-
-    public IRubyObject newArgsArrayFromArgsWithoutUnbox(IRubyObject[] args, ThreadContext context) {
-        IRubyObject value;
-        if (args.length == 0) {
-            value = context.runtime.getEmptyFrozenArray();
-        } else {
-            value = context.runtime.newArrayNoCopyLight(args);
-        }
-        return value;
-    }
 }

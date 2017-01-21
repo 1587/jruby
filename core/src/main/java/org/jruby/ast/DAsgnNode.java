@@ -33,18 +33,14 @@ package org.jruby.ast;
 
 import java.util.List;
 
-import org.jruby.Ruby;
 import org.jruby.ast.types.INameNode;
 import org.jruby.ast.visitor.NodeVisitor;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
 
 /**
  * An assignment to a dynamic variable (e.g. block scope local variable).
  */
-public class DAsgnNode extends AssignableNode implements INameNode {
+public class DAsgnNode extends AssignableNode implements INameNode, IScopedNode {
     // The name of the variable
     private String name;
     
@@ -53,7 +49,7 @@ public class DAsgnNode extends AssignableNode implements INameNode {
     private int location;
 
     public DAsgnNode(ISourcePosition position, String name, int location, Node valueNode) {
-        super(position, valueNode);
+        super(position, valueNode, true);
         this.name = name;
         this.location = location;
     }
@@ -66,7 +62,7 @@ public class DAsgnNode extends AssignableNode implements INameNode {
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitDAsgnNode(this);
     }
     
@@ -106,15 +102,7 @@ public class DAsgnNode extends AssignableNode implements INameNode {
     }
 
     @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        return context.getCurrentScope().setValue(getIndex(), 
-                getValueNode().interpret(runtime, context, self, aBlock), getDepth());
-    }
-    
-    @Override
-    public IRubyObject assign(Ruby runtime, ThreadContext context, IRubyObject self, IRubyObject value, Block block, boolean checkArity) {
-        context.getCurrentScope().setValue(getIndex(), value, getDepth());
-        
-        return runtime.getNil();
+    public boolean needsDefinitionCheck() {
+        return false;
     }
 }

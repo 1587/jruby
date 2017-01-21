@@ -3,9 +3,10 @@ package org.jruby.util;
 import java.io.InputStream;
 
 import jnr.posix.FileStat;
-
-import org.jruby.util.io.ChannelDescriptor;
+import jnr.posix.POSIX;
 import org.jruby.util.io.ModeFlags;
+
+import java.nio.channels.Channel;
 
 /**
  * This is a shared interface for files loaded as {@link java.io.File} and {@link java.util.zip.ZipEntry}.
@@ -52,5 +53,5 @@ public interface FileResource {
      * @throws ResourceException is the file does not exists or if the resource is a directory
      */
     InputStream inputStream() throws ResourceException;
-    ChannelDescriptor openDescriptor(ModeFlags flags, int perm) throws ResourceException;
+    Channel openChannel(ModeFlags flags, int perm) throws ResourceException;
 }

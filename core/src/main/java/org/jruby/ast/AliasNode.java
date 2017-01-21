@@ -33,13 +33,8 @@ package org.jruby.ast;
 
 import java.util.List;
 
-import org.jruby.Ruby;
 import org.jruby.ast.visitor.NodeVisitor;
-import org.jruby.runtime.Helpers;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
 
 /** Represents an alias statement (<code>alias newName oldName</code>).
  */
@@ -48,7 +43,7 @@ public class AliasNode extends Node {
     private Node newName;
 
     public AliasNode(ISourcePosition position, Node newName, Node oldName) {
-        super(position);
+        super(position, newName.containsVariableAssignment() || oldName.containsVariableAssignment());
         this.oldName = oldName;
         this.newName = newName;
     }
@@ -61,7 +56,7 @@ public class AliasNode extends Node {
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitAliasNode(this);
     }
 
@@ -83,13 +78,5 @@ public class AliasNode extends Node {
     
     public List<Node> childNodes() {
         return Node.createList(newName, oldName);
-    }
-    
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        String newerName = Helpers.interpretAliasUndefName(newName, runtime, context, self, aBlock);
-        String olderName = Helpers.interpretAliasUndefName(oldName, runtime, context, self, aBlock);
-
-        return Helpers.defineAlias(context, self, newerName, olderName);
     }
 }

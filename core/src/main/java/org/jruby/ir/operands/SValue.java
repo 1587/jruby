@@ -2,7 +2,10 @@ package org.jruby.ir.operands;
 
 import org.jruby.RubyArray;
 import org.jruby.ir.IRVisitor;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.parser.StaticScope;
 import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
@@ -24,7 +27,18 @@ public class SValue extends Operand {
     final private Operand array;
 
     public SValue(Operand array) {
+        super();
+
         this.array = array;
+    }
+
+    @Override
+    public OperandType getOperandType() {
+        return OperandType.SVALUE;
+    }
+
+    public Operand getArray() {
+        return array;
     }
 
     @Override
@@ -42,7 +56,7 @@ public class SValue extends Operand {
         Operand newArray = array.getSimplifiedOperand(valueMap, force);
         if (newArray instanceof Array) {
             Array a = (Array) newArray;
-            return (a.elts.length == 1) ? a.elts[0] : a;
+            return (a.getElts().length == 1) ? a.getElts()[0] : a;
         } else {
             return (newArray == array) ? this : new SValue(newArray);
         }
@@ -55,28 +69,25 @@ public class SValue extends Operand {
     }
 
     @Override
-    public Operand cloneForInlining(InlinerInfo ii) {
+    public Operand cloneForInlining(CloneInfo ii) {
         return hasKnownValue() ? this : new SValue(array.cloneForInlining(ii));
     }
 
     @Override
-    public Object retrieve(ThreadContext context, IRubyObject self, DynamicScope currDynScope, Object[] temp) {
-        Object val = array.retrieve(context, self, currDynScope, temp);
+    public Object retrieve(ThreadContext context, IRubyObject self, StaticScope currScope, DynamicScope currDynScope, Object[] temp) {
+        Object val = array.retrieve(context, self, currScope, currDynScope, temp);
 
-        if (context.runtime.is1_9()) {
-            return (val instanceof RubyArray) ? val : context.runtime.getNil();
-        } else {
-            if (val instanceof RubyArray) {
-                int n = ((RubyArray) val).getLength();
+        return (val instanceof RubyArray) ? val : context.runtime.getNil();
+    }
 
-                if (n == 0) return context.nil;
-                if (n == 1) return ((RubyArray) val).entry(0);
+    @Override
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+        e.encode(getArray());
+    }
 
-                return val;
-            }
-
-            return context.nil;
-        }
+    public static SValue decode(IRReaderDecoder d) {
+        return new SValue(d.decodeOperand());
     }
 
     @Override

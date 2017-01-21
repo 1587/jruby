@@ -47,14 +47,12 @@ import org.jruby.RubyClass;
 import org.jruby.RubyString;
 import org.jruby.runtime.Visibility;
 import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.util.io.ChannelStream;
 import org.jruby.exceptions.RaiseException;
 
 import org.jruby.util.io.SelectorFactory;
 import java.nio.channels.spi.SelectorProvider;
-import org.jruby.util.io.BadDescriptorException;
+
 import org.jruby.util.io.OpenFile;
-import org.jruby.util.io.Stream;
 
 /**
  * @author <a href="mailto:ola.bini@gmail.com">Ola Bini</a>
@@ -74,33 +72,24 @@ public class NetProtocolBufferedIO {
 
     @JRubyMethod(required = 1, visibility = Visibility.PRIVATE)
     public static IRubyObject initialize(IRubyObject recv, IRubyObject io) {
-        try {
-            if (io instanceof RubyIO) {
-                RubyIO rubyIO = (RubyIO)io;
-                OpenFile of = rubyIO.getOpenFile();
-                Stream stream = of.getMainStreamSafe();
-                if (stream instanceof ChannelStream) {
-                    ChannelStream cStream = (ChannelStream)stream;
-                    if (cStream.getDescriptor().getChannel() instanceof SelectableChannel)  {
-                        SelectableChannel selChannel = (SelectableChannel)cStream.getDescriptor().getChannel();
-
-                        ((RubyObject)recv).extend(
-                                new IRubyObject[]{((RubyModule)recv.getRuntime().getModule("Net").getConstant("BufferedIO")).getConstant("NativeImplementation")});
-                        SelectableChannel sc = (SelectableChannel)(selChannel);
-                        recv.dataWrapStruct(new NativeImpl(sc));
-                    }
-                }
+        final Ruby runtime = recv.getRuntime();
+        if (io instanceof RubyIO) {
+            RubyIO rubyIO = (RubyIO)io;
+            OpenFile of = rubyIO.getOpenFile();
+            SelectableChannel selChannel = of.selectChannel();
+            if (selChannel != null)  {
+                IRubyObject NativeImpl = ((RubyModule) runtime.getModule("Net").getConstant("BufferedIO")).getConstant("NativeImplementation");
+                ((RubyObject) recv).extend(new IRubyObject[]{ NativeImpl });
+                recv.dataWrapStruct(new NativeImpl(selChannel));
             }
-
-            recv.getInstanceVariables().setInstanceVariable("@io", io);
-            recv.getInstanceVariables().setInstanceVariable("@read_timeout", recv.getRuntime().newFixnum(60));
-            recv.getInstanceVariables().setInstanceVariable("@debug_output", recv.getRuntime().getNil());
-            recv.getInstanceVariables().setInstanceVariable("@rbuf", RubyString.newEmptyString(recv.getRuntime()));
-
-            return recv;
-        } catch (BadDescriptorException e) {
-            throw recv.getRuntime().newErrnoEBADFError();
         }
+
+        recv.getInstanceVariables().setInstanceVariable("@io", io);
+        recv.getInstanceVariables().setInstanceVariable("@read_timeout", runtime.newFixnum(60));
+        recv.getInstanceVariables().setInstanceVariable("@debug_output", runtime.getNil());
+        recv.getInstanceVariables().setInstanceVariable("@rbuf", RubyString.newEmptyString(runtime));
+
+        return recv;
     }
 
     @JRubyModule(name="Net::BufferedIO::NativeImplementation")

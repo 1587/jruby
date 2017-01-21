@@ -29,6 +29,7 @@
 package org.jruby.platform;
 
 import org.jruby.util.SafePropertyAccessor;
+import org.jruby.runtime.builtin.IRubyObject;
 
 import java.nio.ByteOrder;
 import java.util.HashMap;
@@ -38,8 +39,8 @@ import org.jruby.runtime.Helpers;
 /**
  * Platform specific constants.
  */
-public class Platform {
-    private static final Platform INSTANCE = new Platform();
+public abstract class Platform {
+    private static final Platform INSTANCE = initPlatform();
     public static Platform getPlatform() {
         return INSTANCE;
     }
@@ -81,6 +82,9 @@ public class Platform {
         if (osname.startsWith("windows")) {
             return WINDOWS;
         }
+        if (osname.startsWith("sunos")) {
+            return SOLARIS;
+        }
         return osname;
     }
     private static String initArchitecture() {
@@ -103,6 +107,7 @@ public class Platform {
         }
         return arch;
     }
+
     public static final String ARCH = initArchitecture();
     public static final String OS = initOperatingSystem();
     public static final String JVM = getProperty("java.vm.name", "unknown");
@@ -124,6 +129,21 @@ public class Platform {
     public static final boolean IS_GCJ = JVM.equals(GCJ);
     public static final boolean IS_IBM = JVM.equals(IBM);
     
+    private static Platform initPlatform(){
+        try {
+            if (IS_WINDOWS)
+                return new NTPlatform();
+
+            if (IS_SOLARIS)
+                return new SolarisPlatform();
+
+            // Punt
+            return new UnixPlatform();
+        } catch (UnsupportedOperationException e) {
+            return new UnsupportedPlatform();
+        }
+    }
+
     /**
      * An extension over <code>System.getProperty</code> method.
      * Handles security restrictions, and returns the default
@@ -140,4 +160,6 @@ public class Platform {
             return defValue;
         }
     }
+
+    public abstract long[] getGroups(IRubyObject recv);
 }

@@ -1,146 +1,222 @@
 package org.jruby.ir.passes;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.ListIterator;
-
-import org.jruby.ir.IRClosure;
-import org.jruby.ir.IRMethod;
-import org.jruby.ir.IRModuleBody;
-import org.jruby.ir.IRScriptBody;
-import org.jruby.ir.IRScope;
-import org.jruby.ir.instructions.BreakInstr;
-import org.jruby.ir.instructions.Instr;
-import org.jruby.ir.instructions.PopBindingInstr;
-import org.jruby.ir.instructions.PopFrameInstr;
-import org.jruby.ir.instructions.PushBindingInstr;
-import org.jruby.ir.instructions.PushFrameInstr;
-import org.jruby.ir.instructions.ReceiveExceptionInstr;
-import org.jruby.ir.instructions.ReturnBase;
-import org.jruby.ir.instructions.ThrowExceptionInstr;
-import org.jruby.ir.dataflow.analyses.StoreLocalVarPlacementProblem;
+import org.jruby.ir.*;
+import org.jruby.ir.instructions.*;
+import org.jruby.runtime.Signature;
+import org.jruby.ir.operands.ImmutableLiteral;
 import org.jruby.ir.operands.Label;
+import org.jruby.ir.operands.Operand;
+import org.jruby.ir.operands.Self;
+import org.jruby.ir.operands.TemporaryVariable;
 import org.jruby.ir.operands.Variable;
 import org.jruby.ir.representations.BasicBlock;
 import org.jruby.ir.representations.CFG;
 
-public class AddCallProtocolInstructions extends CompilerPass {
-    boolean addedInstrs = false;
+import java.util.ListIterator;
 
+public class AddCallProtocolInstructions extends CompilerPass {
     @Override
     public String getLabel() {
         return "Add Call Protocol Instructions (push/pop of dyn-scope, frame, impl-class values)";
     }
 
-    public static List<Class<? extends CompilerPass>> DEPENDENCIES = Arrays.<Class<? extends CompilerPass>>asList(CFGBuilder.class);
+    private boolean explicitCallProtocolSupported(IRScope scope) {
+        return scope instanceof IRMethod
+            || (scope instanceof IRClosure && !(scope instanceof IREvalScript))
+            || (scope instanceof IRModuleBody && !(scope instanceof IRMetaClassBody));
+    }
 
-    @Override
-    public List<Class<? extends CompilerPass>> getDependencies() {
-        return DEPENDENCIES;
+    /*
+     * Since the return is now going to be preceded by a pops of bindings/frames,
+     * the return value should continue to be valid after those pops.
+     * If not, introduce a copy into a tmp-var before the pops and use the tmp-var
+     * to return the right value.
+     */
+    private void fixReturn(IRScope scope, ReturnBase i, ListIterator<Instr> instrs) {
+        Operand retVal = i.getReturnValue();
+        if (!(retVal instanceof ImmutableLiteral || retVal instanceof TemporaryVariable)) {
+            TemporaryVariable tmp = scope.createTemporaryVariable();
+            CopyInstr copy = new CopyInstr(tmp, retVal);
+            i.updateReturnValue(tmp);
+            instrs.previous();
+            instrs.add(copy);
+            instrs.next();
+        }
+    }
+
+    private void popSavedState(IRScope scope, boolean isGEB, boolean requireBinding, boolean requireFrame, Variable savedViz, Variable savedFrame, ListIterator<Instr> instrs) {
+        if (scope instanceof IRClosure && isGEB) {
+            // Add before RethrowSavedExcInLambdaInstr
+            instrs.previous();
+        }
+        if (requireBinding) instrs.add(new PopBindingInstr());
+        if (scope instanceof IRClosure) {
+            if (scope.needsFrame()) {
+                instrs.add(new RestoreBindingVisibilityInstr(savedViz));
+                instrs.add(new PopBlockFrameInstr(savedFrame));
+            }
+        } else {
+            if (requireFrame) instrs.add(new PopMethodFrameInstr());
+        }
     }
 
     @Override
     public Object execute(IRScope scope, Object... data) {
-        StoreLocalVarPlacementProblem slvpp = (StoreLocalVarPlacementProblem)scope.getDataFlowSolution(StoreLocalVarPlacementProblem.NAME);
-
-        boolean scopeHasLocalVarStores      = false;
-        boolean scopeHasUnrescuedExceptions = false;
-
-        CFG        cfg = scope.cfg();
-        BasicBlock geb = cfg.getGlobalEnsureBB();
-
-        if (slvpp != null) {
-            scopeHasLocalVarStores      = slvpp.scopeHasLocalVarStores();
-            scopeHasUnrescuedExceptions = slvpp.scopeHasUnrescuedExceptions();
-        } else {
-            // We dont require local-var load/stores to have been run.
-            // If it is not run, we go conservative and add push/pop binding instrs. everywhere
-            scopeHasLocalVarStores      = true;
-            scopeHasUnrescuedExceptions = false;
-            for (BasicBlock bb: cfg.getBasicBlocks()) {
-                // SSS FIXME: This is highly conservative.  If the bb has an exception raising instr.
-                // and if we dont have a rescuer, only then do we have unrescued exceptions.
-                if (cfg.getRescuerBBFor(bb) == null) {
-                    scopeHasUnrescuedExceptions = true;
-                    break;
-                }
-            }
-        }
-
-        BasicBlock entryBB = cfg.getEntryBB();
-
-        // SSS FIXME: Right now, we always add push/pop frame instrs -- in the future, we may skip them
-        // for certain scopes.
+        // IRScriptBody do not get explicit call protocol instructions right now.
+        // They dont push/pop a frame and do other special things like run begin/end blocks.
+        // So, for now, they go through the runtime stub in IRScriptBody.
         //
         // Add explicit frame and binding push/pop instrs ONLY for methods -- we cannot handle this in closures and evals yet
         // If the scope uses $_ or $~ family of vars, has local load/stores, or if its binding has escaped, we have
         // to allocate a dynamic scope for it and add binding push/pop instructions.
-        if ((scope instanceof IRMethod) || (scope instanceof IRScriptBody) || (scope instanceof IRModuleBody)) {
-            if (scope.bindingHasEscaped() || scope.usesBackrefOrLastline() || scopeHasLocalVarStores || scopeHasUnrescuedExceptions) {
-                // Push
-                entryBB.addInstr(new PushFrameInstr());
-                entryBB.addInstr(new PushBindingInstr(scope));
+        if (!explicitCallProtocolSupported(scope)) return null;
 
-                // Allocate GEB if necessary for popping binding
-                if (geb == null && (scopeHasLocalVarStores || scopeHasUnrescuedExceptions)) {
-                    Variable exc = scope.getNewTemporaryVariable();
-                    geb = new BasicBlock(cfg, new Label("_GLOBAL_ENSURE_BLOCK"));
-                    geb.addInstr(new ReceiveExceptionInstr(exc, false)); // No need to check type since it is not used before rethrowing
-                    geb.addInstr(new ThrowExceptionInstr(exc));
-                    cfg.addGlobalEnsureBB(geb);
+        CFG cfg = scope.getCFG();
+
+        // For now, we always require frame for closures
+        boolean requireFrame = scope.needsFrame();
+        boolean requireBinding = scope.needsBinding();
+
+        if (scope instanceof IRClosure || requireBinding || requireFrame) {
+            BasicBlock entryBB = cfg.getEntryBB();
+            Variable savedViz = null, savedFrame = null;
+            if (scope instanceof IRClosure) {
+                savedViz = scope.createTemporaryVariable();
+                savedFrame = scope.createTemporaryVariable();
+
+                // FIXME: Hacky...need these to come before other stuff in entryBB so we insert instead of add
+                int insertIndex = 0;
+
+                if (scope.needsFrame()) {
+                    entryBB.insertInstr(insertIndex++, new SaveBindingVisibilityInstr(savedViz));
+                    entryBB.insertInstr(insertIndex++, new PushBlockFrameInstr(savedFrame, scope.getName()));
                 }
 
-                // Pop on all scope-exit paths
-                BasicBlock exitBB = cfg.getExitBB();
-                for (BasicBlock bb: cfg.getBasicBlocks()) {
-                    ListIterator<Instr> instrs = bb.getInstrs().listIterator();
-                    while (instrs.hasNext()) {
-                        Instr i = instrs.next();
-                        if ((bb != exitBB) && (i instanceof ReturnBase) || (i instanceof BreakInstr)) {
-                            // Add before the break/return
-                            instrs.previous();
-                            instrs.add(new PopBindingInstr());
-                            instrs.add(new PopFrameInstr());
-                            break;
+                // NOTE: Order of these next two is important, since UBESI resets state PBBI needs.
+                if (requireBinding) {
+                    entryBB.insertInstr(insertIndex++, new PushBlockBindingInstr());
+                }
+
+                entryBB.insertInstr(insertIndex++, new UpdateBlockExecutionStateInstr(Self.SELF));
+
+                BasicBlock prologueBB = createPrologueBlock(cfg);
+
+                // Add the right kind of arg preparation instruction
+                Signature sig = ((IRClosure)scope).getSignature();
+                int arityValue = sig.arityValue();
+                if (arityValue == 0) {
+                    prologueBB.addInstr(PrepareNoBlockArgsInstr.INSTANCE);
+                } else {
+                    if (sig.isFixed()) {
+                        if (arityValue == 1) {
+                            prologueBB.addInstr(PrepareSingleBlockArgInstr.INSTANCE);
+                        } else {
+                            prologueBB.addInstr(PrepareFixedBlockArgsInstr.INSTANCE);
                         }
-                    }
-
-                    if ((bb == exitBB) && !bb.isEmpty()) {
-                        // Last instr could be a return -- so, move iterator one position back
-                        if (instrs.hasPrevious()) instrs.previous();
-                        instrs.add(new PopBindingInstr());
-                        instrs.add(new PopFrameInstr());
-                    }
-
-                    if (bb == geb) {
-                        // Add before throw-exception-instr which would be the last instr
-                        instrs.previous();
-                        instrs.add(new PopBindingInstr());
-                        instrs.add(new PopFrameInstr());
+                    } else {
+                        prologueBB.addInstr(PrepareBlockArgsInstr.INSTANCE);
                     }
                 }
+            } else {
+                if (requireFrame) entryBB.addInstr(new PushMethodFrameInstr(scope.getName()));
+                if (requireBinding) entryBB.addInstr(new PushMethodBindingInstr());
             }
 
-            // This scope has an explicit call protocol flag now
-            scope.setExplicitCallProtocolFlag(true);
+            // SSS FIXME: We are doing this conservatively.
+            // Only scopes that have unrescued exceptions need a GEB.
+            //
+            // Allocate GEB if necessary for popping
+            BasicBlock geb = cfg.getGlobalEnsureBB();
+            boolean gebProcessed = false;
+            if (geb == null) {
+                Variable exc = scope.createTemporaryVariable();
+                geb = new BasicBlock(cfg, Label.getGlobalEnsureBlockLabel());
+                geb.addInstr(new ReceiveJRubyExceptionInstr(exc)); // JRuby Implementation exception handling
+                geb.addInstr(new ThrowExceptionInstr(exc));
+                cfg.addGlobalEnsureBB(geb);
+            }
+
+            // Pop on all scope-exit paths
+            for (BasicBlock bb: cfg.getBasicBlocks()) {
+                Instr i = null;
+                ListIterator<Instr> instrs = bb.getInstrs().listIterator();
+                while (instrs.hasNext()) {
+                    i = instrs.next();
+                    // Breaks & non-local returns in blocks will throw exceptions
+                    // and pops for them will be handled in the GEB
+                    if (!bb.isExitBB() && i instanceof ReturnInstr) {
+                        if (requireBinding) fixReturn(scope, (ReturnInstr)i, instrs);
+                        // Add before the break/return
+                        i = instrs.previous();
+                        popSavedState(scope, bb == geb, requireBinding, requireFrame, savedViz, savedFrame, instrs);
+                        if (bb == geb) gebProcessed = true;
+                        break;
+                    }
+                }
+
+                if (bb.isExitBB() && !bb.isEmpty()) {
+                    // Last instr could be a return -- so, move iterator one position back
+                    if (i != null && i instanceof ReturnInstr) {
+                        if (requireBinding) fixReturn(scope, (ReturnInstr)i, instrs);
+                        instrs.previous();
+                    }
+                    popSavedState(scope, bb == geb, requireBinding, requireFrame, savedViz, savedFrame, instrs);
+                    if (bb == geb) gebProcessed = true;
+                } else if (!gebProcessed && bb == geb) {
+                    // Add before throw-exception-instr which would be the last instr
+                    if (i != null) {
+                        // Assumption: Last instr should always be a control-transfer instruction
+                        assert i.getOperation().transfersControl(): "Last instruction of GEB in scope: " + scope + " is " + i + ", not a control-xfer instruction";
+                        instrs.previous();
+                    }
+                    popSavedState(scope, true, requireBinding, requireFrame, savedViz, savedFrame, instrs);
+                }
+            }
         }
 
-        // Run on all nested closures.
-        for (IRClosure c: scope.getClosures()) execute(c);
+/*
+        if (scope instanceof IRClosure) {
+            System.out.println(scope + " after acp: " + cfg.toStringInstrs());
+        }
+*/
 
-        // Mark as done
-        addedInstrs = true;
+        // This scope has an explicit call protocol flag now
+        scope.setExplicitCallProtocolFlag();
+
+        // LVA information is no longer valid after the pass
+        // FIXME: Grrr ... this seems broken to have to create a new object to invalidate
+        (new LiveVariableAnalysis()).invalidate(scope);
 
         return null;
     }
 
-    @Override
-    public Object previouslyRun(IRScope scope) {
-        return addedInstrs ? new Object() : null;
+    // We create an extra BB after entryBB for some ACP instructions which can possibly throw
+    // an exception.  We want to keep them out of entryBB so we have a safe place to put
+    // stuff before exception without needing to worry about weird flow control.
+    // FIXME: We need to centralize prologue logic in case there's other places we want to use it
+    private BasicBlock createPrologueBlock(CFG cfg) {
+        BasicBlock entryBB = cfg.getEntryBB();
+
+        BasicBlock oldStart = cfg.getOutgoingDestinationOfType(entryBB, CFG.EdgeType.FALL_THROUGH);
+        BasicBlock prologueBB = new BasicBlock(cfg, cfg.getScope().getNewLabel());
+        cfg.removeEdge(entryBB, oldStart);
+        cfg.addBasicBlock(prologueBB);
+        cfg.addEdge(entryBB, prologueBB, CFG.EdgeType.FALL_THROUGH);
+        cfg.addEdge(prologueBB, oldStart, CFG.EdgeType.FALL_THROUGH);
+
+        // If there's already a GEB, make sure we have an edge to it and use it to rescue these instrs
+        if (cfg.getGlobalEnsureBB() != null) {
+            BasicBlock geb = cfg.getGlobalEnsureBB();
+            cfg.addEdge(prologueBB, geb, CFG.EdgeType.EXCEPTION);
+            cfg.setRescuerBB(prologueBB, geb);
+        }
+
+        return prologueBB;
     }
 
     @Override
-    public void invalidate(IRScope scope) {
+    public boolean invalidate(IRScope scope) {
         // Cannot add call protocol instructions after we've added them once.
+        return false;
     }
 }

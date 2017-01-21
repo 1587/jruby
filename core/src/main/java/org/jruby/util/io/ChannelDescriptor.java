@@ -28,20 +28,11 @@
  ***** END LICENSE BLOCK *****/
 package org.jruby.util.io;
 
-import static org.jruby.util.io.ModeFlags.RDONLY;
-import static org.jruby.util.io.ModeFlags.RDWR;
-import static org.jruby.util.io.ModeFlags.WRONLY;
-
-import java.io.File;
 import java.io.FileDescriptor;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.net.URL;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channel;
 import java.nio.channels.Channels;
@@ -49,21 +40,16 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritableByteChannel;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import jnr.enxio.channels.NativeSelectableChannel;
-import org.jruby.Ruby;
-import org.jruby.RubyFile;
-
 import jnr.posix.POSIX;
-import jnr.unixsocket.UnixServerSocketChannel;
-import jnr.unixsocket.UnixSocketChannel;
-import org.jruby.exceptions.RaiseException;
+import jnr.posix.POSIXFactory;
+
+import org.jruby.Ruby;
 import org.jruby.util.ByteList;
 import org.jruby.util.JRubyFile;
-import org.jruby.util.ResourceException;
 import org.jruby.util.log.Logger;
 import org.jruby.util.log.LoggerFactory;
 
@@ -85,8 +71,9 @@ import org.jruby.util.log.LoggerFactory;
  * At present there's no way to simulate the behavior on some platforms where
  * POSIX dup also allows independent positioning information.
  */
+@Deprecated
 public class ChannelDescriptor {
-    private static final Logger LOG = LoggerFactory.getLogger("ChannelDescriptor");
+    private static final Logger LOG = LoggerFactory.getLogger(ChannelDescriptor.class);
 
     /** Whether to log debugging information */
     private static final boolean DEBUG = false;
@@ -221,7 +208,7 @@ public class ChannelDescriptor {
      * @param originalModes The mode flags for the new descriptor
      */
     public ChannelDescriptor(Channel channel, ModeFlags originalModes) {
-        this(channel, getNewFileno(), originalModes, getDescriptorFromChannel(channel), new AtomicInteger(1), true, false);
+        this(channel, getNewFileno(), originalModes, FilenoUtil.getDescriptorFromChannel(channel), new AtomicInteger(1), true, false);
     }
 
     /**
@@ -275,12 +262,12 @@ public class ChannelDescriptor {
      * @param fileDescriptor The java.io.FileDescriptor object for the new descriptor
      */
     public ChannelDescriptor(Channel channel, FileDescriptor fileDescriptor) throws InvalidValueException {
-        this(channel, getModesFromChannel(channel), fileDescriptor);
+        this(channel, ModeFlags.getModesFromChannel(channel), fileDescriptor);
     }
     
     @Deprecated
     public ChannelDescriptor(Channel channel, int fileno, FileDescriptor fileDescriptor) throws InvalidValueException {
-        this(channel, getModesFromChannel(channel), fileDescriptor);
+        this(channel, ModeFlags.getModesFromChannel(channel), fileDescriptor);
     }
 
     /**
@@ -293,7 +280,7 @@ public class ChannelDescriptor {
      * @param channel The channel for the new descriptor
      */
     public ChannelDescriptor(Channel channel) throws InvalidValueException {
-        this(channel, getModesFromChannel(channel), getDescriptorFromChannel(channel));
+        this(channel, ModeFlags.getModesFromChannel(channel), FilenoUtil.getDescriptorFromChannel(channel));
     }
 
     /**
@@ -526,15 +513,15 @@ public class ChannelDescriptor {
             try {
                 long pos;
                 switch (whence) {
-                case Stream.SEEK_SET:
+                case PosixShim.SEEK_SET:
                     pos = offset;
                     fileChannel.position(pos);
                     break;
-                case Stream.SEEK_CUR:
+                case PosixShim.SEEK_CUR:
                     pos = fileChannel.position() + offset;
                     fileChannel.position(pos);
                     break;
-                case Stream.SEEK_END:
+                case PosixShim.SEEK_END:
                     pos = fileChannel.size() + offset;
                     fileChannel.position(pos);
                     break;
@@ -718,24 +705,26 @@ public class ChannelDescriptor {
      * @param flags the mode flags to use for opening the file
      * @return a new ChannelDescriptor based on the specified parameters
      */
+    @Deprecated
     public static ChannelDescriptor open(String cwd, String path, ModeFlags flags) throws FileNotFoundException, DirectoryAsFileException, FileExistsException, IOException {
-        return open(cwd, path, flags, 0, null, null);
+        return open(cwd, path, flags, 0, POSIXFactory.getPOSIX(), null);
     }
-    
+
     /**
      * Open a new descriptor using the given working directory, file path,
      * mode flags, and file permission. This is equivalent to the open(2)
      * POSIX function. See org.jruby.util.io.ChannelDescriptor.open(String, String, ModeFlags, int, POSIX)
      * for the version that also sets file permissions.
-     * 
+     *
      * @param cwd the "current working directory" to use when opening the file
      * @param path the file path to open
      * @param flags the mode flags to use for opening the file
      * @param classLoader a ClassLoader to use for classpath: resources
      * @return a new ChannelDescriptor based on the specified parameters
      */
+    @Deprecated
     public static ChannelDescriptor open(String cwd, String path, ModeFlags flags, ClassLoader classLoader) throws FileNotFoundException, DirectoryAsFileException, FileExistsException, IOException {
-        return open(cwd, path, flags, 0, null, classLoader);
+        return open(cwd, path, flags, 0, POSIXFactory.getPOSIX(), classLoader);
     }
 
     /**
@@ -751,15 +740,16 @@ public class ChannelDescriptor {
      * @param posix a POSIX api implementation, used for setting permissions; if null, permissions are ignored
      * @return a new ChannelDescriptor based on the specified parameters
      */
+    @Deprecated
     public static ChannelDescriptor open(String cwd, String path, ModeFlags flags, int perm, POSIX posix) throws FileNotFoundException, DirectoryAsFileException, FileExistsException, IOException {
         return open(cwd, path, flags, perm, posix, null);
     }
-    
+
     /**
      * Open a new descriptor using the given working directory, file path,
      * mode flags, and file permission. This is equivalent to the open(2)
      * POSIX function.
-     * 
+     *
      * @param cwd the "current working directory" to use when opening the file
      * @param path the file path to open
      * @param flags the mode flags to use for opening the file
@@ -769,27 +759,31 @@ public class ChannelDescriptor {
      * @param classLoader a ClassLoader to use for classpath: resources
      * @return a new ChannelDescriptor based on the specified parameters
      */
+    @Deprecated
     public static ChannelDescriptor open(String cwd, String path, ModeFlags flags, int perm, POSIX posix, ClassLoader classLoader) throws FileNotFoundException, DirectoryAsFileException, FileExistsException, IOException {
-        if (path.equals("/dev/null") || path.equalsIgnoreCase("nul:") || path.equalsIgnoreCase("nul")) {
-            Channel nullChannel = new NullChannel();
-            // FIXME: don't use RubyIO for this
-            return new ChannelDescriptor(nullChannel, flags);
-        }
+        try {
+            if (path.equals("/dev/null") || path.equalsIgnoreCase("nul:") || path.equalsIgnoreCase("nul")) {
+                Channel nullChannel = new NullChannel();
+                // FIXME: don't use RubyIO for this
+                return new ChannelDescriptor(nullChannel, flags);
+            }
 
-        if (path.startsWith("classpath:/") && classLoader != null) {
-            path = path.substring("classpath:/".length());
-            InputStream is = classLoader.getResourceAsStream(path);
-            // FIXME: don't use RubyIO for this
-            return new ChannelDescriptor(Channels.newChannel(is), flags);
-        }
+            if (path.startsWith("classpath:/") && classLoader != null) {
+                path = path.substring("classpath:/".length());
+                InputStream is = classLoader.getResourceAsStream(path);
+                // FIXME: don't use RubyIO for this
+                return new ChannelDescriptor(Channels.newChannel(is), flags);
+            }
 
-        return JRubyFile.createResource(posix, cwd, path).openDescriptor(flags, perm);
+            Channel ch = JRubyFile.createResource(Ruby.getGlobalRuntime(), cwd, path).openChannel(flags, perm);
+            return new ChannelDescriptor(ch, flags);
+        } catch (NullPointerException npe) { npe.printStackTrace(); throw npe; }
     }
 
     /**
      * Close this descriptor. If in closing the last ChannelDescriptor reference
      * to the associate channel is closed, the channel itself will be closed.
-     * 
+     *
      * @throws org.jruby.util.io.BadDescriptorException if the associated
      * channel is already closed
      * @throws java.io.IOException if there is an exception during IO
@@ -798,15 +792,6 @@ public class ChannelDescriptor {
         // tidy up
         finish(true);
 
-    }
-
-    /**
-     * Attempt to sync the OS IO buffers (a la fsync(2)).
-     */
-    public void fsync() throws IOException {
-        if (channel instanceof FileChannel) {
-            ((FileChannel) channel).force(true);
-        }
     }
 
     void finish(boolean close) throws BadDescriptorException, IOException {
@@ -838,139 +823,41 @@ public class ChannelDescriptor {
             }
         }
     }
-    
-    /**
-     * Build a set of mode flags using the specified channel's actual capabilities.
-     * 
-     * @param channel the channel to examine for capabilities
-     * @return the mode flags 
-     * @throws org.jruby.util.io.InvalidValueException
-     */
-    private static ModeFlags getModesFromChannel(Channel channel) throws InvalidValueException {
-        ModeFlags modes;
-        if (channel instanceof ReadableByteChannel) {
-            if (channel instanceof WritableByteChannel) {
-                modes = new ModeFlags(RDWR);
-            } else {
-                modes = new ModeFlags(RDONLY);
-            }
-        } else if (channel instanceof WritableByteChannel) {
-            modes = new ModeFlags(WRONLY);
-        } else {
-            // FIXME: I don't like this
-            modes = new ModeFlags(RDWR);
-        }
-        
-        return modes;
-    }
 
-    // FIXME shouldn't use static; would interfere with other runtimes in the same JVM
-    protected static final AtomicInteger internalFilenoIndex = new AtomicInteger(2);
+    // Choose something sufficiently high so new IO stuff does not trample as soon
+    @Deprecated
+    private static final AtomicInteger NEXT_FILENO = new AtomicInteger(Integer.MAX_VALUE / 2);
 
+    @Deprecated
+    private static final Map<Integer, ChannelDescriptor> FILENO_MAP = Collections.synchronizedMap(new HashMap<Integer, ChannelDescriptor>());
+
+    @Deprecated
     public static int getNewFileno() {
-        return internalFilenoIndex.incrementAndGet();
+        return NEXT_FILENO.getAndIncrement();
     }
 
+    @Deprecated
     private static void registerDescriptor(ChannelDescriptor descriptor) {
-        filenoDescriptorMap.put(descriptor.getFileno(), descriptor);
+        FILENO_MAP.put(descriptor.getFileno(), descriptor);
     }
 
-    public static void unregisterDescriptor(int aFileno) {
-        filenoDescriptorMap.remove(aFileno);
+    @Deprecated
+    private static void unregisterDescriptor(int aFileno) {
+        FILENO_MAP.remove(aFileno);
     }
 
+    @Deprecated
     public static ChannelDescriptor getDescriptorByFileno(int aFileno) {
-        return filenoDescriptorMap.get(aFileno);
+        return FILENO_MAP.get(aFileno);
     }
 
-    public static Map<Integer, ChannelDescriptor> getFilenoDescriptorMapReadOnly() {
-        return Collections.unmodifiableMap(filenoDescriptorMap);
-    }
-    
-    private static final Map<Integer, ChannelDescriptor> filenoDescriptorMap = new ConcurrentHashMap<Integer, ChannelDescriptor>();
-    
-    private static final Class SEL_CH_IMPL;
-    private static final Method SEL_CH_IMPL_GET_FD;
-    private static final Class FILE_CHANNEL_IMPL;
-    private static final Field FILE_CHANNEL_IMPL_FD;
-    private static final Field FILE_DESCRIPTOR_FD;
-    
-    static {
-        Method getFD;
-        Class selChImpl;
-        try {
-            selChImpl = Class.forName("sun.nio.ch.SelChImpl");
-            try {
-                getFD = selChImpl.getMethod("getFD");
-                getFD.setAccessible(true);
-            } catch (Exception e) {
-                getFD = null;
-            }
-        } catch (Exception e) {
-            selChImpl = null;
-            getFD = null;
-        }
-        SEL_CH_IMPL = selChImpl;
-        SEL_CH_IMPL_GET_FD = getFD;
-        
-        Field fd;
-        Class fileChannelImpl;
-        try {
-            fileChannelImpl = Class.forName("sun.nio.ch.FileChannelImpl");
-            try {
-                fd = fileChannelImpl.getDeclaredField("fd");
-                fd.setAccessible(true);
-            } catch (Exception e) {
-                fd = null;
-            }
-        } catch (Exception e) {
-            fileChannelImpl = null;
-            fd = null;
-        }
-        FILE_CHANNEL_IMPL = fileChannelImpl;
-        FILE_CHANNEL_IMPL_FD = fd;
-        
-        Field ffd;
-        try {
-            ffd = FileDescriptor.class.getDeclaredField("fd");
-            ffd.setAccessible(true);
-        } catch (Exception e) {
-            ffd = null;
-        }
-        FILE_DESCRIPTOR_FD = ffd;
-    }
-    
+    @Deprecated
     public static FileDescriptor getDescriptorFromChannel(Channel channel) {
-        if (SEL_CH_IMPL_GET_FD != null && SEL_CH_IMPL.isInstance(channel)) {
-            // Pipe Source and Sink, Sockets, and other several other selectable channels
-            try {
-                return (FileDescriptor)SEL_CH_IMPL_GET_FD.invoke(channel);
-            } catch (Exception e) {
-                // return bogus below
-            }
-        } else if (FILE_CHANNEL_IMPL_FD != null && FILE_CHANNEL_IMPL.isInstance(channel)) {
-            // FileChannels
-            try {
-                return (FileDescriptor)FILE_CHANNEL_IMPL_FD.get(channel);
-            } catch (Exception e) {
-                // return bogus below
-            }
-        } else if (FILE_DESCRIPTOR_FD != null) {
-            FileDescriptor unixFD = new FileDescriptor();
-            
-                // UNIX sockets, from jnr-unixsocket
-                try {
-                    if (channel instanceof UnixSocketChannel) {
-                        FILE_DESCRIPTOR_FD.set(unixFD, ((UnixSocketChannel)channel).getFD());
-                        return unixFD;
-                    } else if (channel instanceof UnixServerSocketChannel) {
-                        FILE_DESCRIPTOR_FD.set(unixFD, ((UnixServerSocketChannel)channel).getFD());
-                        return unixFD;
-                    }
-                } catch (Exception e) {
-                    // return bogus below
-                }
-        }
-        return new FileDescriptor();
+        return FilenoUtil.getDescriptorFromChannel(channel);
+    }
+
+    @Deprecated
+    public static int getFilenoFromChannel(Channel channel) {
+        return FilenoUtil.filenoFrom(channel);
     }
 }

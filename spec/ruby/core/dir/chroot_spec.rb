@@ -10,7 +10,7 @@ platform_is_not :windows do
       end
     end
 
-    platform_is_not :os => :cygwin do
+    platform_is_not os: :cygwin do
       as_user do
         describe "Dir.chroot as regular user" do
           before :all do
@@ -29,18 +29,16 @@ platform_is_not :windows do
             lambda { Dir.chroot('xgwhwhsjai2222jg') }.should raise_error(SystemCallError)
           end
 
-          ruby_version_is "1.9" do
-            it "calls #to_path on non-String argument" do
-              p = mock('path')
-              p.should_receive(:to_path).and_return('.')
-              lambda { Dir.chroot(p) }.should raise_error
-            end
+          it "calls #to_path on non-String argument" do
+            p = mock('path')
+            p.should_receive(:to_path).and_return('.')
+            lambda { Dir.chroot(p) }.should raise_error
           end
         end
       end
     end
 
-    platform_is :os => :cygwin do
+    platform_is os: :cygwin do
       as_user do
         describe "Dir.chroot as regular user" do
           it_behaves_like :dir_chroot_as_root, :chroot

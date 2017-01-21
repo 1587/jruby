@@ -1,59 +1,73 @@
 package org.jruby.ir.instructions;
 
-import org.jruby.Ruby;
-import org.jruby.runtime.Arity;
 import org.jruby.ir.IRVisitor;
 import org.jruby.ir.Operation;
-import org.jruby.ir.operands.Operand;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
+import org.jruby.ir.runtime.IRRuntimeHelpers;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.ir.transformations.inlining.InlineCloneInfo;
+import org.jruby.ir.transformations.inlining.SimpleCloneInfo;
+import org.jruby.parser.StaticScope;
+import org.jruby.runtime.Block;
+import org.jruby.runtime.ThreadContext;
 
-public class CheckArityInstr extends Instr {
+public class CheckArityInstr extends NoOperandInstr implements FixedArityInstr {
     public final int required;
     public final int opt;
-    public final int rest;
+    public final boolean rest;
+    public final boolean receivesKeywords;
+    public final int restKey;
 
-    public CheckArityInstr(int required, int opt, int rest) {
+    public CheckArityInstr(int required, int opt, boolean rest, boolean receivesKeywords, int restKey) {
         super(Operation.CHECK_ARITY);
 
         this.required = required;
         this.opt = opt;
         this.rest = rest;
+        this.receivesKeywords = receivesKeywords;
+        this.restKey = restKey;
     }
 
     @Override
-    public Operand[] getOperands() {
-        return EMPTY_OPERANDS;
+    public String[] toStringNonOperandArgs() {
+        return new String[] {"req: " + required, "opt: " + opt, "*r: " + rest, "kw: " + receivesKeywords};
     }
 
     @Override
-    public String toString() {
-        return super.toString() + "(" + required + ", " + opt + ", " + rest + ")";
-    }
+    public Instr clone(CloneInfo info) {
+        if (info instanceof SimpleCloneInfo) return new CheckArityInstr(required, opt, rest, receivesKeywords, restKey);
 
-    @Override
-    public Instr cloneForInlinedScope(InlinerInfo ii) {
-        if (ii.canMapArgsStatically()) {
-            // Since we know arity at a callsite, arity check passes or we have an ArgumentError
+        InlineCloneInfo ii = (InlineCloneInfo) info;
+        if (ii.canMapArgsStatically()) { // we can error on bad arity or remove check_arity
             int numArgs = ii.getArgsCount();
-            if ((numArgs < required) || ((rest == -1) && (numArgs > (required + opt)))) {
-                return new RaiseArgumentErrorInstr(required, opt, rest, rest);
+
+            if (numArgs < required || (!rest && numArgs > (required + opt))) {
+                return new RaiseArgumentErrorInstr(required, opt, rest, numArgs);
             }
 
             return null;
-        } else {
-            return new CheckArgsArrayArityInstr(ii.getArgs(), required, opt, rest);
         }
+
+        return new CheckArgsArrayArityInstr(ii.getArgs(), required, opt, rest);
     }
 
     @Override
-    public Instr cloneForBlockCloning(InlinerInfo ii) {
-        return new CheckArityInstr(required, opt, rest);
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+        e.encode(required);
+        e.encode(opt);
+        e.encode(rest);
+        e.encode(receivesKeywords);
+        e.encode(restKey);
     }
 
-    public void checkArity(Ruby runtime, int numArgs) {
-        if ((numArgs < this.required) || ((this.rest == -1) && (numArgs > (this.required + this.opt)))) {
-            Arity.raiseArgumentError(runtime, numArgs, this.required, this.required + this.opt);
-        }
+    public static CheckArityInstr decode(IRReaderDecoder d) {
+        return new CheckArityInstr(d.decodeInt(), d.decodeInt(), d.decodeBoolean(), d.decodeBoolean(), d.decodeInt());
+    }
+
+    public void checkArity(ThreadContext context, StaticScope scope, Object[] args, Block.Type blockType) {
+        IRRuntimeHelpers.checkArity(context, scope, args, required, opt, rest, receivesKeywords, restKey, blockType);
     }
 
     @Override

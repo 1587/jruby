@@ -34,18 +34,12 @@ package org.jruby.ast;
 
 import java.util.List;
 
-import org.jruby.Ruby;
-import org.jruby.RubyString;
 import org.jruby.ast.visitor.NodeVisitor;
-import org.jruby.evaluator.ASTInterpreter;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.RubyEvent;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.util.ByteList;
 
 /**
+ * Note: This is a dead class but we leave it because people write against Visitor
+ * and we do not want those consumers to break.
  * A new (logical) source code line.
  * This is used to change the value of the ruby interpreter source and line values.
  * There is one such node for each logical line.  Logical line differs
@@ -58,8 +52,9 @@ import org.jruby.util.ByteList;
 public class NewlineNode extends Node {
     private final Node nextNode;
 
+    @Deprecated
     public NewlineNode(ISourcePosition position, Node nextNode) {
-        super(position);
+        super(position, nextNode.containsVariableAssignment());
 
         assert nextNode != null : "nextNode is not null";
         
@@ -75,7 +70,7 @@ public class NewlineNode extends Node {
      * accepts the visitor
      * @param iVisitor the visitor to accept
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitNewlineNode(this);
     }
 
@@ -89,23 +84,5 @@ public class NewlineNode extends Node {
     
     public List<Node> childNodes() {
         return createList(nextNode);
-    }
-    
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        ISourcePosition position = getPosition();
-        // something in here is used to build up ruby stack trace...
-        context.setLine(position.getLine());
-
-        if (runtime.hasEventHooks()) {
-            ASTInterpreter.callTraceFunction(runtime, context, RubyEvent.LINE);
-        }
-
-        // TODO: do above but not below for additional newline nodes
-        return nextNode.interpret(runtime, context, self, aBlock);
-    }
-
-    public RubyString definition(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        return nextNode.definition(runtime, context, self, aBlock);
     }
 }

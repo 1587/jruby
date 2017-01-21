@@ -77,11 +77,9 @@ END
     lambda { ERB.new(input, nil, '-').result }.should raise_error
   end
 
-  ruby_bug "#213", "1.8.7" do
-    it "regards lines starting with '%' as '<% ... %>' when trim_mode is '%'" do
-      expected = "<ul>\n  <li>1\n  \n  <li>2\n  \n  <li>3\n  \n\n</ul>\n%%\n"
-      ERB.new(@eruby_str2, nil, "%").result.should == expected
-    end
+  it "regards lines starting with '%' as '<% ... %>' when trim_mode is '%'" do
+    expected = "<ul>\n  <li>1\n  \n  <li>2\n  \n  <li>3\n  \n\n</ul>\n%%\n"
+    ERB.new(@eruby_str2, nil, "%").result.should == expected
   end
   it "regards lines starting with '%' as '<% ... %>' and remove \"\\n\" when trim_mode is '%>'" do
     expected = "<ul>\n  <li>1    <li>2    <li>3  </ul>\n%%\n"
@@ -96,7 +94,6 @@ END
 
 
   it "regard lines starting with '%' as '<% ... %>' and spaces around '<%- -%>' when trim_mode is '%-'" do
-
     expected = "<ul>\n<li>1</li>\n<li>2</li>\n</ul>\n%%\n"
     input = <<'END'
 <ul>
@@ -107,16 +104,7 @@ END
 %%%
 END
 
-    trim_mode = '%-'
     ERB.new(input, nil, '%-').result.should == expected
-  end
-
-  not_compliant_on :rubinius do
-    it "accepts a safe level as second argument" do
-      input = "<b><%=- 2+2 %>"
-      safe_level = 3
-      lambda { ERB.new(input, safe_level).result }.should_not raise_error
-    end
   end
 
   it "changes '_erbout' variable name in the produced source" do
@@ -137,17 +125,8 @@ END
     ERB.new(input, nil, '<>').result.should == "<b></b>\n"
   end
 
-  ruby_version_is ""..."2.0" do
-    it "remember local variables defined previous one" do
-      ERB.new(@eruby_str).result
-      ERB.new("<%= list.inspect %>").result.should == "[1, 2, 3]"
-    end
-  end
-
-  ruby_version_is "2.0" do
-    it "forget local variables defined previous one" do
-      ERB.new(@eruby_str).result
-      lambda{ ERB.new("<%= list %>").result }.should raise_error(NameError)
-    end
+  it "forget local variables defined previous one" do
+    ERB.new(@eruby_str).result
+    lambda{ ERB.new("<%= list %>").result }.should raise_error(NameError)
   end
 end

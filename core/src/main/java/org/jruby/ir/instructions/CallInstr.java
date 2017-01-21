@@ -1,47 +1,103 @@
 package org.jruby.ir.instructions;
 
+import org.jruby.RubyInstanceConfig;
+import org.jruby.ir.IRScope;
 import org.jruby.ir.IRVisitor;
 import org.jruby.ir.Operation;
 import org.jruby.ir.instructions.specialized.OneFixnumArgNoBlockCallInstr;
+import org.jruby.ir.instructions.specialized.OneFloatArgNoBlockCallInstr;
+import org.jruby.ir.instructions.specialized.OneOperandArgBlockCallInstr;
 import org.jruby.ir.instructions.specialized.OneOperandArgNoBlockCallInstr;
+import org.jruby.ir.instructions.specialized.TwoOperandArgNoBlockCallInstr;
 import org.jruby.ir.instructions.specialized.ZeroOperandArgNoBlockCallInstr;
-import org.jruby.ir.operands.MethAddr;
 import org.jruby.ir.operands.Operand;
 import org.jruby.ir.operands.Variable;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
+import org.jruby.ir.transformations.inlining.CloneInfo;
 import org.jruby.runtime.CallType;
 
 /*
  * args field: [self, receiver, *args]
  */
 public class CallInstr extends CallBase implements ResultInstr {
-    protected Variable result;
+    protected transient Variable result;
 
-    public static CallInstr create(Variable result, MethAddr methAddr, Operand receiver, Operand[] args, Operand closure) {
-        return new CallInstr(CallType.NORMAL, result, methAddr, receiver, args, closure);
+    public static CallInstr create(IRScope scope, Variable result, String name, Operand receiver, Operand[] args, Operand closure) {
+        return create(scope, CallType.NORMAL, result, name, receiver, args, closure);
     }
 
-    public static CallInstr create(CallType callType, Variable result, MethAddr methAddr, Operand receiver, Operand[] args, Operand closure) {
-        return new CallInstr(callType, result, methAddr, receiver, args, closure);
+    public static CallInstr create(IRScope scope, CallType callType, Variable result, String name, Operand receiver, Operand[] args, Operand closure) {
+        boolean isPotentiallyRefined = scope.maybeUsingRefinements();
+
+        if (!containsArgSplat(args)) {
+            boolean hasClosure = closure != null;
+
+            if (args.length == 0 && !hasClosure) {
+                return new ZeroOperandArgNoBlockCallInstr(callType, result, name, receiver, args, isPotentiallyRefined);
+            } else if (args.length == 1) {
+                if (hasClosure) return new OneOperandArgBlockCallInstr(callType, result, name, receiver, args, closure, isPotentiallyRefined);
+                if (isAllFixnums(args)) return new OneFixnumArgNoBlockCallInstr(callType, result, name, receiver, args, isPotentiallyRefined);
+                if (isAllFloats(args)) return new OneFloatArgNoBlockCallInstr(callType, result, name, receiver, args, isPotentiallyRefined);
+
+                return new OneOperandArgNoBlockCallInstr(callType, result, name, receiver, args, isPotentiallyRefined);
+            } else if (args.length == 2 && !hasClosure) {
+                return new TwoOperandArgNoBlockCallInstr(callType, result, name, receiver, args, isPotentiallyRefined);
+            }
+        }
+
+        return new CallInstr(callType, result, name, receiver, args, closure, isPotentiallyRefined);
     }
 
 
-    public CallInstr(CallType callType, Variable result, MethAddr methAddr, Operand receiver, Operand[] args, Operand closure) {
-        this(Operation.CALL, callType, result, methAddr, receiver, args, closure);
+    public CallInstr(CallType callType, Variable result, String name, Operand receiver, Operand[] args, Operand closure,
+                     boolean potentiallyRefined) {
+        this(Operation.CALL, callType, result, name, receiver, args, closure, potentiallyRefined);
     }
 
-    protected CallInstr(Operation op, CallType callType, Variable result, MethAddr methAddr, Operand receiver, Operand[] args, Operand closure) {
-        super(op, callType, methAddr, receiver, args, closure);
+    protected CallInstr(Operation op, CallType callType, Variable result, String name, Operand receiver, Operand[] args,
+                        Operand closure, boolean potentiallyRefined) {
+        super(op, callType, name, receiver, args, closure, potentiallyRefined);
 
         assert result != null;
 
         this.result = result;
     }
 
-    public CallInstr(Operation op, CallInstr ordinary) {
-        this(op, ordinary.getCallType(), ordinary.getResult(),
-                ordinary.getMethodAddr(), ordinary.getReceiver(), ordinary.getCallArgs(),
-                ordinary.getClosureArg(null));
+    @Override
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+
+        e.encode(getResult());
+    }
+
+    public static CallInstr decode(IRReaderDecoder d) {
+        if (RubyInstanceConfig.IR_READING_DEBUG) System.out.println("decodeCall");
+        int callTypeOrdinal = d.decodeInt();
+        CallType callType = CallType.fromOrdinal(callTypeOrdinal);
+        if (RubyInstanceConfig.IR_READING_DEBUG) System.out.println("decodeCall - calltype:  " + callType);
+        String methAddr = d.decodeString();
+        if (RubyInstanceConfig.IR_READING_DEBUG) System.out.println("decodeCall - methaddr:  " + methAddr);
+        Operand receiver = d.decodeOperand();
+        if (RubyInstanceConfig.IR_READING_DEBUG) System.out.println("decodeCall - receiver:  " + receiver);
+        int argsCount = d.decodeInt();
+        if (RubyInstanceConfig.IR_READING_DEBUG) System.out.println("decodeCall - # of args:  " + argsCount);
+        boolean hasClosureArg = argsCount < 0;
+        int argsLength = hasClosureArg ? (-1 * (argsCount + 1)) : argsCount;
+        if (RubyInstanceConfig.IR_READING_DEBUG) System.out.println("decodeCall - # of args(2): " + argsLength);
+        if (RubyInstanceConfig.IR_READING_DEBUG) System.out.println("decodeCall - hasClosure: " + hasClosureArg);
+        Operand[] args = new Operand[argsLength];
+
+        for (int i = 0; i < argsLength; i++) {
+            args[i] = d.decodeOperand();
+        }
+
+        Operand closure = hasClosureArg ? d.decodeOperand() : null;
+        if (RubyInstanceConfig.IR_READING_DEBUG) System.out.println("before result");
+        Variable result = d.decodeVariable();
+        if (RubyInstanceConfig.IR_READING_DEBUG) System.out.println("decoding call, result:  "+ result);
+
+        return create(d.getCurrentScope(), callType, result, methAddr, receiver, args, closure);
     }
 
     public Variable getResult() {
@@ -52,113 +108,19 @@ public class CallInstr extends CallBase implements ResultInstr {
         this.result = v;
     }
 
-    @Override
-    public CallBase specializeForInterpretation() {
-        Operand[] callArgs = getCallArgs();
-        if (hasClosure() || containsSplat(callArgs)) return this;
-
-        switch (callArgs.length) {
-            case 0:
-                return new ZeroOperandArgNoBlockCallInstr(this);
-            case 1:
-                if (isAllFixnums()) return new OneFixnumArgNoBlockCallInstr(this);
-
-                return new OneOperandArgNoBlockCallInstr(this);
-        }
-        return this;
-    }
-
     public Instr discardResult() {
-        return new NoResultCallInstr(Operation.NORESULT_CALL, getCallType(), getMethodAddr(), getReceiver(), getCallArgs(), closure);
+        return NoResultCallInstr.create(getCallType(), getName(), getReceiver(), getCallArgs(), getClosureArg(), isPotentiallyRefined());
     }
 
     @Override
-    public Instr cloneForInlining(InlinerInfo ii) {
-        return new CallInstr(getCallType(), ii.getRenamedVariable(result),
-                (MethAddr) getMethodAddr().cloneForInlining(ii),
-                receiver.cloneForInlining(ii), cloneCallArgs(ii),
-                closure == null ? null : closure.cloneForInlining(ii));
-    }
-
-    @Override
-    public String toString() {
-        return (hasUnusedResult() ? "[DEAD-RESULT]" : "") + result + " = " + super.toString();
+    public Instr clone(CloneInfo ii) {
+        return new CallInstr(getCallType(), ii.getRenamedVariable(result), getName(),
+                getReceiver().cloneForInlining(ii), cloneCallArgs(ii),
+                getClosureArg() == null ? null : getClosureArg().cloneForInlining(ii), isPotentiallyRefined());
     }
 
     @Override
     public void visit(IRVisitor visitor) {
         visitor.CallInstr(this);
     }
-
-/* FIXME: Dead code which I think should be a special instr (enebo)
-        Object ma = methAddr.retrieve(interp, context, self);
-        if (ma instanceof MethodHandle) return interpretMethodHandle(interp, context, self, (MethodHandle) ma, args);
-         */
-
-    /** ENEBO: Dead code for now...
-    public Label interpret_with_inline(InterpreterContext interp) {
-        Object        ma    = methAddr.retrieve(interp);
-        IRubyObject[] args  = prepareArguments(getCallArgs(), interp);
-        Object resultValue;
-        if (ma instanceof MethodHandle) {
-            MethodHandle  mh = (MethodHandle)ma;
-
-            assert mh.getMethodNameOperand() == getReceiver();
-
-            DynamicMethod m  = mh.getResolvedMethod();
-            String        mn = mh.getResolvedMethodName();
-            IRubyObject   ro = mh.getReceiverObj();
-            if (m.isUndefined()) {
-                resultValue = Helpers.callMethodMissing(interp.getContext(), ro,
-                        m.getVisibility(), mn, CallType.FUNCTIONAL, args, prepareBlock(interp));
-            } else {
-               ThreadContext tc = interp.getContext();
-               RubyClass     rc = ro.getMetaClass();
-               if (profile == null) {
-                  profile = new HashMap<DynamicMethod, Integer>();
-               }
-               Integer count = profile.get(m);
-               if (count == null) {
-                  count = new Integer(1);
-               } else {
-                  count = new Integer(count + 1);
-                  if ((count > 50) && (m instanceof InterpretedIRMethod) && (profile.size() == 1)) {
-                     IRMethod inlineableMethod = ((InterpretedIRMethod)m).method;
-                     profile.remove(m); // remove it because the interpreter might ignore this hint
-                     throw new org.jruby.ir.interpreter.InlineMethodHint(inlineableMethod);
-                  }
-               }
-               profile.put(m, count);
-               resultValue = m.call(tc, ro, rc, mn, args, prepareBlock(interp));
-            }
-        } else {
-           IRubyObject object = (IRubyObject) getReceiver().retrieve(interp);
-           String name = ma.toString(); // SSS FIXME: If this is not a ruby string or a symbol, then this is an error in the source code!
-
-           resultValue = object.callMethod(interp.getContext(), name, args, prepareBlock(interp));
-        }
-
-        getResult().store(interp, resultValue);
-        return null;
-    }
-
-    private Label interpretMethodHandle(InterpreterContext interp, ThreadContext context,
-            IRubyObject self, MethodHandle mh, IRubyObject[] args) {
-        assert mh.getMethodNameOperand() == getReceiver();
-
-        IRubyObject resultValue;
-        DynamicMethod m = mh.getResolvedMethod();
-        String mn = mh.getResolvedMethodName();
-        IRubyObject ro = mh.getReceiverObj();
-        if (m.isUndefined()) {
-            resultValue = Helpers.callMethodMissing(context, ro,
-                    m.getVisibility(), mn, CallType.FUNCTIONAL, args,
-                    prepareBlock(interp, context, self));
-        } else {
-            resultValue = m.call(context, ro, ro.getMetaClass(), mn, args, prepareBlock(interp, context, self));
-        }
-
-        getResult().store(interp, context, self, resultValue);
-        return null;
-    }*/
 }

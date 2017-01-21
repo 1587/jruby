@@ -13,18 +13,9 @@ describe "Kernel#taint" do
     o.tainted?.should == true
   end
 
-  ruby_version_is ""..."1.9" do
-    it "raises TypeError on an untainted, frozen object" do
-      o = Object.new.freeze
-      lambda { o.taint }.should raise_error(TypeError)
-    end
-  end
-
-  ruby_version_is "1.9" do
-    it "raises RuntimeError on an untainted, frozen object" do
-      o = Object.new.freeze
-      lambda { o.taint }.should raise_error(RuntimeError)
-    end
+  it "raises RuntimeError on an untainted, frozen object" do
+    o = Object.new.freeze
+    lambda { o.taint }.should raise_error(RuntimeError)
   end
 
   it "does not raise an error on a tainted, frozen object" do
@@ -33,26 +24,41 @@ describe "Kernel#taint" do
   end
 
   it "has no effect on immediate values" do
-    [nil, true, false, :sym].each do |v|
+    [nil, true, false].each do |v|
       v.taint
       v.tainted?.should == false
     end
   end
 
-  ruby_version_is ""..."2.0" do
-    it "has no effect on immediate values" do
+  ruby_version_is "2.1"..."2.2" do
+    it "raises a RuntimeError on symbols" do
+      v = :sym
+      lambda { v.taint }.should raise_error(RuntimeError)
+    end
+  end
+
+  ruby_version_is "2.2" do
+    it "no raises a RuntimeError on symbols" do
+      v = :sym
+      lambda { v.taint }.should_not raise_error(RuntimeError)
+      v.tainted?.should == false
+    end
+  end
+
+  ruby_version_is ""..."2.2" do
+    it "raises error on fixnum values" do
       [1].each do |v|
-        v.taint
-        v.tainted?.should == false
+        lambda { v.taint }.should raise_error(RuntimeError)
       end
     end
   end
 
-  ruby_version_is "2.0" do
-  it "raises error on fixnum values" do
-    [1].each do |v|
-      lambda { v.taint }.should raise_error(RuntimeError)
+  ruby_version_is "2.2" do
+    it "no raises error on fixnum values" do
+      [1].each do |v|
+        lambda { v.taint }.should_not raise_error(RuntimeError)
+        v.tainted?.should == false
+      end
     end
-  end
   end
 end

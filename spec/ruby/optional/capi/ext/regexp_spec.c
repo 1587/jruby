@@ -1,11 +1,7 @@
 #include "ruby.h"
 #include "rubyspec.h"
 
-#ifdef RUBY_VERSION_IS_1_9
 #include "ruby/re.h"
-#else
-#include "re.h"
-#endif
 
 #include <string.h>
 
@@ -53,7 +49,7 @@ VALUE regexp_spec_match(VALUE self, VALUE regexp, VALUE str) {
   return rb_funcall(regexp, rb_intern("match"), 1, str);
 }
 
-void Init_regexp_spec() {
+void Init_regexp_spec(void) {
   VALUE cls = rb_define_class("CApiRegexpSpecs", rb_cObject);
 
   rb_define_method(cls, "match", regexp_spec_match, 2);

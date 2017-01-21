@@ -26,11 +26,9 @@
  ***** END LICENSE BLOCK *****/
 package org.jruby.ext.zlib;
 
-import java.util.ArrayList;
-import java.util.List;
 import org.jcodings.Encoding;
+import org.jcodings.transcode.EConv;
 import org.joda.time.DateTime;
-import org.jruby.CompatVersion;
 import org.jruby.Ruby;
 import org.jruby.RubyBoolean;
 import org.jruby.RubyClass;
@@ -40,11 +38,12 @@ import org.jruby.RubyTime;
 import org.jruby.anno.JRubyClass;
 import org.jruby.anno.JRubyMethod;
 import org.jruby.runtime.Block;
+import org.jruby.runtime.Helpers;
+import org.jruby.runtime.JavaSites;
 import org.jruby.runtime.ObjectAllocator;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.util.ByteList;
-import org.jruby.util.encoding.Transcoder;
 import org.jruby.util.io.EncodingUtils;
 import org.jruby.util.io.IOEncodable;
 
@@ -78,22 +77,11 @@ public class RubyGzipFile extends RubyObject implements IOEncodable {
         return instance;
     }
 
-    @JRubyMethod(meta = true, name = "wrap", compat = CompatVersion.RUBY1_8)
     public static IRubyObject wrap(ThreadContext context, IRubyObject recv, IRubyObject io, Block block) {
-        Ruby runtime = recv.getRuntime();
-        RubyGzipFile instance;
-
-        // TODO: People extending GzipWriter/reader will break.  Find better way here.
-        if (recv == runtime.getModule("Zlib").getClass("GzipWriter")) {
-            instance = JZlibRubyGzipWriter.newInstance(recv, new IRubyObject[]{io}, block);
-        } else {
-            instance = JZlibRubyGzipReader.newInstance(recv, new IRubyObject[]{io}, block);
-        }
-
-        return wrapBlock(context, instance, block);
+        return wrap19(context, recv, new IRubyObject[]{io}, block);
     }
     
-    @JRubyMethod(meta = true, name = "wrap", required = 1, optional = 1, compat = CompatVersion.RUBY1_9)
+    @JRubyMethod(meta = true, name = "wrap", required = 1, optional = 1)
     public static IRubyObject wrap19(ThreadContext context, IRubyObject recv, IRubyObject[] args, Block block) {
         Ruby runtime = recv.getRuntime();
         RubyGzipFile instance;
@@ -125,6 +113,31 @@ public class RubyGzipFile extends RubyObject implements IOEncodable {
         result.callInit(new IRubyObject[0], block);
 
         return result;
+    }
+
+    // These methods are here to avoid defining a singleton #path on every instance, as in MRI
+
+    @JRubyMethod
+    public IRubyObject path(ThreadContext context) {
+        return this.realIo.callMethod(context, "path");
+    }
+
+    @JRubyMethod(name = "respond_to?", frame = true)
+    public IRubyObject respond_to(ThreadContext context, IRubyObject name) {
+        if (name.asJavaString().equals("path")) {
+            return sites(context).reader_respond_to.call(context, this, this.realIo, name);
+        }
+
+        return Helpers.invokeSuper(context, this, name, Block.NULL_BLOCK);
+    }
+
+    @JRubyMethod(name = "respond_to?", frame = true)
+    public IRubyObject respond_to(ThreadContext context, IRubyObject name, IRubyObject includePrivate) {
+        if (name.asJavaString().equals("path")) {
+            return sites(context).reader_respond_to.call(context, this, this.realIo, name, includePrivate);
+        }
+
+        return Helpers.invokeSuper(context, this, name, Block.NULL_BLOCK);
     }
     
     public RubyGzipFile(Ruby runtime, RubyClass type) {
@@ -165,21 +178,16 @@ public class RubyGzipFile extends RubyObject implements IOEncodable {
 
     // c: gzfile_newstr
     protected RubyString newStr(Ruby runtime, ByteList value) {
-        if (runtime.is1_9()) {
-            if (enc2 == null) {
-                return RubyString.newString(runtime, value, getReadEncoding());
-            }
-            
-            if (ec != null && enc2.isDummy()) {
-                value = ec.convert(runtime.getCurrentContext(), value, false);
-                return RubyString.newString(runtime, value, getEnc());
-            }
-            
-            value = Transcoder.strConvEncOpts(runtime.getCurrentContext(), value, enc2, enc, ecflags, ecopts);
-            return RubyString.newString(runtime, value);
-        } 
+        if (enc2 == null) {
+            return RubyString.newString(runtime, value, getReadEncoding());
+        }
 
-        return RubyString.newString(runtime, value);
+        if (ec != null && enc2.isDummy()) {
+            value = EncodingUtils.econvStrConvert(runtime.getCurrentContext(), ec, value, 0);
+            return RubyString.newString(runtime, value, getEnc());
+        }
+
+        return EncodingUtils.strConvEncOpts(runtime.getCurrentContext(), RubyString.newString(runtime, value), enc2, enc, ecflags, ecopts);
     }
 
     @JRubyMethod(name = "os_code")
@@ -296,6 +304,10 @@ public class RubyGzipFile extends RubyObject implements IOEncodable {
     public boolean getBOM() {
         return hasBOM;
     }
+
+    private static JavaSites.ZlibSites sites(ThreadContext context) {
+        return context.sites.Zlib;
+    }
     
     protected boolean closed = false;
     protected boolean finished = false;
@@ -310,8 +322,8 @@ public class RubyGzipFile extends RubyObject implements IOEncodable {
     protected Encoding enc2;
     protected int ecflags;
     protected IRubyObject ecopts;
-    protected Transcoder ec;
+    protected EConv ec;
     protected boolean sync = false;
-    protected Transcoder readTranscoder = null;
-    protected Transcoder writeTranscoder = null;    
+    protected EConv readTranscoder = null;
+    protected EConv writeTranscoder = null;
 }

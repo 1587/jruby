@@ -33,15 +33,9 @@ package org.jruby.ast;
 
 import java.util.List;
 
-import org.jruby.Ruby;
-import org.jruby.RubyModule;
 import org.jruby.ast.types.INameNode;
 import org.jruby.ast.visitor.NodeVisitor;
-import org.jruby.runtime.Helpers;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
 
 /** 
  * Represents a '::' constant access or method call (Java::JavaClass).
@@ -50,7 +44,7 @@ public abstract class Colon2Node extends Colon3Node implements INameNode {
     protected final Node leftNode;
 
     public Colon2Node(ISourcePosition position, Node leftNode, String name) {
-        super(position, name);
+        super(position, name, leftNode != null && leftNode.containsVariableAssignment);
         this.leftNode = leftNode;
     }
 
@@ -63,7 +57,7 @@ public abstract class Colon2Node extends Colon3Node implements INameNode {
      * @param iVisitor the visitor
      **/
     @Override
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitColon2Node(this);
     }
 
@@ -78,14 +72,5 @@ public abstract class Colon2Node extends Colon3Node implements INameNode {
     @Override
     public List<Node> childNodes() {
         return Node.createList(leftNode);
-    }
-
-    /** Get parent module/class that this module represents */
-    @Override
-    public RubyModule getEnclosingModule(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-    	if (leftNode != null && leftNode instanceof NilNode) {
-            throw context.runtime.newTypeError("no outer class/module");
-        }
-        return Helpers.prepareClassNamespace(context, context.getCurrentStaticScope(), leftNode.interpret(runtime, context, self, aBlock));
     }
  }

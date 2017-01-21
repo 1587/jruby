@@ -12,14 +12,6 @@ class ObserverCallbackSpecs
   end
 end
 
-class ObserverCustomCallbackSpecs < ObserverCallbackSpecs
-  def update ; end
-
-  def custom(value)
-    @value = value
-  end
-end
-
 class ObservableSpecs
   include Observable
 end

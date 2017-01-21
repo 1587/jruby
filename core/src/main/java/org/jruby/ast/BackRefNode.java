@@ -33,16 +33,8 @@ package org.jruby.ast;
 
 import java.util.List;
 
-import org.jruby.Ruby;
-import org.jruby.RubyMatchData;
-import org.jruby.RubyRegexp;
-import org.jruby.RubyString;
 import org.jruby.ast.visitor.NodeVisitor;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.util.ByteList;
 import org.jruby.util.DefinedMessage;
 
 /**
@@ -62,7 +54,7 @@ public class BackRefNode extends Node {
     private final DefinedMessage definedMessage;
 
     public BackRefNode(ISourcePosition position, int type) {
-        super(position);
+        super(position, false);
         this.type = (char) type;
         this.definedMessage = DefinedMessage.byText("$" + (char)type);
     }
@@ -75,7 +67,7 @@ public class BackRefNode extends Node {
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitBackRefNode(this);
     }
 
@@ -90,34 +82,5 @@ public class BackRefNode extends Node {
     
     public List<Node> childNodes() {
         return EMPTY_LIST;
-    }
-    
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        IRubyObject backref = context.getBackRef();
-        
-        switch (type) {
-        case '&':
-            return RubyRegexp.last_match(backref);
-        case '`':
-            return RubyRegexp.match_pre(backref);
-        case '\'':
-            return RubyRegexp.match_post(backref);
-        case '+':
-            return RubyRegexp.match_last(backref);
-        default:
-            assert false: "backref with invalid type";
-            return null;
-        }        
-    }
-    
-    @Override
-    public RubyString definition(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        IRubyObject backref = context.getBackRef();
-
-        if (backref instanceof RubyMatchData) {
-            return runtime.getDefinedMessage(runtime.is1_9() ? DefinedMessage.GLOBAL_VARIABLE : definedMessage);
-        }
-        return null;
     }
 }

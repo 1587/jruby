@@ -29,17 +29,16 @@
  */
 package org.jruby.embed;
 
-import java.io.Closeable;
-import java.io.File;
 import java.io.InputStream;
+import java.io.IOException;
 import java.io.PrintStream;
 import java.io.Reader;
 import java.io.Writer;
+import java.net.URL;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import jnr.posix.util.Platform;
 import org.jruby.CompatVersion;
 import org.jruby.Profile;
 import org.jruby.Ruby;
@@ -67,9 +66,8 @@ import org.jruby.javasupport.JavaEmbedUtils;
 import org.jruby.runtime.Block;
 import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.runtime.profile.builtin.ProfileOutput;
-import org.jruby.util.ClassCache;
-import org.jruby.util.JRubyClassLoader;
 import org.jruby.util.KCode;
+import org.jruby.util.SafePropertyAccessor;
 import org.jruby.util.cli.OutputStrings;
 import org.jruby.util.cli.Options;
 
@@ -186,8 +184,8 @@ import org.jruby.util.cli.Options;
  * @author Yoko Harada <yokolet@gmail.com>
  */
 public class ScriptingContainer implements EmbedRubyInstanceConfigAdapter {
-
     private final Map<String, String[]> basicProperties;
+    private final LocalContextScope scope;
     private final LocalContextProvider provider;
     private final EmbedRubyRuntimeAdapter runtimeAdapter = new EmbedRubyRuntimeAdapterImpl(this);
     private final EmbedRubyObjectAdapter objectAdapter = new EmbedRubyObjectAdapterImpl(this);
@@ -240,7 +238,8 @@ public class ScriptingContainer implements EmbedRubyInstanceConfigAdapter {
      *        get as many variables/constants as possible from Ruby runtime.
      */
     public ScriptingContainer(LocalContextScope scope, LocalVariableBehavior behavior, boolean lazy) {
-        provider = getProviderInstance(scope, behavior, lazy);
+        this.provider = getProviderInstance(scope, behavior, lazy);
+        this.scope = scope;
         try {
             initRubyInstanceConfig();
         }
@@ -266,9 +265,7 @@ public class ScriptingContainer implements EmbedRubyInstanceConfigAdapter {
     }
 
     private void initRubyInstanceConfig() throws RaiseException {
-        List<String> paths = SystemPropertyCatcher.findLoadPaths();
-        provider.getRubyInstanceConfig().setLoadPaths(paths);
-        String home = SystemPropertyCatcher.findJRubyHome(this);
+        String home = SafePropertyAccessor.getenv("JRUBY_HOME");
         if (home != null) {
         	provider.getRubyInstanceConfig().setJRubyHome(home);
         }
@@ -498,32 +495,13 @@ public class ScriptingContainer implements EmbedRubyInstanceConfigAdapter {
         provider.getRubyInstanceConfig().setRunRubyInProcess(inprocess);
     }
 
-    /**
-     * Returns a Ruby version currently chosen, which is one of CompatVersion.RUBY1_8,
-     * CompatVersion.RUBY1_9, or CompatVersion.BOTH. The default version is
-     * CompatVersion.RUBY1_8.
-     *
-     * @since JRuby 1.5.0.
-     *
-     * @return a Ruby version
-     */
+    @Deprecated
     public CompatVersion getCompatVersion() {
         return provider.getRubyInstanceConfig().getCompatVersion();
     }
 
-    /**
-     * Changes a Ruby version to be evaluated into one of CompatVersion.RUBY1_8,
-     * CompatVersion.RUBY1_9, or CompatVersion.BOTH. The default version is
-     * CompatVersion.RUBY1_8.
-     * Call this method before you use put/get, runScriptlet, and parse methods so that
-     * the given version will be set.
-     *
-     * @since JRuby 1.5.0.
-     *
-     * @param version a Ruby version
-     */
+    @Deprecated
     public void setCompatVersion(CompatVersion version) {
-        provider.getRubyInstanceConfig().setCompatVersion(version);
     }
 
     /**
@@ -589,14 +567,10 @@ public class ScriptingContainer implements EmbedRubyInstanceConfigAdapter {
      * @return a current directory.
      */
     public String getCurrentDirectory() {
-        String path;
         if (provider.isRuntimeInitialized()) {
-            path = provider.getRuntime().getCurrentDirectory();
-        } else {
-            path = provider.getRubyInstanceConfig().getCurrentDirectory();
+            return provider.getRuntime().getCurrentDirectory();
         }
-
-        return new File(path).getPath();  // make as File to normalize separators to / or \\ as systems might expect.
+        return provider.getRubyInstanceConfig().getCurrentDirectory();
     }
 
     /**
@@ -629,8 +603,7 @@ public class ScriptingContainer implements EmbedRubyInstanceConfigAdapter {
      * @return a JRuby home directory.
      */
     public String getHomeDirectory() {
-        // make as File to normalize separators to / or \\ as systems might expect.
-        return new File(provider.getRubyInstanceConfig().getJRubyHome()).getPath();
+        return provider.getRubyInstanceConfig().getJRubyHome();
     }
 
     /**
@@ -644,32 +617,6 @@ public class ScriptingContainer implements EmbedRubyInstanceConfigAdapter {
      */
     public void setHomeDirectory(String home) {
         provider.getRubyInstanceConfig().setJRubyHome(home);
-    }
-
-    /**
-     * Returns a ClassCache object that is tied to a class loader. The default ClassCache
-     * object is tied to a current thread' context loader if it exists. Otherwise, it is
-     * tied to the class loader that loaded RubyInstanceConfig.
-     *
-     * @since JRuby 1.5.0.
-     *
-     * @return a ClassCache object.
-     */
-    public ClassCache getClassCache() {
-        return provider.getRubyInstanceConfig().getClassCache();
-    }
-
-    /**
-     * Changes a ClassCache object to a given one.
-     * Call this method before you use put/get, runScriptlet, and parse methods so that
-     * the given class cache will be used.
-     *
-     * @since JRuby 1.5.0.
-     *
-     * @param cache a new ClassCache object to be set.
-     */
-    public void setClassCache(ClassCache cache) {
-        provider.getRubyInstanceConfig().setClassCache(cache);
     }
 
     /**
@@ -1075,7 +1022,7 @@ public class ScriptingContainer implements EmbedRubyInstanceConfigAdapter {
      * @return version information.
      */
     public String getSupportedRubyVersion() {
-        return OutputStrings.getVersionString(provider.getRubyInstanceConfig().getCompatVersion()).trim();
+        return OutputStrings.getVersionString().trim();
     }
 
     /**
@@ -1094,8 +1041,8 @@ public class ScriptingContainer implements EmbedRubyInstanceConfigAdapter {
     /**
      * Returns a provider instance of {@link LocalContextProvider}. When users
      * want to configure Ruby runtime, they can do by setting class loading paths,
-     * {@link org.jruby.RubyInstanceConfig} or {@link org.jruby.util.ClassCache}
-     * to the provider before they get Ruby runtime.
+     * {@link org.jruby.RubyInstanceConfig} to the provider before they get Ruby
+     * runtime.
      *
      * @return a provider of {@link LocalContextProvider}
      */
@@ -1737,7 +1684,7 @@ public class ScriptingContainer implements EmbedRubyInstanceConfigAdapter {
         InputStream istream = new ReaderInputStream(reader);
         Ruby runtime = provider.getRuntime();
         RubyIO io = new RubyIO(runtime, istream);
-        io.getOpenFile().getMainStream().setSync(true);
+        io.getOpenFile().setSync(true);
         runtime.defineVariable(new InputGlobalVariable(runtime, "$stdin", io), GlobalVariable.Scope.GLOBAL);
         runtime.getObject().storeConstant("STDIN", io);
     }
@@ -1795,7 +1742,7 @@ public class ScriptingContainer implements EmbedRubyInstanceConfigAdapter {
         }
         Ruby runtime = provider.getRuntime();
         RubyIO io = new RubyIO(runtime, pstream);
-        io.getOpenFile().getMainStream().setSync(true);
+        io.getOpenFile().setSync(true);
         runtime.defineVariable(new OutputGlobalVariable(runtime, "$stdout", io), GlobalVariable.Scope.GLOBAL);
         runtime.getObject().storeConstant("STDOUT", io);
         runtime.getGlobalVariables().alias("$>", "$stdout");
@@ -1860,7 +1807,7 @@ public class ScriptingContainer implements EmbedRubyInstanceConfigAdapter {
         }
         Ruby runtime = provider.getRuntime();
         RubyIO io = new RubyIO(runtime, error);
-        io.getOpenFile().getMainStream().setSync(true);
+        io.getOpenFile().setSync(true);
         runtime.defineVariable(new OutputGlobalVariable(runtime, "$stderr", io), GlobalVariable.Scope.GLOBAL);
         runtime.getObject().storeConstant("STDERR", io);
         runtime.getGlobalVariables().alias("$deferr", "$stderr");
@@ -1908,7 +1855,6 @@ public class ScriptingContainer implements EmbedRubyInstanceConfigAdapter {
         LocalContextProvider provider = getProvider();
         if (provider.isRuntimeInitialized()) {
             provider.getRuntime().tearDown(false);
-            // NOTE: Ruby#tearDown does getJRubyClassLoader().tearDown()
             provider.getRuntime().releaseClassLoader();
         }
         provider.terminate();
@@ -1918,6 +1864,8 @@ public class ScriptingContainer implements EmbedRubyInstanceConfigAdapter {
      * Ensure this ScriptingContainer instance is terminated when nobody holds any
      * references to it (and GC wants to reclaim it).
      *
+     * Note that {@link org.jruby.embed.LocalContextScope::SINGLETON} containers will not terminate on GC.
+     *
      * @throws Throwable
      *
      * @since JRuby 1.6.0
@@ -1925,6 +1873,81 @@ public class ScriptingContainer implements EmbedRubyInstanceConfigAdapter {
     @Override
     public void finalize() throws Throwable {
         super.finalize();
-        terminate();
+        // singleton containers share global runtime, and should not tear it down
+        if (scope != LocalContextScope.SINGLETON) terminate();
+    }
+
+    /**
+     * Force dynamically-loaded Java classes to load first from the classloader provided by
+     * JRuby before searching parent classloaders. This can be used to isolated dependency
+     * in different runtimes from each other and from parent classloaders. The default
+     * behavior is to defer to parent classloaders if they can provide the requested
+     * classes.
+     *
+     * Note that if different versions of a  library are loaded by both a parent
+     * classloader and the JRuby classloader, those classess would be incompatible
+     * with each other and with other library objects from the opposing classloader.
+     *
+     * @param classloaderDelegate set whether prefer the JRuby classloader to delegate first
+     *                            to the parent classloader when dynamically loading classes
+     * @since JRuby 9.0.0.0
+     */
+    public void setClassloaderDelegate(boolean classloaderDelegate) {
+        getProvider().getRubyInstanceConfig().setClassloaderDelegate(classloaderDelegate);
+    }
+
+    /**
+     * Retrieve the self-first classloader setting.
+     *
+     * @see ScriptingContainer#setClassloaderDelegate(boolean)
+     */
+    public boolean getClassloaderDelegate() {
+        return getProvider().getRubyInstanceConfig().isClassloaderDelegate();
+    }
+
+    /**
+     * add the given classloader to the LOAD_PATH and GEM_PATH
+     * @param classloader
+     */
+    public void addClassLoader(ClassLoader classLoader) {
+        getProvider().getRubyInstanceConfig().addLoader(classLoader);
+    }
+
+    /**
+     * add the given classloader to the LOAD_PATH
+     * @param classloader
+     */
+    @Deprecated
+    public void addLoadPath(ClassLoader classloader) {
+        addLoadPath(createUri(classloader, "/.jrubydir"));
+    }
+
+    @Deprecated
+    protected void addLoadPath(String uri) {
+        runScriptlet( "$LOAD_PATH << '" + uri + "' unless $LOAD_PATH.member?( '" + uri + "' )" );
+    }
+
+    /**
+     * add the given classloader to the GEM_PATH
+     * @param classloader
+     */
+    @Deprecated
+    public void addGemPath(ClassLoader classloader) {
+        addGemPath(createUri(classloader, "/specifications/.jrubydir"));
+    }
+
+    private String createUri(ClassLoader cl, String ref) {
+        URL url = cl.getResource( ref );
+        if ( url == null && ref.startsWith( "/" ) ) {
+            url = cl.getResource( ref.substring( 1 ) );
+        }
+        if ( url == null ) {
+            throw new RuntimeException( "reference " + ref + " not found on classloader " + cl );
+        }
+        return "uri:" + url.toString().replaceFirst( ref + "$", "" );
+    }
+
+    protected void addGemPath(String uri) {
+        runScriptlet( "require 'rubygems/defaults/jruby';Gem::Specification.add_dir '" + uri + "' unless Gem::Specification.dirs.member?( '" + uri + "' )" );
     }
 }

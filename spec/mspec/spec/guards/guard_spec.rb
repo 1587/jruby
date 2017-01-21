@@ -20,24 +20,15 @@ end
 describe SpecGuard, ".ruby_version" do
   before :each do
     @ruby_version = Object.const_get :RUBY_VERSION
-    @ruby_patchlevel = Object.const_get :RUBY_PATCHLEVEL
-
     Object.const_set :RUBY_VERSION, "8.2.3"
-    Object.const_set :RUBY_PATCHLEVEL, 71
   end
 
   after :each do
     Object.const_set :RUBY_VERSION, @ruby_version
-    Object.const_set :RUBY_PATCHLEVEL, @ruby_patchlevel
   end
 
-  it "returns the version and patchlevel for :full" do
-    SpecGuard.ruby_version(:full).should == "8.2.3.71"
-  end
-
-  it "returns 0 for negative RUBY_PATCHLEVEL values" do
-    Object.const_set :RUBY_PATCHLEVEL, -1
-    SpecGuard.ruby_version(:full).should == "8.2.3.0"
+  it "returns the full version for :full" do
+    SpecGuard.ruby_version(:full).should == "8.2.3"
   end
 
   it "returns major.minor.tiny for :tiny" do
@@ -69,13 +60,8 @@ describe SpecGuard, ".ruby_version" do
       SpecGuard.ruby_version_override = nil
     end
 
-    it "returns the version and patchlevel for :full" do
-      SpecGuard.ruby_version(:full).should == "8.3.2.71"
-    end
-
-    it "returns 0 for negative RUBY_PATCHLEVEL values" do
-      Object.const_set :RUBY_PATCHLEVEL, -1
-      SpecGuard.ruby_version(:full).should == "8.3.2.0"
+    it "returns the full version for :full" do
+      SpecGuard.ruby_version(:full).should == "8.3.2"
     end
 
     it "returns major.minor.tiny for :tiny" do
@@ -146,23 +132,23 @@ describe SpecGuard, "#yield?" do
   end
 
   it "returns #match? if neither report nor verify mode are true" do
-    @guard.stub!(:match?).and_return(false)
+    @guard.stub(:match?).and_return(false)
     @guard.yield?.should == false
-    @guard.stub!(:match?).and_return(true)
+    @guard.stub(:match?).and_return(true)
     @guard.yield?.should == true
   end
 
   it "returns #match? if invert is true and neither report nor verify mode are true" do
-    @guard.stub!(:match?).and_return(false)
+    @guard.stub(:match?).and_return(false)
     @guard.yield?(true).should == true
-    @guard.stub!(:match?).and_return(true)
+    @guard.stub(:match?).and_return(true)
     @guard.yield?(true).should == false
   end
 end
 
 describe SpecGuard, "#===" do
   it "returns true" do
-    anything = mock("anything")
+    anything = double("anything")
     SpecGuard.new.===(anything).should == true
   end
 end
@@ -209,6 +195,11 @@ describe SpecGuard, "#implementation?" do
   it "returns true if passed :maglev and RUBY_NAME == 'maglev'" do
     Object.const_set :RUBY_NAME, 'maglev'
     @guard.implementation?(:maglev).should == true
+  end
+
+  it "returns true if passed :topaz and RUBY_NAME == 'topaz'" do
+    Object.const_set :RUBY_NAME, 'topaz'
+    @guard.implementation?(:topaz).should == true
   end
 
   it "returns true if passed :ruby and RUBY_NAME matches /^ruby/" do
@@ -326,12 +317,12 @@ describe SpecGuard, "#platform? on JRuby" do
   end
 
   it "returns true when arg is :windows and RUBY_PLATFORM contains 'java' and os?(:windows) is true" do
-    RbConfig::CONFIG.stub!(:[]).and_return('mswin32')
+    stub_const 'SpecGuard::HOST_OS', 'mswin32'
     @guard.platform?(:windows).should == true
   end
 
   it "returns true when RUBY_PLATFORM contains 'java' and os?(argument) is true" do
-    RbConfig::CONFIG.stub!(:[]).and_return('amiga')
+    stub_const 'SpecGuard::HOST_OS', 'amiga'
     @guard.platform?(:amiga).should == true
   end
 end
@@ -353,7 +344,7 @@ end
 describe SpecGuard, "#os?" do
   before :each do
     @guard = SpecGuard.new
-    RbConfig::CONFIG.stub!(:[]).and_return('unreal')
+    stub_const 'SpecGuard::HOST_OS', 'unreal'
   end
 
   it "returns true if argument matches RbConfig::CONFIG['host_os']" do
@@ -373,22 +364,22 @@ describe SpecGuard, "#os?" do
   end
 
   it "returns true when arg is :windows and RbConfig::CONFIG['host_os'] contains 'mswin'" do
-    RbConfig::CONFIG.stub!(:[]).and_return('i386-mswin32')
+    stub_const 'SpecGuard::HOST_OS', 'i386-mswin32'
     @guard.os?(:windows).should == true
   end
 
   it "returns true when arg is :windows and RbConfig::CONFIG['host_os'] contains 'mingw'" do
-    RbConfig::CONFIG.stub!(:[]).and_return('i386-mingw32')
+    stub_const 'SpecGuard::HOST_OS', 'i386-mingw32'
     @guard.os?(:windows).should == true
   end
 
   it "returns false when arg is not :windows and RbConfig::CONFIG['host_os'] contains 'mswin'" do
-    RbConfig::CONFIG.stub!(:[]).and_return('i386-mingw32')
+    stub_const 'SpecGuard::HOST_OS', 'i386-mingw32'
     @guard.os?(:linux).should == false
   end
 
   it "returns false when arg is not :windows and RbConfig::CONFIG['host_os'] contains 'mingw'" do
-    RbConfig::CONFIG.stub!(:[]).and_return('i386-mingw32')
+    stub_const 'SpecGuard::HOST_OS', 'i386-mingw32'
     @guard.os?(:linux).should == false
   end
 end
@@ -417,29 +408,29 @@ end
 describe SpecGuard, "#match?" do
   before :each do
     @guard = SpecGuard.new
-    SpecGuard.stub!(:new).and_return(@guard)
+    SpecGuard.stub(:new).and_return(@guard)
   end
 
   it "returns true if #platform? or #implementation? return true" do
-    @guard.stub!(:implementation?).and_return(true)
-    @guard.stub!(:platform?).and_return(false)
+    @guard.stub(:implementation?).and_return(true)
+    @guard.stub(:platform?).and_return(false)
     @guard.match?.should == true
 
-    @guard.stub!(:implementation?).and_return(false)
-    @guard.stub!(:platform?).and_return(true)
+    @guard.stub(:implementation?).and_return(false)
+    @guard.stub(:platform?).and_return(true)
     @guard.match?.should == true
   end
 
   it "returns false if #platform? and #implementation? return false" do
-    @guard.stub!(:implementation?).and_return(false)
-    @guard.stub!(:platform?).and_return(false)
+    @guard.stub(:implementation?).and_return(false)
+    @guard.stub(:platform?).and_return(false)
     @guard.match?.should == false
   end
 end
 
 describe SpecGuard, "#unregister" do
   before :each do
-    MSpec.stub!(:unregister)
+    MSpec.stub(:unregister)
     @guard = SpecGuard.new
   end
 

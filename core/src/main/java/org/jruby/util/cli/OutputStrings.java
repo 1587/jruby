@@ -4,6 +4,7 @@ import com.headius.options.Option;
 import jnr.posix.util.Platform;
 import org.jruby.CompatVersion;
 import org.jruby.RubyInstanceConfig;
+import org.jruby.ext.rbconfig.RbConfigLibrary;
 import org.jruby.runtime.Constants;
 import org.jruby.util.SafePropertyAccessor;
 /**
@@ -29,8 +30,8 @@ public class OutputStrings {
                 .append("  -J[java option]   pass an option on to the JVM (e.g. -J-Xmx512m)\n")
                 .append("                      use --properties to list JRuby properties\n")
                 .append("                      run 'java -help' for a list of other Java options\n")
-                .append("  -Kkcode           specifies code-set (e.g. -Ku for Unicode, -Ke for EUC and -Ks\n")
-                .append("                      for SJIS)\n")
+                //.append("  -Kkcode           specifies code-set (e.g. -Ku for Unicode, -Ke for EUC and -Ks\n")
+                //.append("                      for SJIS)\n")
                 .append("  -l                enable line ending processing\n")
                 .append("  -n                assume 'while gets(); ... end' loop around your script\n")
                 .append("  -p                assume loop like -n but print line also like sed\n")
@@ -64,26 +65,39 @@ public class OutputStrings {
                 .append("  --client          use the non-optimizing \"client\" JVM\n")
                 .append("                      (improves startup; default)\n")
                 .append("  --server          use the optimizing \"server\" JVM (improves perf)\n")
-                .append("  --manage          enable remote JMX management and monitoring of the VM\n")
-                .append("                      and JRuby\n")
                 .append("  --headless        do not launch a GUI window, no matter what\n")
+                .append("  --dev             prioritize startup time over long term performance\n")
+                .append("  --manage          enable remote JMX management and monitoring of JVM and JRuby\n")
                 .append("  --bytecode        show the JVM bytecode produced by compiling specified code\n")
                 .append("  --version         print the version\n")
-                .append("  --disable-gems    do not load RubyGems on startup\n");
+                .append("  --disable-gems    do not load RubyGems on startup\n")
+                .append("  --enable=feature[,...], --disable=feature[,...]\n")
+                .append("                    enable or disable features\n");
 
         return sb.toString();
     }
 
-    public static String getExtendedHelp() {
-        StringBuilder sb = new StringBuilder();
-        sb
-                .append("Extended options:\n")
-                .append("  -X-O        run with ObjectSpace disabled (default; improves performance)\n")
-                .append("  -X+O        run with ObjectSpace enabled (reduces performance)\n")
-                .append("  -X-C        disable all compilation\n")
-                .append("  -X+C        force compilation of all scripts before they are run (except eval)\n");
+    public static String getFeaturesHelp() { return
+        "Features:\n" +
+        "  gems                   rubygems (default: " + (Options.CLI_RUBYGEMS_ENABLE.defaultValue() ? "enabled" : "disabled") + ")\n" +
+        "  did_you_mean           did_you_mean (default: " + (Options.CLI_DID_YOU_MEAN_ENABLE.defaultValue() ? "enabled" : "disabled") + ")\n" +
+        "  rubyopt                RUBYOPT environment variable (default: " + (Options.CLI_RUBYOPT_ENABLE.defaultValue() ? "enabled" : "disabled") + ")\n" +
+        "  frozen-string-literal  freeze all string literals (default: disabled)\n" ;
+    }
 
-        return sb.toString();
+    public static String getExtendedHelp() { return
+        "Extended options:\n" +
+        "  -X-O          run with ObjectSpace disabled (default; improves performance)\n" +
+        "  -X+O          run with ObjectSpace enabled (reduces performance)\n" +
+        "  -X-C          disable all compilation\n" +
+        "  -X-CIR        disable all compilation and use IR runtime\n" +
+        "  -X+C          force compilation of all scripts before they are run (except eval)\n" +
+        "  -X+CIR        force compilation and use IR runtime\n" +
+        "  -X+JIR        JIT compilation and use IR runtime\n" +
+        "  -X+T          use Truffle\n" +
+        "  -Xclassic     don't use Truffle, reversing the -X+T option\n" +
+        "  -Xsubstring?  list options that contain substring in their name\n" +
+        "  -Xprefix...   list options that are prefixed wtih prefix\n" ;
     }
 
     public static String getPropertyHelp() {
@@ -103,44 +117,22 @@ public class OutputStrings {
         return sb.toString();
     }
 
-    public static String getVersionString(CompatVersion compatVersion) {
-        String ver;
-        String patchDelimeter = "p";
-        int patchlevel;
-        String versionString = "";
-        switch (compatVersion) {
-        case RUBY1_8:
-            ver = Constants.RUBY_VERSION;
-            patchlevel = Constants.RUBY_PATCHLEVEL;
-            versionString = String.format("ruby-%s%s%d", ver, patchDelimeter, patchlevel);
-            break;
-        case RUBY1_9:
-            ver = Constants.RUBY1_9_VERSION;
-            patchlevel = Constants.RUBY1_9_PATCHLEVEL;
-            versionString = String.format("%s%s%d", ver, patchDelimeter, patchlevel);
-            break;
-        case RUBY2_0:
-            ver = Constants.RUBY2_0_VERSION;
-            patchlevel = Constants.RUBY2_0_PATCHLEVEL;
-            versionString = String.format("%s%s%d", ver, patchDelimeter, patchlevel);
-            break;
-        }
-
-        String fullVersion = String.format(
-                "jruby %s (%s) %s %s on %s %s%s%s [%s-%s]",
+    public static String getVersionString() {
+        return String.format(
+            "jruby%s %s (%s) %s %s %s %s on %s%s%s [%s-%s]",
+                Options.COMPILE_MODE.load().isTruffle() ? "+truffle" : "",
                 Constants.VERSION,
-                versionString,
+                Constants.RUBY_VERSION,
                 Constants.COMPILE_DATE,
                 Constants.REVISION,
                 SafePropertyAccessor.getProperty("java.vm.name", "Unknown JVM"),
+                SafePropertyAccessor.getProperty("java.vm.version", "Unknown JVM version"),
                 SafePropertyAccessor.getProperty("java.runtime.version", SafePropertyAccessor.getProperty("java.version", "Unknown version")),
                 Options.COMPILE_INVOKEDYNAMIC.load() ? " +indy" : "",
-                RubyInstanceConfig.CompileMode.valueOf(Options.COMPILE_MODE.load()).shouldJIT() ? " +jit" : "",
-                Platform.getOSName(),
-                SafePropertyAccessor.getProperty("os.arch", "Unknown arch")
-                );
-
-        return fullVersion;
+                Options.COMPILE_MODE.load().shouldJIT() ? " +jit" : "",
+                RbConfigLibrary.getOSName(),
+                RbConfigLibrary.getArchitecture()
+        );
     }
 
     public static String getCopyrightString() {

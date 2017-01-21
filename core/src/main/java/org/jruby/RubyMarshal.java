@@ -44,6 +44,7 @@ import org.jruby.anno.JRubyModule;
 import org.jruby.runtime.Block;
 import org.jruby.runtime.Constants;
 import org.jruby.runtime.ThreadContext;
+import org.jruby.runtime.Visibility;
 import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.runtime.marshal.MarshalStream;
 import org.jruby.runtime.marshal.UnmarshalStream;
@@ -71,7 +72,7 @@ public class RubyMarshal {
         return module;
     }
 
-    @JRubyMethod(required = 1, optional = 2, module = true)
+    @JRubyMethod(required = 1, optional = 2, module = true, visibility = Visibility.PRIVATE)
     public static IRubyObject dump(IRubyObject recv, IRubyObject[] args, Block unusedBlock) {
         Ruby runtime = recv.getRuntime();
         IRubyObject objectToDump = args[0];
@@ -98,11 +99,10 @@ public class RubyMarshal {
             }
             
             ByteArrayOutputStream stringOutput = new ByteArrayOutputStream();
-            boolean[] taintUntrust = dumpToStream(runtime, objectToDump, stringOutput, depthLimit);
+            boolean taint = dumpToStream(runtime, objectToDump, stringOutput, depthLimit);
             RubyString result = RubyString.newString(runtime, new ByteList(stringOutput.toByteArray()));
             
-            if (taintUntrust[0]) result.setTaint(true);
-            if (taintUntrust[1]) result.setUntrusted(true);
+            if (taint) result.setTaint(true);
 
             return result;
         } catch (IOException ioe) {
@@ -120,7 +120,7 @@ public class RubyMarshal {
         if (io.respondsTo("binmode")) io.callMethod(context, "binmode");
     }
 
-    @JRubyMethod(name = {"load", "restore"}, required = 1, optional = 1, module = true)
+    @JRubyMethod(name = {"load", "restore"}, required = 1, optional = 1, module = true, visibility = Visibility.PRIVATE)
     public static IRubyObject load(ThreadContext context, IRubyObject recv, IRubyObject[] args, Block unusedBlock) {
         Ruby runtime = context.runtime;
         IRubyObject in = args[0];
@@ -129,23 +129,20 @@ public class RubyMarshal {
         try {
             InputStream rawInput;
             boolean tainted;
-            boolean untrusted;
             IRubyObject v = in.checkStringType();
             
             if (!v.isNil()) {
                 tainted = in.isTaint();
-                untrusted = in.isUntrusted();
                 ByteList bytes = ((RubyString) v).getByteList();
                 rawInput = new ByteArrayInputStream(bytes.getUnsafeBytes(), bytes.begin(), bytes.length());
             } else if (in.respondsTo("getc") && in.respondsTo("read")) {
                 tainted = true;
-                untrusted = true;
                 rawInput = inputStream(context, in);
             } else {
                 throw runtime.newTypeError("instance of IO needed");
             }
 
-            return new UnmarshalStream(runtime, rawInput, proc, tainted, untrusted).unmarshalObject();
+            return new UnmarshalStream(runtime, rawInput, proc, tainted).unmarshalObject();
         } catch (EOFException e) {
             if (in.respondsTo("to_str")) throw runtime.newArgumentError("marshal data too short");
 
@@ -160,10 +157,10 @@ public class RubyMarshal {
         return new IOInputStream(in);
     }
 
-    private static boolean[] dumpToStream(Ruby runtime, IRubyObject object, OutputStream rawOutput,
+    private static boolean dumpToStream(Ruby runtime, IRubyObject object, OutputStream rawOutput,
             int depthLimit) throws IOException {
         MarshalStream output = new MarshalStream(runtime, rawOutput, depthLimit);
         output.dumpObject(object);
-        return new boolean[] {output.isTainted(), output.isUntrusted()};
+        return output.isTainted();
     }
 }

@@ -1,3 +1,29 @@
+/*
+ ***** BEGIN LICENSE BLOCK *****
+ * Version: EPL 1.0/GPL 2.0/LGPL 2.1
+ *
+ * The contents of this file are subject to the Eclipse Public
+ * License Version 1.0 (the "License"); you may not use this file
+ * except in compliance with the License. You may obtain a copy of
+ * the License at http://www.eclipse.org/legal/epl-v10.html
+ *
+ * Software distributed under the License is distributed on an "AS
+ * IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or
+ * implied. See the License for the specific language governing
+ * rights and limitations under the License.
+ *
+ * Alternatively, the contents of this file may be used under the terms of
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * in which case the provisions of the GPL or the LGPL are applicable instead
+ * of those above. If you wish to allow use of your version of this file only
+ * under the terms of either the GPL or the LGPL, and not to allow others to
+ * use your version of this file under the terms of the EPL, indicate your
+ * decision by deleting the provisions above and replace them with the notice
+ * and other provisions required by the GPL or the LGPL. If you do not delete
+ * the provisions above, a recipient may use your version of this file under
+ * the terms of any one of the EPL, the GPL or the LGPL.
+ ***** END LICENSE BLOCK *****/
 package org.jruby.java.invokers;
 
 import java.lang.reflect.AccessibleObject;
@@ -10,7 +36,6 @@ import java.util.ArrayList;
 import org.jruby.Ruby;
 import org.jruby.RubyModule;
 import org.jruby.exceptions.RaiseException;
-import org.jruby.internal.runtime.methods.CallConfiguration;
 import org.jruby.internal.runtime.methods.JavaMethod;
 import org.jruby.java.dispatch.CallableSelector;
 import org.jruby.java.proxies.ArrayJavaProxy;
@@ -35,49 +60,75 @@ public abstract class RubyToJavaInvoker<T extends JavaCallable> extends JavaMeth
     protected final T javaCallable; /* null if multiple callable members */
     protected final T[][] javaCallables; /* != null if javaCallable == null */
     protected final T[] javaVarargsCallables; /* != null if any var args callables */
-    protected final int minVarargsArity;
 
     // in case multiple callables (overloaded Java method - same name different args)
     // for the invoker exists  CallableSelector caches resolution based on args here
     final NonBlockingHashMapLong<T> cache;
 
     private final Ruby runtime;
-    private final Member[] members;
+
+    @SuppressWarnings("unchecked") // NULL_CACHE
+    RubyToJavaInvoker(RubyModule host, Member member) {
+        super(host, Visibility.PUBLIC);
+        this.runtime = host.getRuntime();
+
+        final T callable;
+        T[] varargsCallables = null;
+        int minVarArgsArity = -1;
+
+        callable = createCallable(runtime, member);
+        int minArity = callable.getArity();
+        if ( callable.isVarArgs() ) { // TODO does it need to happen?
+            varargsCallables = createCallableArray(callable);
+            minVarArgsArity = getMemberArity(member) - 1;
+        }
+
+        cache = NULL_CACHE; // if there's a single callable - matching (and thus the cache) won't be used
+
+        this.javaCallable = callable;
+        this.javaCallables = null;
+        this.javaVarargsCallables = varargsCallables;
+
+        setArity(minArity, minArity, minVarArgsArity);
+        setupNativeCall();
+    }
 
     @SuppressWarnings("unchecked") // NULL_CACHE
     RubyToJavaInvoker(RubyModule host, Member[] members) {
-        super(host, Visibility.PUBLIC, CallConfiguration.FrameNoneScopeNone);
-        this.members = members;
+        super(host, Visibility.PUBLIC);
         this.runtime = host.getRuntime();
-        // we set all Java methods to optional, since many/most have overloads
-        setArity(Arity.OPTIONAL);
 
         // initialize all the callables for this method
         final T callable;
         final T[][] callables;
         T[] varargsCallables = null;
-        int varArgsArity = Integer.MAX_VALUE;
+        int minVarArgsArity = -1; int maxArity, minArity;
 
         final int length = members.length;
         if ( length == 1 ) {
-            callable = (T) createCallable(runtime, members[0]);
+            callable = createCallable(runtime, members[0]);
+            maxArity = minArity = callable.getArity();
             if ( callable.isVarArgs() ) {
-                varargsCallables = (T[]) createCallableArray(callable);
+                varargsCallables = createCallableArray(callable);
+                minVarArgsArity = getMemberArity(members[0]) - 1;
             }
             callables = null;
 
             cache = NULL_CACHE; // if there's a single callable - matching (and thus the cache) won't be used
         }
         else {
-            callable = null;
+            callable = null; maxArity = -1; minArity = Integer.MAX_VALUE;
 
             IntHashMap<ArrayList<T>> arityMap = new IntHashMap<ArrayList<T>>(length, 1);
 
-            ArrayList<JavaCallable> varArgs = null; int maxArity = 0;
+            ArrayList<T> varArgs = null;
             for ( int i = 0; i < length; i++ ) {
                 final Member method = members[i];
-                final int currentArity = getMemberParameterTypes(method).length;
+                final int currentArity = getMemberArity(method);
                 maxArity = Math.max(currentArity, maxArity);
+                minArity = Math.min(currentArity, minArity);
+
+                final T javaMethod = createCallable(runtime, method);
 
                 ArrayList<T> methodsForArity = arityMap.get(currentArity);
                 if (methodsForArity == null) {
@@ -87,42 +138,68 @@ public abstract class RubyToJavaInvoker<T extends JavaCallable> extends JavaMeth
                     methodsForArity = new ArrayList<T>(length);
                     arityMap.put(currentArity, methodsForArity);
                 }
-
-                final T javaMethod = (T) createCallable(runtime, method);
                 methodsForArity.add(javaMethod);
 
-                if ( isMemberVarArgs(method) ) {
-                    varArgsArity = Math.min(currentArity - 1, varArgsArity);
-                    if (varArgs == null) varArgs = new ArrayList<JavaCallable>(length);
+                if ( javaMethod.isVarArgs() ) {
+                    final int usableArity = currentArity - 1;
+                    // (String, Object...) has usable arity == 1 ... (String)
+                    if ((methodsForArity = arityMap.get(usableArity)) == null) {
+                        methodsForArity = new ArrayList<T>(length);
+                        arityMap.put(usableArity, methodsForArity);
+                    }
+                    methodsForArity.add(javaMethod);
+
+                    if (varArgs == null) varArgs = new ArrayList<T>(length);
                     varArgs.add(javaMethod);
+
+                    if ( minVarArgsArity == -1 ) minVarArgsArity = Integer.MAX_VALUE;
+                    minVarArgsArity = Math.min(usableArity, minVarArgsArity);
                 }
             }
 
-            callables = (T[][]) createCallableArrayArray(maxArity + 1);
+            callables = createCallableArrayArray(maxArity + 1);
             for (IntHashMap.Entry<ArrayList<T>> entry : arityMap.entrySet()) {
                 ArrayList<T> methodsForArity = entry.getValue();
 
-                T[] methodsArray = methodsForArity.toArray((T[]) createCallableArray(methodsForArity.size()));
+                T[] methodsArray = methodsForArity.toArray(createCallableArray(methodsForArity.size()));
                 callables[ entry.getKey() /* int */ ] = methodsArray;
             }
 
             if (varArgs != null /* && varargsMethods.size() > 0 */) {
                 varargsCallables = (T[]) varArgs.toArray( createCallableArray(varArgs.size()) );
             }
-
-            cache = new NonBlockingHashMapLong<T>(8);
+            // NOTE: tested (4, false); with opt_for_space: false but does not
+            // seem to give  the promised ~10% improvement in map's speed ...
+            cache = new NonBlockingHashMapLong<>(4, true); // 8 still uses MIN_SIZE_LOG == 4
         }
 
         this.javaCallable = callable;
         this.javaCallables = callables;
         this.javaVarargsCallables = varargsCallables;
-        this.minVarargsArity = varArgsArity;
 
-        // if it's not overloaded, set up a NativeCall
+        setArity(minArity, maxArity, minVarArgsArity);
+        setupNativeCall();
+    }
+
+    private void setArity(final int minArity,  final int maxArity, final int minVarArgsArity) {
+        if ( minVarArgsArity == -1 ) { // no var-args
+            if ( minArity == maxArity ) {
+                setArity( Arity.fixed(minArity) );
+            }
+            else { // multiple overloads
+                setArity(Arity.required(minArity)); // but <= maxArity
+            }
+        }
+        else {
+            setArity( Arity.required(minVarArgsArity < minArity ? minVarArgsArity : minArity) );
+        }
+    }
+
+    final void setupNativeCall() { // if it's not overloaded, set up a NativeCall
         if (javaCallable != null) {
             // no constructor support yet
             if (javaCallable instanceof org.jruby.javasupport.JavaMethod) {
-                setNativeCallIfPublic( ((org.jruby.javasupport.JavaMethod) javaCallable).getValue() );
+                setNativeCallIfPublic(((org.jruby.javasupport.JavaMethod) javaCallable).getValue());
             }
         } else { // use the lowest-arity non-overload
             for ( int i = 0; i< javaCallables.length; i++ ) {
@@ -145,14 +222,6 @@ public abstract class RubyToJavaInvoker<T extends JavaCallable> extends JavaMeth
         return false;
     }
 
-    protected final Member[] getMembers() {
-        return members;
-    }
-
-    protected AccessibleObject[] getAccessibleObjects() {
-        return (AccessibleObject[]) getMembers();
-    }
-
     /**
      * Internal API
      * @param signatureCode
@@ -171,39 +240,60 @@ public abstract class RubyToJavaInvoker<T extends JavaCallable> extends JavaMeth
         cache.put(signatureCode, callable);
     }
 
-    protected abstract JavaCallable createCallable(Ruby runtime, Member member);
+    protected abstract T createCallable(Ruby runtime, Member member);
 
-    protected abstract JavaCallable[] createCallableArray(JavaCallable callable);
+    protected abstract T[] createCallableArray(T callable);
 
-    protected abstract JavaCallable[] createCallableArray(int size);
+    protected abstract T[] createCallableArray(int size);
 
-    protected abstract JavaCallable[][] createCallableArrayArray(int size);
+    protected abstract T[][] createCallableArrayArray(int size);
 
     protected abstract Class[] getMemberParameterTypes(Member member);
 
+    @Deprecated // no longer used!
     protected abstract boolean isMemberVarArgs(Member member);
 
-    //final int getMemberArity(Member member) {
-    //    return getMemberParameterTypes(member).length;
-    //}
+    final int getMemberArity(Member member) {
+        return getMemberParameterTypes(member).length;
+    }
 
     public static Object[] convertArguments(final ParameterTypes method, final IRubyObject[] args) {
+        return convertArguments(method, args, 0); // 0 - no additional space
+    }
+
+    public static Object[] convertArguments(final ParameterTypes method, final IRubyObject[] args, final int addSpace) {
         final Class<?>[] paramTypes = method.getParameterTypes();
         final Object[] javaArgs; final int len = args.length;
 
         if ( method.isVarArgs() ) {
             final int last = paramTypes.length - 1;
-            javaArgs = new Object[ last + 1 ];
+            javaArgs = new Object[ last + 1 + addSpace ];
             for ( int i = 0; i < last; i++ ) {
                 javaArgs[i] = args[i].toJava(paramTypes[i]);
             }
             javaArgs[ last ] = convertVarArgumentsOnly(paramTypes[ last ], last, args);
         }
         else {
-            javaArgs = new Object[len];
+            javaArgs = new Object[ len + addSpace ];
             for ( int i = 0; i < len; i++ ) {
                 javaArgs[i] = args[i].toJava(paramTypes[i]);
             }
+        }
+        return javaArgs;
+    }
+
+    // specialized case of above convertArguments(IRubyObject...)
+    public static Object[] convertArguments(final ParameterTypes method, final IRubyObject arg0, final int addSpace) {
+        final Class<?>[] paramTypes = method.getParameterTypes();
+        final Object[] javaArgs;
+
+        if ( method.isVarArgs() ) {
+            javaArgs = new Object[ 1 + addSpace ];
+            javaArgs[0] = convertVarArgumentsOnly(paramTypes[0], arg0);
+        }
+        else {
+            javaArgs = new Object[ 1 + addSpace ];
+            javaArgs[0] = arg0.toJava(paramTypes[0]);
         }
         return javaArgs;
     }
@@ -229,19 +319,36 @@ public abstract class RubyToJavaInvoker<T extends JavaCallable> extends JavaMeth
         return varArgs;
     }
 
+    // specialized case of above convertVarArgumentsOnly
+    private static Object convertVarArgumentsOnly(final Class<?> varArrayType,
+        /* final int varStart = 0, */ final IRubyObject arg0) {
+
+        if ( arg0 instanceof ArrayJavaProxy ) {
+            // we may have a pre-created array to pass; try that first
+            return arg0.toJava(varArrayType);
+        }
+
+        final Class<?> compType = varArrayType.getComponentType();
+        final Object varArgs = Array.newInstance(compType, 1);
+        Array.set(varArgs, 0, arg0.toJava(compType));
+        return varArgs;
+    }
+
     static JavaProxy castJavaProxy(final IRubyObject self) {
         assert self instanceof JavaProxy : "Java methods can only be invoked on Java objects";
         return (JavaProxy) self;
     }
 
-    static void trySetAccessible(AccessibleObject... accesibles) {
-        if ( ! Ruby.isSecurityRestricted() ) {
-            try { AccessibleObject.setAccessible(accesibles, true); }
+    static <T extends AccessibleObject> T setAccessible(T accessible) {
+        if (!accessible.isAccessible() &&
+                !Ruby.isSecurityRestricted() ) {
+            try { accessible.setAccessible(true); }
             catch (SecurityException e) {}
             catch (RuntimeException re) {
                 rethrowIfNotInaccessibleObject(re);
             }
         }
+        return accessible;
     }
 
     private static void rethrowIfNotInaccessibleObject(RuntimeException re) {
@@ -254,8 +361,156 @@ public abstract class RubyToJavaInvoker<T extends JavaCallable> extends JavaMeth
         }
     }
 
-    protected JavaCallable findCallable(IRubyObject self, String name, IRubyObject[] args, final int arity) {
-        JavaCallable callable = this.javaCallable;
+    static <T extends AccessibleObject> T[] setAccessible(T[] accessibles) {
+        if (!allAreAccessible(accessibles) &&
+                !Ruby.isSecurityRestricted() ) {
+            try { AccessibleObject.setAccessible(accessibles, true); }
+            catch (SecurityException e) {}
+            catch (RuntimeException re) {
+                rethrowIfNotInaccessibleObject(re);
+            }
+        }
+        return accessibles;
+    }
+
+    private static <T extends AccessibleObject> boolean allAreAccessible(T[] accessibles) {
+        for (T accessible : accessibles) if (!accessible.isAccessible()) return false;
+        return true;
+    }
+
+    protected T findCallable(IRubyObject self, String name, IRubyObject[] args, final int arity) {
+        switch (arity) {
+            case 0:
+                return findCallableArityZero(self, name);
+            case 1:
+                return findCallableArityOne(self, name, args[0]);
+            case 2:
+                return findCallableArityTwo(self, name, args[0], args[1]);
+            case 3:
+                return findCallableArityThree(self, name, args[0], args[1], args[2]);
+            case 4:
+                return findCallableArityFour(self, name, args[0], args[1], args[2], args[3]);
+        }
+        return findCallableArityN(self, name, args, arity);
+    }
+
+    protected final T findCallableArityZero(IRubyObject self, String name) {
+        T callable = this.javaCallable;
+        if ( callable == null ) {
+            final T[] callablesForArity;
+            if ( javaCallables.length == 0 || (callablesForArity = javaCallables[0]) == null ) {
+                if ( ( callable = matchVarArgsCallableArityZero(self) ) == null ) {
+                    throw newErrorDueNoMatchingCallable(self, name);
+                }
+                return callable;
+            }
+            callable = CallableSelector.matchingCallableArityZero(runtime, this, callablesForArity);
+            if ( callable == null ) {
+                if ((callable = matchVarArgsCallableArityZero(self)) == null ) {
+                    throw newErrorDueArgumentTypeMismatch(self, callablesForArity);
+                }
+            }
+        }
+        else {
+            if (!callable.isVarArgs()) checkCallableArity(callable, 0);
+        }
+        return callable;
+    }
+
+    protected final T findCallableArityOne(IRubyObject self, String name, IRubyObject arg0) {
+        T callable = this.javaCallable;
+        if ( callable == null ) {
+            // TODO: varargs?
+            final T[] callablesForArity;
+            if ( javaCallables.length <= 1 || (callablesForArity = javaCallables[1]) == null ) {
+                if ((callable = matchVarArgsCallableArityOne(self, arg0)) == null) {
+                    throw runtime.newArgumentError(1, javaCallables.length - 1);
+                }
+                return callable;
+            }
+            callable = CallableSelector.matchingCallableArityOne(runtime, this, callablesForArity, arg0);
+            if ( callable == null ) {
+                if ((callable = matchVarArgsCallableArityOne(self, arg0)) == null ) {
+                    throw newErrorDueArgumentTypeMismatch(self, callablesForArity, arg0);
+                }
+            }
+        } else {
+            if (!callable.isVarArgs()) checkCallableArity(callable, 1);
+        }
+        return callable;
+    }
+
+    protected final T findCallableArityTwo(IRubyObject self, String name, IRubyObject arg0, IRubyObject arg1) {
+        T callable = this.javaCallable;
+        if ( callable == null ) {
+            // TODO: varargs?
+            final T[] callablesForArity;
+            if ( javaCallables.length <= 2 || (callablesForArity = javaCallables[2]) == null ) {
+                if ((callable = matchVarArgsCallableArityTwo(self, arg0, arg1)) == null ) {
+                    throw runtime.newArgumentError(2, javaCallables.length - 1);
+                }
+                return callable;
+            }
+            callable = CallableSelector.matchingCallableArityTwo(runtime, this, callablesForArity, arg0, arg1);
+            if ( callable == null ) {
+                if ((callable = matchVarArgsCallableArityTwo(self, arg0, arg1)) == null ) {
+                    throw newErrorDueArgumentTypeMismatch(self, callablesForArity, arg0, arg1);
+                }
+            }
+        } else {
+            if (!callable.isVarArgs()) checkCallableArity(callable, 2);
+        }
+        return callable;
+    }
+
+    protected final T findCallableArityThree(IRubyObject self, String name, IRubyObject arg0, IRubyObject arg1, IRubyObject arg2) {
+        T callable = this.javaCallable;
+        if ( callable == null ) {
+            // TODO: varargs?
+            final T[] callablesForArity;
+            if ( javaCallables.length <= 3 || (callablesForArity = javaCallables[3]) == null ) {
+                if ( ( callable = matchVarArgsCallableArityThree(self, arg0, arg1, arg2) ) == null ) {
+                    throw runtime.newArgumentError(3, javaCallables.length - 1);
+                }
+                return callable;
+            }
+            callable = CallableSelector.matchingCallableArityThree(runtime, this, callablesForArity, arg0, arg1, arg2);
+            if ( callable == null ) {
+                if ( ( callable = matchVarArgsCallableArityThree(self, arg0, arg1, arg2) ) == null ) {
+                    throw newErrorDueArgumentTypeMismatch(self, callablesForArity, arg0, arg1, arg2);
+                }
+            }
+        } else {
+            if (!callable.isVarArgs()) checkCallableArity(callable, 3);
+        }
+        return callable;
+    }
+
+    protected final T findCallableArityFour(IRubyObject self, String name, IRubyObject arg0, IRubyObject arg1, IRubyObject arg2, IRubyObject arg3) {
+        T callable = this.javaCallable;
+        if ( callable == null ) {
+            // TODO: varargs?
+            final T[] callablesForArity;
+            if ( javaCallables.length <= 4 || (callablesForArity = javaCallables[4]) == null ) {
+                if ( ( callable = matchVarArgsCallableArityFour(self, arg0, arg1, arg2, arg3) ) == null ) {
+                    throw runtime.newArgumentError(4, javaCallables.length - 1);
+                }
+                return callable;
+            }
+            callable = CallableSelector.matchingCallableArityFour(runtime, this, callablesForArity, arg0, arg1, arg2, arg3);
+            if ( callable == null ) {
+                if ( ( callable = matchVarArgsCallableArityFour(self, arg0, arg1, arg2, arg3) ) == null ) {
+                    throw newErrorDueArgumentTypeMismatch(self, callablesForArity, arg0, arg1, arg2, arg3);
+                }
+            }
+        } else {
+            if (!callable.isVarArgs()) checkCallableArity(callable, 4);
+        }
+        return callable;
+    }
+
+    private T findCallableArityN(IRubyObject self, String name, IRubyObject[] args, int arity) {
+        T callable = this.javaCallable;
         if ( callable == null ) {
             final T[] callablesForArity;
             if ( arity >= javaCallables.length || (callablesForArity = javaCallables[arity]) == null ) {
@@ -272,12 +527,72 @@ public abstract class RubyToJavaInvoker<T extends JavaCallable> extends JavaMeth
             }
         }
         else {
-            if ( ! callable.isVarArgs() ) checkCallableArity(callable, args.length);
+            if (!callable.isVarArgs()) checkCallableArity(callable, args.length);
         }
         return callable;
     }
 
-    private JavaCallable matchVarArgsCallableArityN(IRubyObject self, IRubyObject[] args) {
+    private T matchVarArgsCallableArityZero(IRubyObject self) {
+        final T[] varArgsCallables = this.javaVarargsCallables;
+        if ( varArgsCallables != null ) {
+            T callable = CallableSelector.matchingCallableArityZero(runtime, this, varArgsCallables);
+            if ( callable == null ) {
+                throw newErrorDueArgumentTypeMismatch(self, varArgsCallables);
+            }
+            return callable;
+        }
+        return null;
+    }
+
+    private T matchVarArgsCallableArityOne(IRubyObject self, IRubyObject arg0) {
+        final T[] varArgsCallables = this.javaVarargsCallables;
+        if ( varArgsCallables != null ) {
+            T callable = CallableSelector.matchingCallableArityOne(runtime, this, varArgsCallables, arg0);
+            if ( callable == null ) {
+                throw newErrorDueArgumentTypeMismatch(self, varArgsCallables, arg0);
+            }
+            return callable;
+        }
+        return null;
+    }
+
+    private T matchVarArgsCallableArityTwo(IRubyObject self, IRubyObject arg0, IRubyObject arg1) {
+        final T[] varArgsCallables = this.javaVarargsCallables;
+        if ( varArgsCallables != null ) {
+            T callable = CallableSelector.matchingCallableArityTwo(runtime, this, varArgsCallables, arg0, arg1);
+            if ( callable == null ) {
+                throw newErrorDueArgumentTypeMismatch(self, varArgsCallables, arg0, arg1);
+            }
+            return callable;
+        }
+        return null;
+    }
+
+    private T matchVarArgsCallableArityThree(IRubyObject self, IRubyObject arg0, IRubyObject arg1, IRubyObject arg2) {
+        final T[] varArgsCallables = this.javaVarargsCallables;
+        if ( varArgsCallables != null ) {
+            T callable = CallableSelector.matchingCallableArityThree(runtime, this, varArgsCallables, arg0, arg1, arg2);
+            if ( callable == null ) {
+                throw newErrorDueArgumentTypeMismatch(self, varArgsCallables, arg0, arg1, arg2);
+            }
+            return callable;
+        }
+        return null;
+    }
+
+    private T matchVarArgsCallableArityFour(IRubyObject self, IRubyObject arg0, IRubyObject arg1, IRubyObject arg2, IRubyObject arg3) {
+        final T[] varArgsCallables = this.javaVarargsCallables;
+        if ( varArgsCallables != null ) {
+            T callable = CallableSelector.matchingCallableArityFour(runtime, this, varArgsCallables, arg0, arg1, arg2, arg3);
+            if ( callable == null ) {
+                throw newErrorDueArgumentTypeMismatch(self, varArgsCallables, arg0, arg1, arg2, arg3);
+            }
+            return callable;
+        }
+        return null;
+    }
+
+    private T matchVarArgsCallableArityN(IRubyObject self, IRubyObject[] args) {
         final T[] varArgsCallables = this.javaVarargsCallables;
         if ( varArgsCallables != null ) {
             T callable = CallableSelector.matchingCallableArityN(runtime, this, varArgsCallables, args);
@@ -289,107 +604,15 @@ public abstract class RubyToJavaInvoker<T extends JavaCallable> extends JavaMeth
         return null;
     }
 
-    protected final JavaCallable findCallableArityZero(IRubyObject self, String name) {
-        JavaCallable callable = this.javaCallable;
-        if ( callable == null ) {
-            // TODO: varargs?
-            final JavaCallable[] callablesForArity;
-            if ( javaCallables.length == 0 || (callablesForArity = javaCallables[0]) == null ) {
-                throw newErrorDueNoMatchingCallable(self, name);
-            }
-            callable = callablesForArity[0];
-        }
-        else {
-            checkCallableArity(callable, 0);
-        }
-        return callable;
-    }
-
-    protected final JavaCallable findCallableArityOne(IRubyObject self, String name, IRubyObject arg0) {
-        T callable = this.javaCallable;
-        if ( callable == null ) {
-            // TODO: varargs?
-            final T[] callablesForArity;
-            if ( javaCallables.length <= 1 || (callablesForArity = javaCallables[1]) == null ) {
-                throw runtime.newArgumentError(1, javaCallables.length - 1);
-            }
-            callable = CallableSelector.matchingCallableArityOne(runtime, this, callablesForArity, arg0);
-            if ( callable == null ) {
-                throw newErrorDueArgumentTypeMismatch(self, callablesForArity, arg0);
-            }
-        }
-        else {
-            checkCallableArity(callable, 1);
-        }
-        return callable;
-    }
-
-    protected final JavaCallable findCallableArityTwo(IRubyObject self, String name, IRubyObject arg0, IRubyObject arg1) {
-        T callable = this.javaCallable;
-        if ( callable == null ) {
-            // TODO: varargs?
-            final T[] callablesForArity;
-            if ( javaCallables.length <= 2 || (callablesForArity = javaCallables[2]) == null ) {
-                throw runtime.newArgumentError(2, javaCallables.length - 1);
-            }
-            callable = CallableSelector.matchingCallableArityTwo(runtime, this, callablesForArity, arg0, arg1);
-            if ( callable == null ) {
-                throw newErrorDueArgumentTypeMismatch(self, callablesForArity, arg0, arg1);
-            }
-        }
-        else {
-            checkCallableArity(callable, 2);
-        }
-        return callable;
-    }
-
-    protected final JavaCallable findCallableArityThree(IRubyObject self, String name, IRubyObject arg0, IRubyObject arg1, IRubyObject arg2) {
-        T callable = this.javaCallable;
-        if ( callable == null ) {
-            // TODO: varargs?
-            final T[] callablesForArity;
-            if ( javaCallables.length <= 3 || (callablesForArity = javaCallables[3]) == null ) {
-                throw runtime.newArgumentError(3, javaCallables.length - 1);
-            }
-            callable = CallableSelector.matchingCallableArityThree(runtime, this, callablesForArity, arg0, arg1, arg2);
-            if ( callable == null ) {
-                throw newErrorDueArgumentTypeMismatch(self, callablesForArity, arg0, arg1, arg2);
-            }
-        }
-        else {
-            checkCallableArity(callable, 3);
-        }
-        return callable;
-    }
-
-    protected final JavaCallable findCallableArityFour(IRubyObject self, String name, IRubyObject arg0, IRubyObject arg1, IRubyObject arg2, IRubyObject arg3) {
-        T callable = this.javaCallable;
-        if ( callable == null ) {
-            // TODO: varargs?
-            final T[] callablesForArity;
-            if ( javaCallables.length <= 4 || (callablesForArity = javaCallables[4]) == null ) {
-                throw runtime.newArgumentError(4, javaCallables.length - 1);
-            }
-            callable = CallableSelector.matchingCallableArityFour(runtime, this, callablesForArity, arg0, arg1, arg2, arg3);
-            if ( callable == null ) {
-                throw newErrorDueArgumentTypeMismatch(self, callablesForArity, arg0, arg1, arg2, arg3);
-            }
-        }
-        else {
-            checkCallableArity(callable, 4);
-        }
-        return callable;
-    }
-
-    private void checkCallableArity(final JavaCallable callable, final int expected) {
+    private void checkCallableArity(final T callable, final int expected) {
         final int arity = callable.getArity();
         if ( arity != expected ) throw runtime.newArgumentError(expected, arity);
     }
 
-    private JavaCallable someCallable() {
+    private T someCallable() {
         if ( javaCallable == null ) {
             for ( int i = 0; i < javaCallables.length; i++ ) {
-                JavaCallable[] callables = javaCallables[i];
+                T[] callables = javaCallables[i];
                 if ( callables != null && callables.length > 0 ) {
                     for ( int j = 0; j < callables.length; j++ ) {
                         if ( callables[j] != null ) return callables[j];
@@ -406,7 +629,7 @@ public abstract class RubyToJavaInvoker<T extends JavaCallable> extends JavaMeth
     }
 
     RaiseException newErrorDueArgumentTypeMismatch(final IRubyObject receiver,
-        final JavaCallable[] methods, IRubyObject... args) {
+        final T[] methods, IRubyObject... args) {
 
         final Class[] argTypes = new Class[args.length];
         for (int i = 0; i < args.length; i++) {

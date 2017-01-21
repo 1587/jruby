@@ -7,7 +7,7 @@ describe JRuby::Profiler, "::JsonProfilePrinter" do
     before do
       @profile_data = JRuby::Profiler.profile {}
     end
-    
+
     it 'contains only the top invocation' do
       json_output['methods'].length.should equal(1)
       json_output['methods'].first['name'].should == '(top)'

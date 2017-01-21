@@ -1,37 +1,37 @@
-describe :date_civil, :shared => true do
+describe :date_civil, shared: true do
   it "creates a Date for -4712 by default" do
     # the #chomp calls are necessary because of RSpec
     d = Date.send(@method)
-    d.year.should    == -4712
-    d.month.should   == 1
-    d.day.should     == 1
+    d.year.should == -4712
+    d.month.should == 1
+    d.day.should == 1
     d.julian?.should == true
-    d.jd.should      == 0
+    d.jd.should == 0
   end
 
   it "creates a date with arguments" do
     d = Date.send(@method, 2000, 3, 5)
-    d.year.should    == 2000
-    d.month.should   == 3
-    d.day.should     == 5
+    d.year.should == 2000
+    d.month.should == 3
+    d.day.should == 5
     d.julian?.should == false
-    d.jd.should      == 2451609
+    d.jd.should == 2451609
 
     # Should also work with years far in the past and future
 
     d = Date.send(@method, -9000, 7, 5)
-    d.year.should    == -9000
-    d.month.should   == 7
-    d.day.should     == 5
+    d.year.should == -9000
+    d.month.should == 7
+    d.day.should == 5
     d.julian?.should == true
-    d.jd.should      == -1566006
+    d.jd.should == -1566006
 
     d = Date.send(@method, 9000, 10, 14)
-    d.year.should    == 9000
-    d.month.should   == 10
-    d.day.should     == 14
+    d.year.should == 9000
+    d.month.should == 10
+    d.day.should == 14
     d.julian?.should == false
-    d.jd.should      == 5008529
+    d.jd.should == 5008529
 
   end
 
@@ -53,17 +53,5 @@ describe :date_civil, :shared => true do
 
     d2 = Date.send(@method, 1582, 10, 4, Date::ENGLAND)
     d2.succ.day.should == 5
-  end
-
-  ruby_version_is ""..."1.9.3" do
-    it "chooses an arbitrary reform date" do
-      r  = Date.send(@method, 2000, 2, 3)
-
-      d3 = Date.send(@method, 2000, 2, 3, r.jd)
-      (d3 - 1).day.should == 20
-      (d3 - 1).month.should == 1
-
-      lambda { Date.send(@method, 2000, 2, 2, r.jd) }.should raise_error(ArgumentError)
-    end
   end
 end

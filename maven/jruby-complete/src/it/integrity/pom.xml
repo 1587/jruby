@@ -79,6 +79,22 @@
               </arguments>
             </configuration>
           </execution>
+	  <execution>
+	    <id>check jruby-home</id>
+	    <phase>test</phase>
+	    <goals>
+              <goal>exec</goal>
+            </goals>
+	    <configuration>
+	      <arguments>
+		<argument>-classpath</argument>
+		<classpath/>
+		<argument>org.jruby.Main</argument>
+		<argument>-e</argument>
+		<argument>p JRuby.runtime.jruby_home</argument>
+              </arguments>
+            </configuration>
+          </execution>
           <execution>
             <id>count installed gems</id>
             <phase>test</phase>
@@ -111,8 +127,8 @@
             <goals>
               <goal>exec</goal>
             </goals>
-            <configuration>          
-              <executable>java</executable> 
+            <configuration>
+              <executable>java</executable>
               <arguments>
                 <argument>-classpath</argument>
                 <!-- automatically creates the classpath using all project dependencies,
@@ -135,8 +151,8 @@
             <goals>
               <goal>exec</goal>
             </goals>
-            <configuration>          
-              <executable>java</executable> 
+            <configuration>
+              <executable>java</executable>
               <arguments>
                 <argument>-classpath</argument>
                 <!-- automatically creates the classpath using all project dependencies,
@@ -147,10 +163,10 @@
                 <!-- make sure openssl loads -->
                 <argument>
                   begin
-                  import_java "org.objectweb.asm.ClassWriter"
-                  raise "error there is org.objectweb.asm.ClassWriter on the classpath"
+                    import_java "org.objectweb.asm.ClassWriter"
+                    raise "error there is org.objectweb.asm.ClassWriter on the classpath"
                   rescue NameError => e
-                  puts "there is NO org.objectweb.asm.ClassWriter on the classpath"
+                    puts "there is NO org.objectweb.asm.ClassWriter on the classpath"
                   end
                 </argument>
               </arguments>
@@ -162,8 +178,8 @@
             <goals>
               <goal>exec</goal>
             </goals>
-            <configuration>          
-              <executable>java</executable> 
+            <configuration>
+              <executable>java</executable>
               <arguments>
                 <argument>-classpath</argument>
                 <!-- automatically creates the classpath using all project dependencies,
@@ -195,6 +211,25 @@
                 <argument>org.jruby.Main</argument>
                 <argument>-S</argument>
                 <argument>me</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>-S generate_dir_info bin</id>
+            <phase>test</phase>
+            <goals>
+              <goal>exec</goal>
+            </goals>
+            <configuration>
+              <workingDirectory>${basedir}</workingDirectory>
+              <executable>java</executable>
+              <arguments>
+                <argument>-classpath</argument>
+                <classpath/>
+                <argument>org.jruby.Main</argument>
+                <argument>-S</argument>
+                <argument>generate_dir_info</argument>
+                <argument>bin</argument>
               </arguments>
             </configuration>
           </execution>

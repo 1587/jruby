@@ -3,7 +3,7 @@ require 'bigdecimal'
 
 describe "BigDecimal#truncate" do
 
-  before(:each) do
+  before :each do
       @arr = ['3.14159', '8.7', "0.314159265358979323846264338327950288419716939937510582097494459230781640628620899862803482534211706798214808651328230664709384460955058223172535940812848111745028410270193852110555964462294895493038196442881097566593014782083152134043E1"]
       @big = BigDecimal("123456.789")
       @nan = BigDecimal('NaN')
@@ -11,19 +11,9 @@ describe "BigDecimal#truncate" do
       @infinity_negative = BigDecimal('-Infinity')
   end
 
-  ruby_version_is "" ... "1.9" do
-    it "returns value of type Bigdecimal." do
-      @arr.each do |x|
-        BigDecimal(x).truncate.kind_of?(BigDecimal).should == true
-      end
-    end
-  end
-
-  ruby_version_is "1.9" do
-    it "returns value of type Integer." do
-      @arr.each do |x|
-        BigDecimal(x).truncate.kind_of?(Integer).should == true
-      end
+  it "returns value of type Integer." do
+    @arr.each do |x|
+      BigDecimal(x).truncate.kind_of?(Integer).should == true
     end
   end
 
@@ -83,19 +73,9 @@ describe "BigDecimal#truncate" do
     @infinity_negative.truncate(0).should == @infinity_negative
   end
 
-  ruby_version_is "" ... "1.9" do
-    it "returns the same value if self is special value" do
-      @nan.truncate.nan?.should == true
-      @infinity.truncate.should == @infinity
-      @infinity_negative.truncate.should == @infinity_negative
-    end
-  end
-
-  ruby_version_is "1.9" do
-    it "returns the same value if self is special value" do
-      lambda { @nan.truncate }.should raise_error(FloatDomainError)
-      lambda { @infinity.truncate }.should raise_error(FloatDomainError)
-      lambda { @infinity_negative.truncate }.should raise_error(FloatDomainError)
-    end
+  it "returns the same value if self is special value" do
+    lambda { @nan.truncate }.should raise_error(FloatDomainError)
+    lambda { @infinity.truncate }.should raise_error(FloatDomainError)
+    lambda { @infinity_negative.truncate }.should raise_error(FloatDomainError)
   end
 end

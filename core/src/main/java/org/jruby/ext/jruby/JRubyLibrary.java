@@ -30,40 +30,20 @@
  ***** END LICENSE BLOCK *****/
 package org.jruby.ext.jruby;
 
-import java.util.ArrayList;
-
 import org.jruby.AbstractRubyMethod;
-import org.jruby.CompatVersion;
-import org.jruby.ast.RestArgNode;
+import org.jruby.Ruby;
+import org.jruby.RubyClass;
+import org.jruby.RubyModule;
 import org.jruby.anno.JRubyMethod;
 import org.jruby.anno.JRubyModule;
-
-import org.jruby.ast.ArgsNode;
-import org.jruby.ast.ListNode;
+import org.jruby.internal.runtime.methods.DynamicMethod;
+import org.jruby.java.proxies.JavaProxy;
 import org.jruby.javasupport.Java;
 import org.jruby.javasupport.JavaObject;
-import org.jruby.runtime.Arity;
-import org.jruby.runtime.Helpers;
-import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.internal.runtime.methods.DynamicMethod;
-
-import org.jruby.ast.Node;
-import org.jruby.ast.types.INameNode;
-import org.jruby.internal.runtime.methods.MethodArgs;
 import org.jruby.javasupport.JavaUtil;
+import org.jruby.runtime.Helpers;
 import org.jruby.runtime.ThreadContext;
-
-import org.jruby.Ruby;
-import org.jruby.RubyArray;
-import org.jruby.RubyClass;
-import org.jruby.RubyMethod;
-import org.jruby.RubyModule;
-import org.jruby.RubySymbol;
-import org.jruby.ast.MultipleAsgn19Node;
-import org.jruby.ast.UnnamedRestArgNode;
-import org.jruby.internal.runtime.methods.MethodArgs2;
-import org.jruby.internal.runtime.methods.IRMethodArgs;
-import org.jruby.java.proxies.JavaProxy;
+import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.runtime.load.Library;
 
 /**
@@ -74,7 +54,6 @@ import org.jruby.runtime.load.Library;
 @JRubyModule(name="JRuby")
 public class JRubyLibrary implements Library {
     public void load(Ruby runtime, boolean wrap) {
-        ThreadContext context = runtime.getCurrentContext();
         runtime.getLoadService().require("java");
 
         // load Ruby parts of the 'jruby' library
@@ -91,8 +70,17 @@ public class JRubyLibrary implements Library {
 
         RubyClass fiberLocalClass = jrubyModule.defineClassUnder("FiberLocal", runtime.getObject(), JRubyFiberLocal.ALLOCATOR);
         fiberLocalClass.defineAnnotatedMethods(JRubyExecutionContextLocal.class);
-        
-        new JRubyConfigLibrary().load(runtime, wrap);
+
+        RubyModule config = jrubyModule.defineModuleUnder("CONFIG");
+        config.getSingletonClass().defineAnnotatedMethods(JRubyConfig.class);
+    }
+
+    public static class JRubyConfig {
+        @JRubyMethod(name = "rubygems_disabled?")
+        public static IRubyObject rubygems_disabled_p(ThreadContext context, IRubyObject self) {
+            return context.runtime.newBoolean(
+                    context.runtime.getInstanceConfig().isDisableGems());
+        }
     }
 
     /**
@@ -152,152 +140,8 @@ public class JRubyLibrary implements Library {
     public static IRubyObject identity_hash(ThreadContext context, IRubyObject recv, IRubyObject obj) {
         return context.runtime.newFixnum(System.identityHashCode(obj));
     }
-
-    @JRubyMethod(module = true, compat = CompatVersion.RUBY2_0)
-    public static IRubyObject ruby2_0(ThreadContext context, IRubyObject recv) {
-        return context.runtime.newString("Welcome to the future of Ruby!");
-    }
     
     public static class MethodExtensions {
-        @JRubyMethod(name = "args")
-        public static IRubyObject methodArgs(IRubyObject recv) {
-            Ruby runtime = recv.getRuntime();
-            AbstractRubyMethod rubyMethod = (AbstractRubyMethod)recv;
-            RubyArray argsArray = RubyArray.newArray(runtime);
-            DynamicMethod method = rubyMethod.getMethod().getRealMethod();
-            RubySymbol req = runtime.newSymbol("req");
-            RubySymbol opt = runtime.newSymbol("opt");
-            RubySymbol rest = runtime.newSymbol("rest");
-            RubySymbol block = runtime.newSymbol("block");
 
-            if (method instanceof MethodArgs2) {
-                return Helpers.parameterListToParameters(runtime, ((MethodArgs2) method).getParameterList(), true);
-            } else if (method instanceof MethodArgs) {
-                MethodArgs interpMethod = (MethodArgs)method;
-                ArgsNode args = interpMethod.getArgsNode();
-                
-                ListNode requiredArgs = args.getPre();
-                for (int i = 0; requiredArgs != null && i < requiredArgs.size(); i++) {
-                    Node argNode = requiredArgs.get(i);
-                    if (argNode instanceof MultipleAsgn19Node) {
-                        argsArray.append(RubyArray.newArray(runtime, req));
-                    } else {
-                        argsArray.append(RubyArray.newArray(runtime, req, getNameFrom(runtime, (INameNode)argNode)));
-                    }
-                }
-                
-                ListNode optArgs = args.getOptArgs();
-                for (int i = 0; optArgs != null && i < optArgs.size(); i++) {
-                    argsArray.append(RubyArray.newArray(runtime, opt, getNameFrom(runtime, (INameNode) optArgs.get(i))));
-                }
-
-                if (args.getRestArg() >= 0) {
-                    RestArgNode restArg = (RestArgNode) args.getRestArgNode();
-
-                    if (restArg instanceof UnnamedRestArgNode) {
-                        if (((UnnamedRestArgNode) restArg).isStar()) {
-                            argsArray.append(RubyArray.newArray(runtime, rest));
-                        }
-                    } else {
-                        argsArray.append(RubyArray.newArray(runtime, rest, getNameFrom(runtime, args.getRestArgNode())));
-                    }
-                }
-                
-                ListNode requiredArgsPost = args.getPost();
-                for (int i = 0; requiredArgsPost != null && i < requiredArgsPost.size(); i++) {
-                    Node argNode = requiredArgsPost.get(i);
-                    if (argNode instanceof MultipleAsgn19Node) {
-                        argsArray.append(RubyArray.newArray(runtime, req));
-                    } else {
-                        argsArray.append(RubyArray.newArray(runtime, req, getNameFrom(runtime, (INameNode) requiredArgsPost.get(i))));
-                    }
-                }
-
-                if (args.getBlock() != null) {
-                    argsArray.append(RubyArray.newArray(runtime, block, getNameFrom(runtime, args.getBlock())));
-                }
-            } else if (method instanceof IRMethodArgs) {
-                for (String[] argParam: ((IRMethodArgs)method).getParameterList()) {
-                    RubySymbol argType = runtime.newSymbol(argParam[0]);
-                    if (argParam[1] == "") argsArray.append(RubyArray.newArray(runtime, argType));
-                    else argsArray.append(RubyArray.newArray(runtime, argType, runtime.newSymbol(argParam[1])));
-                }
-            } else {
-                if (method.getArity() == Arity.OPTIONAL) {
-                    argsArray.append(RubyArray.newArray(runtime, rest));
-                }
-            }
-
-            return argsArray;
-        }
-        
-        public static String[] methodParameters(Ruby runtime, DynamicMethod method) {
-            ArrayList<String> argsArray = new ArrayList<String>();
-            method = method.getRealMethod();
-
-            if (method instanceof MethodArgs2) {
-                return ((MethodArgs2) method).getParameterList();
-            } else if (method instanceof MethodArgs) {
-                MethodArgs interpMethod = (MethodArgs)method;
-                ArgsNode args = interpMethod.getArgsNode();
-                
-                ListNode requiredArgs = args.getPre();
-                for (int i = 0; requiredArgs != null && i < requiredArgs.size(); i++) {
-                    Node argNode = requiredArgs.get(i);
-                    if (argNode instanceof MultipleAsgn19Node) {
-                        argsArray.add("q");
-                    } else {
-                        argsArray.add("q" + getNameFrom(runtime, (INameNode)argNode));
-                    }
-                }
-                
-                ListNode optArgs = args.getOptArgs();
-                for (int i = 0; optArgs != null && i < optArgs.size(); i++) {
-                    argsArray.add("o" + getNameFrom(runtime, (INameNode) optArgs.get(i)));
-                }
-
-                if (args.getRestArg() >= 0) {
-                    RestArgNode restArg = (RestArgNode) args.getRestArgNode();
-
-                    if (restArg instanceof UnnamedRestArgNode) {
-                        if (((UnnamedRestArgNode) restArg).isStar()) {
-                            argsArray.add("r");
-                        }
-                    } else {
-                        argsArray.add("r" + getNameFrom(runtime, args.getRestArgNode()));
-                    }
-                }
-                
-                ListNode requiredArgsPost = args.getPost();
-                for (int i = 0; requiredArgsPost != null && i < requiredArgsPost.size(); i++) {
-                    Node argNode = requiredArgsPost.get(i);
-                    if (argNode instanceof MultipleAsgn19Node) {
-                        argsArray.add("q");
-                    } else {
-                        argsArray.add("q" + getNameFrom(runtime, (INameNode) requiredArgsPost.get(i)));
-                    }
-                }
-
-                if (args.getBlock() != null) {
-                    argsArray.add("b" + getNameFrom(runtime, args.getBlock()));
-                }
-            } else if (method instanceof IRMethodArgs) {
-                for (String[] argParam: ((IRMethodArgs)method).getParameterList()) {
-                    RubySymbol argType = runtime.newSymbol(argParam[0]);
-                    if (argParam[1] == "") argsArray.add(argParam[0]);
-                    else argsArray.add(argParam[0] + argParam[1]);
-                }
-            } else {
-                if (method.getArity() == Arity.OPTIONAL) {
-                    argsArray.add("r");
-                }
-            }
-
-            return argsArray.toArray(new String[argsArray.size()]);
-        }
-    }
-
-    private static IRubyObject getNameFrom(Ruby runtime, INameNode node) {
-        return node == null ? runtime.getNil() : RubySymbol.newSymbol(runtime, node.getName());
     }
 }

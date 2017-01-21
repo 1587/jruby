@@ -37,6 +37,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import org.jcodings.Encoding;
 import org.jcodings.EncodingDB.Entry;
+import org.jcodings.specific.ASCIIEncoding;
 import org.jcodings.specific.USASCIIEncoding;
 import org.jcodings.specific.UTF8Encoding;
 
@@ -44,10 +45,12 @@ import org.jruby.Ruby;
 import org.jruby.RubyArray;
 import org.jruby.RubyBignum;
 import org.jruby.RubyClass;
+import org.jruby.RubyEncoding;
 import org.jruby.RubyFixnum;
 import org.jruby.RubyFloat;
 import org.jruby.RubyHash;
 import org.jruby.RubyModule;
+import org.jruby.RubyNumeric;
 import org.jruby.RubyObject;
 import org.jruby.RubyRegexp;
 import org.jruby.RubyString;
@@ -59,6 +62,7 @@ import org.jruby.runtime.Constants;
 import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.runtime.encoding.EncodingCapable;
 import org.jruby.util.ByteList;
+import org.jruby.util.RegexpOptions;
 
 /**
  * Unmarshals objects from strings or streams in Ruby's marshal format.
@@ -71,19 +75,13 @@ public class UnmarshalStream extends InputStream {
     private final IRubyObject proc;
     private final InputStream inputStream;
     private final boolean taint;
-    private final boolean untrust;
 
     public UnmarshalStream(Ruby runtime, InputStream in, IRubyObject proc, boolean taint) throws IOException {
-        this(runtime, in, proc, taint, false);
-    }
-
-    public UnmarshalStream(Ruby runtime, InputStream in, IRubyObject proc, boolean taint, boolean untrust) throws IOException {
         this.runtime = runtime;
         this.cache = new UnmarshalCache(runtime);
         this.proc = proc;
         this.inputStream = in;
         this.taint = taint;
-        this.untrust = untrust;
 
         int major = in.read(); // Major
         int minor = in.read(); // Minor
@@ -135,13 +133,17 @@ public class UnmarshalStream extends InputStream {
         final IRubyObject result;
         if (cache.isLinkType(type)) {
             result = cache.readLink(this, type);
-            if (callProc && runtime.is1_9()) return doCallProcForLink(result, type);
+            if (callProc) return doCallProcForLink(result, type);
         } else {
             result = unmarshalObjectDirectly(type, state, callProc);
         }
 
-        result.setTaint(taint);
-        result.setUntrusted(untrust);
+        if (!(
+                result instanceof RubyNumeric ||
+                result instanceof RubyEncoding
+        )) {
+            result.setTaint(taint);
+        }
 
         return result;
     }
@@ -222,8 +224,8 @@ public class UnmarshalStream extends InputStream {
             case 'f' :
                 rubyObj = RubyFloat.unmarshalFrom(this);
                 break;
-            case '/' :
-                rubyObj = RubyRegexp.unmarshalFrom(this);
+            case '/':
+                rubyObj = unmarshalRegexp(state);
                 break;
             case ':' :
                 rubyObj = RubySymbol.unmarshalFrom(this);
@@ -275,18 +277,90 @@ public class UnmarshalStream extends InputStream {
                 throw getRuntime().newArgumentError("dump format error(" + (char)type + ")");
         }
 
-        if (runtime.is1_9()) {
-            if (callProc) {
-                return doCallProcForObj(rubyObj);
-            }
-        } else if (type != ':') {
-            // call the proc, but not for symbols
-            doCallProcForObj(rubyObj);
+        if (callProc) {
+            return doCallProcForObj(rubyObj);
         }
 
         return rubyObj;
     }
 
+    private IRubyObject unmarshalRegexp(MarshalState state) throws IOException {
+        ByteList byteList = unmarshalString();
+        byte opts = readSignedByte();
+        RegexpOptions reOpts = RegexpOptions.fromJoniOptions(opts);
+
+        RubyRegexp regexp = (RubyRegexp) runtime.getRegexp().allocate();
+        registerLinkTarget(regexp);
+
+        IRubyObject ivarHolder = null;
+
+        if (state.isIvarWaiting()) {
+            RubyString tmpStr = RubyString.newString(runtime, byteList);
+            defaultVariablesUnmarshal(tmpStr);
+            byteList = tmpStr.getByteList();
+            state.setIvarWaiting(false);
+            ivarHolder = tmpStr;
+        }
+        if (byteList.getEncoding() == ASCIIEncoding.INSTANCE) {
+            /* 1.8 compatibility; remove escapes undefined in 1.8 */
+            byte[] ptrBytes = byteList.unsafeBytes();
+            int ptr = byteList.begin();
+            int dst = ptr;
+            int src = ptr;
+            int len = byteList.realSize();
+            long bs = 0;
+            for (; len-- > 0; ptrBytes[dst++] = ptrBytes[src++]) {
+                switch (ptrBytes[src]) {
+                    case '\\':
+                        bs++;
+                        break;
+                    case 'g':
+                    case 'h':
+                    case 'i':
+                    case 'j':
+                    case 'k':
+                    case 'l':
+                    case 'm':
+                    case 'o':
+                    case 'p':
+                    case 'q':
+                    case 'u':
+                    case 'y':
+                    case 'E':
+                    case 'F':
+                    case 'H':
+                    case 'I':
+                    case 'J':
+                    case 'K':
+                    case 'L':
+                    case 'N':
+                    case 'O':
+                    case 'P':
+                    case 'Q':
+                    case 'R':
+                    case 'S':
+                    case 'T':
+                    case 'U':
+                    case 'V':
+                    case 'X':
+                    case 'Y':
+                        if ((bs & 1) != 0) --dst;
+                    default:
+                        bs = 0;
+                        break;
+                }
+            }
+            byteList.setRealSize(dst - ptr);
+        }
+
+        regexp.regexpInitialize(byteList, byteList.getEncoding(), reOpts);
+
+        if (ivarHolder != null) {
+            ivarHolder.getInstanceVariables().copyInstanceVariablesInto(regexp);
+        }
+
+        return regexp;
+    }
 
     public Ruby getRuntime() {
         return runtime;
@@ -370,7 +444,7 @@ public class UnmarshalStream extends InputStream {
 
             IRubyObject key = unmarshalObject(false);
 
-            if (runtime.is1_9() && object instanceof EncodingCapable) {
+            if (object instanceof EncodingCapable) {
 
                 EncodingCapable strObj = (EncodingCapable)object;
 
@@ -438,12 +512,22 @@ public class UnmarshalStream extends InputStream {
         ByteList marshaled = unmarshalString();
         RubyClass classInstance = findClass(className);
         RubyString data = RubyString.newString(runtime, marshaled);
-        if (state.isIvarWaiting()) {
-            defaultVariablesUnmarshal(data);
-            state.setIvarWaiting(false);
+        IRubyObject unmarshaled;
+
+        // Special case Encoding so they are singletons
+        // See https://bugs.ruby-lang.org/issues/11760
+        if (classInstance == runtime.getEncoding()) {
+            unmarshaled = RubyEncoding.find(runtime.getCurrentContext(), classInstance, data);
+        } else {
+            if (state.isIvarWaiting()) {
+                defaultVariablesUnmarshal(data);
+                state.setIvarWaiting(false);
+            }
+            unmarshaled = classInstance.smartLoadOldUser(data);
         }
-        IRubyObject unmarshaled = classInstance.smartLoadOldUser(data);
+
         registerLinkTarget(unmarshaled);
+
         return unmarshaled;
     }
 
@@ -462,5 +546,10 @@ public class UnmarshalStream extends InputStream {
 
     public int read() throws IOException {
         return inputStream.read();
+    }
+
+    @Deprecated
+    public UnmarshalStream(Ruby runtime, InputStream in, IRubyObject proc, boolean taint, boolean untrust) throws IOException {
+        this(runtime, in, proc, taint);
     }
 }

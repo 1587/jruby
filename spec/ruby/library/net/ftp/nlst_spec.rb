@@ -1,18 +1,18 @@
 require File.expand_path('../../../../spec_helper', __FILE__)
-require 'net/ftp'
+require File.expand_path('../spec_helper', __FILE__)
 require File.expand_path('../fixtures/server', __FILE__)
 
 describe "Net::FTP#nlst" do
-  before(:each) do
+  before :each do
     @server = NetFTPSpecs::DummyFTP.new
     @server.serve_once
 
     @ftp = Net::FTP.new
     @ftp.passive = false
-    @ftp.connect("localhost", 9921)
+    @ftp.connect(@server.hostname, @server.server_port)
   end
 
-  after(:each) do
+  after :each do
     @ftp.quit rescue nil
     @ftp.close
     @server.stop
@@ -61,35 +61,6 @@ describe "Net::FTP#nlst" do
     it "raises a Net::FTPPermError when the response code is 530" do
       @server.should_receive(:nlst).and_respond("530 Not logged in.")
       lambda { @ftp.nlst }.should raise_error(Net::FTPPermError)
-    end
-  end
-
-  ruby_version_is "" ... "1.9" do
-    describe "when switching type fails" do
-      it "raises a Net::FTPPermError when the response code is 500" do
-	@server.should_receive(:type).and_respond("500 Syntax error, command unrecognized.")
-	lambda { @ftp.nlst }.should raise_error(Net::FTPPermError)
-      end
-
-      it "raises a Net::FTPPermError when the response code is 501" do
-	@server.should_receive(:type).and_respond("501 Syntax error in parameters or arguments.")
-	lambda { @ftp.nlst }.should raise_error(Net::FTPPermError)
-      end
-
-      it "raises a Net::FTPPermError when the response code is 504" do
-	@server.should_receive(:type).and_respond("504 Command not implemented for that parameter.")
-	lambda { @ftp.nlst }.should raise_error(Net::FTPPermError)
-      end
-
-      it "raises a Net::FTPTempError when the response code is 421" do
-	@server.should_receive(:type).and_respond("421 Service not available, closing control connection.")
-	lambda { @ftp.nlst }.should raise_error(Net::FTPTempError)
-      end
-
-      it "raises a Net::FTPPermError when the response code is 530" do
-	@server.should_receive(:type).and_respond("530 Not logged in.")
-	lambda { @ftp.nlst }.should raise_error(Net::FTPPermError)
-      end
     end
   end
 

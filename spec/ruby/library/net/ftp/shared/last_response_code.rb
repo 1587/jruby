@@ -1,13 +1,13 @@
-describe :net_ftp_last_response_code, :shared => true do
-  before(:each) do
+describe :net_ftp_last_response_code, shared: true do
+  before :each do
     @server = NetFTPSpecs::DummyFTP.new
     @server.serve_once
 
     @ftp = Net::FTP.new
-    @ftp.connect("localhost", 9921)
+    @ftp.connect(@server.hostname, @server.server_port)
   end
 
-  after(:each) do
+  after :each do
     @ftp.quit rescue nil
     @ftp.close
     @server.stop

@@ -41,9 +41,7 @@ import org.jruby.lexer.yacc.ISourcePosition;
  * A string which contains some dynamic elements which needs to be evaluated (introduced by #).
  */
 public class DStrNode extends DNode implements ILiteralNode {
-    public DStrNode(ISourcePosition position) {
-        this(position, null);
-    }
+    private boolean frozen;
 
     public DStrNode(ISourcePosition position, Encoding encoding) {
         super(position, encoding);
@@ -59,7 +57,15 @@ public class DStrNode extends DNode implements ILiteralNode {
      * @param iVisitor the visitor
      **/
     @Override
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitDStrNode(this);
+    }
+
+    public boolean isFrozen() {
+        return frozen;
+    }
+
+    public void setFrozen(boolean frozen) {
+        this.frozen = frozen;
     }
 }

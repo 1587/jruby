@@ -12,13 +12,6 @@ describe "StringIO#getbyte" do
     io.send(@method).should == 120
     io.send(@method).should ==  97
   end
-
-  it "retrieves bytes at a time rather than characters" do
-    io = StringIO.new("\xc3\x91")
-      
-    io.getbyte.should == 0xc3
-    io.getbyte.should == 0x91
-  end
 end
 
 describe "StringIO#getbyte when self is not readable" do

@@ -28,13 +28,9 @@
 package org.jruby.ast;
 
 import java.util.List;
-import org.jruby.Ruby;
 import org.jruby.ast.types.INameNode;
 import org.jruby.ast.visitor.NodeVisitor;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
 
 /**
  *
@@ -44,7 +40,7 @@ public class OptArgNode extends Node implements INameNode {
     private Node value;
 
     public OptArgNode(ISourcePosition position, Node value) {
-        super(position);
+        super(position, value != null && value.containsVariableAssignment());
         this.value = value;
     }
 
@@ -54,16 +50,6 @@ public class OptArgNode extends Node implements INameNode {
 
     public Node getValue() {
         return value;
-    }
-
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        return value.interpret(runtime, context, self, aBlock);
-    }
-
-    @Override
-    public IRubyObject assign(Ruby runtime, ThreadContext context, IRubyObject self, IRubyObject assignValue, Block block, boolean checkArity) {
-        return value.assign(runtime, context, self, assignValue, block, checkArity);
     }
 
     @Override
@@ -77,10 +63,7 @@ public class OptArgNode extends Node implements INameNode {
     }
 
     public String getName() {
-        if (value instanceof INameNode) {
-            return ((INameNode)value).getName();
-        }
-        return null;
+        // FIXME: When is this not a INameNode?
+        return value instanceof INameNode ? ((INameNode) value).getName() : null;
     }
-
 }

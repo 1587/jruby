@@ -35,20 +35,15 @@ import java.util.HashMap;
 import java.util.Map;
 import org.jruby.Ruby;
 import org.jruby.anno.JRubyMethod;
-import org.jruby.ast.ArgsNode;
-import org.jruby.ast.ArrayNode;
-import org.jruby.ast.AttrAssignNode;
-import org.jruby.ast.CallNode;
-import org.jruby.ast.Node;
-import org.jruby.ast.types.IArityNode;
 import org.jruby.runtime.builtin.IRubyObject;
+import org.jruby.util.ArraySupport;
 
 /**
  * The arity of a method is the number of arguments it takes.
  */
 public final class Arity implements Serializable {
     private static final long serialVersionUID = 1L;
-    private static final Map<Integer, Arity> arities = new HashMap<Integer, Arity>();
+    private static final Map<Integer, Arity> arities = new HashMap<>();
     private final int value;
     
     public final static Arity NO_ARGUMENTS = newArity(0);
@@ -118,12 +113,13 @@ public final class Arity implements Serializable {
     }
     
     private static Arity newArity(int value) {
-        Arity result;
-        synchronized (arities) {
-            result = arities.get(value);
-            if (result == null) {
-                result = new Arity(value);
-                arities.put(value, result);
+        Arity result = arities.get(value);
+        if (result == null) {
+            synchronized (arities) {
+                result = arities.get(value);
+                if (result == null) {
+                    arities.put(value, result = new Arity(value));
+                }
             }
         }
         return result;
@@ -153,25 +149,6 @@ public final class Arity implements Serializable {
 
     public static Arity twoArguments() {
         return TWO_ARGUMENTS;
-    }
-    
-    public static Arity procArityOf(Node node) {
-        if (node instanceof AttrAssignNode && node != null) {
-            node = ((AttrAssignNode) node).getArgsNode();
-        }
-        if (node == null) {
-            return Arity.optional();
-        } else if (node instanceof IArityNode) {
-            return ((IArityNode) node).getArity();
-        } else if (node instanceof CallNode) {
-            return Arity.singleArgument();
-        } else if (node instanceof ArrayNode) {
-            return Arity.singleArgument();
-        } else if (node instanceof ArgsNode) {
-            return ((ArgsNode)node).getArity();
-        }
-
-        throw new Error("unexpected type " + node.getClass() + " at " + node.getPosition());
     }
 
     public int getValue() {
@@ -225,6 +202,10 @@ public final class Arity implements Serializable {
 
     public static int checkArgumentCount(ThreadContext context, IRubyObject[] args, int min, int max) {
         return checkArgumentCount(context, args.length, min, max);
+    }
+
+    public static int checkArgumentCount(ThreadContext context, String name, IRubyObject[] args, int min, int max) {
+        return checkArgumentCount(context.runtime, name, args.length, min, max);
     }
 
     public static int checkArgumentCount(Ruby runtime, String name, IRubyObject[] args, int min, int max) {
@@ -309,16 +290,12 @@ public final class Arity implements Serializable {
     }
 
     /**
-     * @see org.jruby.runtime.builtin.IRubyObject#scanArgs()
      */
     public static IRubyObject[] scanArgs(Ruby runtime, IRubyObject[] args, int required, int optional) {
-        int total = required+optional;
-        int real = checkArgumentCount(runtime, args,required,total);
-        IRubyObject[] narr = new IRubyObject[total];
-        System.arraycopy(args,0,narr,0,real);
-        for(int i=real; i<total; i++) {
-            narr[i] = runtime.getNil();
-        }
-        return narr;
+        final int total = required + optional;
+        int len = checkArgumentCount(runtime, args, required, total);
+        args = ArraySupport.newCopy(args, total);
+        for (int i=len; i<total; i++) args[i] = runtime.getNil();
+        return args;
     }
 }

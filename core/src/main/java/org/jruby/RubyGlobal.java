@@ -36,9 +36,9 @@
  ***** END LICENSE BLOCK *****/
 package org.jruby;
 
-import java.util.Collections;
-import java.util.Map;
+import jnr.enxio.channels.NativeDeviceChannel;
 import jnr.posix.POSIX;
+
 import org.jcodings.Encoding;
 import org.jruby.anno.JRubyMethod;
 import org.jruby.common.IRubyWarnings.ID;
@@ -53,17 +53,27 @@ import org.jruby.runtime.IAccessor;
 import org.jruby.runtime.ReadonlyGlobalVariable;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.util.ByteList;
 import org.jruby.util.KCode;
 import org.jruby.util.OSEnvironment;
 import org.jruby.util.RegexpOptions;
 import org.jruby.util.cli.OutputStrings;
-import org.jruby.util.io.BadDescriptorException;
+import org.jruby.util.io.ChannelHelper;
+import org.jruby.util.io.EncodingUtils;
+import org.jruby.util.io.FilenoUtil;
 import org.jruby.util.io.OpenFile;
 import org.jruby.util.io.STDIO;
-import org.jruby.util.io.Stream;
 
 import static org.jruby.internal.runtime.GlobalVariable.Scope.*;
+
+import java.io.FileDescriptor;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.lang.reflect.InvocationTargetException;
+import java.nio.channels.Channel;
+import java.nio.channels.Channels;
+import java.util.Map;
 
 /** This class initializes global variables and constants.
  *
@@ -110,27 +120,14 @@ public class RubyGlobal {
         IRubyObject platform = runtime.newString(Constants.PLATFORM).freeze(context);
         IRubyObject engine = runtime.newString(Constants.ENGINE).freeze(context);
 
-        switch (runtime.getInstanceConfig().getCompatVersion()) {
-        case RUBY1_8:
-            version = runtime.newString(Constants.RUBY_VERSION).freeze(context);
-            patchlevel = runtime.newFixnum(Constants.RUBY_PATCHLEVEL);
-            runtime.defineGlobalConstant("VERSION", version);
-            break;
-        case RUBY1_9:
-            version = runtime.newString(Constants.RUBY1_9_VERSION).freeze(context);
-            patchlevel = runtime.newFixnum(Constants.RUBY1_9_PATCHLEVEL);
-            break;
-        case RUBY2_0:
-            version = runtime.newString(Constants.RUBY2_0_VERSION).freeze(context);
-            patchlevel = runtime.newFixnum(Constants.RUBY2_0_PATCHLEVEL);
-            break;
-        }
+        version = runtime.newString(Constants.RUBY_VERSION).freeze(context);
+        patchlevel = runtime.newFixnum(0);
         runtime.defineGlobalConstant("RUBY_VERSION", version);
         runtime.defineGlobalConstant("RUBY_PATCHLEVEL", patchlevel);
         runtime.defineGlobalConstant("RUBY_RELEASE_DATE", release);
         runtime.defineGlobalConstant("RUBY_PLATFORM", platform);
 
-        IRubyObject description = runtime.newString(OutputStrings.getVersionString(runtime.getInstanceConfig().getCompatVersion())).freeze(context);
+        IRubyObject description = runtime.newString(OutputStrings.getVersionString()).freeze(context);
         runtime.defineGlobalConstant("RUBY_DESCRIPTION", description);
 
         IRubyObject copyright = runtime.newString(OutputStrings.getCopyrightString()).freeze(context);
@@ -144,28 +141,16 @@ public class RubyGlobal {
         runtime.defineGlobalConstant("JRUBY_VERSION", jrubyVersion);
         runtime.defineGlobalConstant("JRUBY_REVISION", jrubyRevision);
 
+        // needs to be a fixnum, but our revision is a sha1 hash from git
+        runtime.defineGlobalConstant("RUBY_REVISION", runtime.newFixnum(Constants.RUBY_REVISION));
         runtime.defineGlobalConstant("RUBY_ENGINE", engine);
         runtime.defineGlobalConstant("RUBY_ENGINE_VERSION", jrubyVersion);
 
-        if (runtime.is2_0()) {
-            // needs to be a fixnum, but our revision is a sha1 hash from git
-            runtime.defineGlobalConstant("RUBY_REVISION", runtime.newFixnum(Constants.RUBY2_0_REVISION));
-        } else if (runtime.is1_9()) {
-            // needs to be a fixnum, but our revision is a sha1 hash from git
-            runtime.defineGlobalConstant("RUBY_REVISION", runtime.newFixnum(Constants.RUBY1_9_REVISION));
-        }
-
-        if (runtime.is1_9()) {
-            RubyInstanceConfig.Verbosity verbosity = runtime.getInstanceConfig().getVerbosity();
-            runtime.defineVariable(new WarningGlobalVariable(runtime, "$-W", verbosity), GLOBAL);
-        }
+        RubyInstanceConfig.Verbosity verbosity = runtime.getInstanceConfig().getVerbosity();
+        runtime.defineVariable(new WarningGlobalVariable(runtime, "$-W", verbosity), GLOBAL);
 
         final GlobalVariable kcodeGV;
-        if (runtime.is1_9()) {
-            kcodeGV = new NonEffectiveGlobalVariable(runtime, "$KCODE", runtime.getNil());
-        } else {
-            kcodeGV = new KCodeGlobalVariable(runtime, "$KCODE", runtime.newString("NONE"));
-        }
+        kcodeGV = new NonEffectiveGlobalVariable(runtime, "$KCODE", runtime.getNil());
 
         runtime.defineVariable(kcodeGV, GLOBAL);
         runtime.defineVariable(new GlobalVariable.Copy(runtime, "$-K", kcodeGV), GLOBAL);
@@ -211,22 +196,7 @@ public class RubyGlobal {
 
         runtime.defineVariable(new BacktraceGlobalVariable(runtime, "$@"), THREAD);
 
-        IRubyObject stdin = new RubyIO(runtime, STDIO.IN);
-        IRubyObject stdout = new RubyIO(runtime, STDIO.OUT);
-        IRubyObject stderr = new RubyIO(runtime, STDIO.ERR);
-
-        runtime.defineVariable(new InputGlobalVariable(runtime, "$stdin", stdin), GLOBAL);
-
-        runtime.defineVariable(new OutputGlobalVariable(runtime, "$stdout", stdout), GLOBAL);
-        globals.alias("$>", "$stdout");
-        if (!runtime.is1_9()) globals.alias("$defout", "$stdout");
-
-        runtime.defineVariable(new OutputGlobalVariable(runtime, "$stderr", stderr), GLOBAL);
-        if (!runtime.is1_9()) globals.alias("$deferr", "$stderr");
-
-        runtime.defineGlobalConstant("STDIN", stdin);
-        runtime.defineGlobalConstant("STDOUT", stdout);
-        runtime.defineGlobalConstant("STDERR", stderr);
+        initSTDIO(runtime, globals);
 
         runtime.defineVariable(new LoadedFeatures(runtime, "$\""), GLOBAL);
         runtime.defineVariable(new LoadedFeatures(runtime, "$LOADED_FEATURES"), GLOBAL);
@@ -267,6 +237,8 @@ public class RubyGlobal {
         // ARGF, $< object
         RubyArgsFile.initArgsFile(runtime);
 
+        globals.alias("$-0", "$/");
+
         // Define aliases originally in the "English.rb" stdlib
         globals.alias("$ERROR_INFO", "$!");
         globals.alias("$ERROR_POSITION", "$@");
@@ -295,6 +267,93 @@ public class RubyGlobal {
         globals.alias("$LAST_PAREN_MATCH", "$+");
     }
 
+    public static void initSTDIO(Ruby runtime, GlobalVariables globals) {
+        RubyIO stdin = RubyIO.prepStdio(
+                runtime, runtime.getIn(), prepareStdioChannel(runtime, STDIO.IN, runtime.getIn()), OpenFile.READABLE, runtime.getIO(), "<STDIN>");
+        RubyIO stdout = RubyIO.prepStdio(
+                runtime, runtime.getOut(), prepareStdioChannel(runtime, STDIO.OUT, runtime.getOut()), OpenFile.WRITABLE, runtime.getIO(), "<STDOUT>");
+        RubyIO stderr = RubyIO.prepStdio(
+                runtime, runtime.getErr(), prepareStdioChannel(runtime, STDIO.ERR, runtime.getErr()), OpenFile.WRITABLE | OpenFile.SYNC, runtime.getIO(), "<STDERR>");
+
+        if (runtime.getObject().getConstantFromNoConstMissing("STDIN") == null) {
+            runtime.defineVariable(new InputGlobalVariable(runtime, "$stdin", stdin), GLOBAL);
+            runtime.defineVariable(new OutputGlobalVariable(runtime, "$stdout", stdout), GLOBAL);
+            globals.alias("$>", "$stdout");
+            runtime.defineVariable(new OutputGlobalVariable(runtime, "$stderr", stderr), GLOBAL);
+
+            runtime.defineGlobalConstant("STDIN", stdin);
+            runtime.defineGlobalConstant("STDOUT", stdout);
+            runtime.defineGlobalConstant("STDERR", stderr);
+        } else {
+            ((RubyIO) runtime.getObject().getConstant("STDIN")).getOpenFile().setFD(stdin.getOpenFile().fd());
+            ((RubyIO) runtime.getObject().getConstant("STDOUT")).getOpenFile().setFD(stdout.getOpenFile().fd());
+            ((RubyIO) runtime.getObject().getConstant("STDERR")).getOpenFile().setFD(stderr.getOpenFile().fd());
+        }
+    }
+
+    private static Channel prepareStdioChannel(Ruby runtime, STDIO stdio, Object stream) {
+        if (runtime.getPosix().isNative() && stdio.isJVMDefault(stream) && !Platform.IS_WINDOWS) {
+            // use real native fileno for stdio, if possible
+
+            // try typical stdio stream and channel types
+            int fileno = -1;
+            Channel channel = null;
+
+            if (stream instanceof Channel) {
+                channel = (Channel) stream;
+                fileno = FilenoUtil.filenoFrom(channel);
+            } else if (stream instanceof InputStream) {
+                InputStream unwrappedStream = ChannelHelper.unwrapFilterInputStream((InputStream) stream);
+                if (unwrappedStream instanceof FileInputStream) {
+                    fileno = FilenoUtil.filenoFrom(((FileInputStream) unwrappedStream).getChannel());
+                }
+            } else if (stream instanceof OutputStream) {
+                OutputStream unwrappedStream = ChannelHelper.unwrapFilterOutputStream((OutputStream) stream);
+                if (unwrappedStream instanceof FileOutputStream) {
+                    fileno = FilenoUtil.filenoFrom(((FileOutputStream) unwrappedStream).getChannel());
+                }
+            }
+
+            if (fileno >= 0) {
+                // We got a real fileno, use it
+                return new NativeDeviceChannel(fileno);
+            }
+        }
+
+        // fall back on non-direct stdio
+        // NOTE (CON): This affects interactivity in any case where we cannot determine the real fileno and use native.
+        //             We do force flushing of stdout and stdout, but we can't provide all the interactive niceities
+        //             without a proper native channel. See https://github.com/jruby/jruby/issues/2690
+        switch (stdio) {
+            case IN:
+                return Channels.newChannel((InputStream)stream);
+            case OUT:
+            case ERR:
+                return Channels.newChannel((OutputStream)stream);
+            default: throw new RuntimeException("invalid stdio: " + stdio);
+        }
+    }
+
+    // TODO: gross...see https://github.com/ninjudd/drip/issues/96
+    private static int unwrapDripStream(Object stream) {
+        if (stream.getClass().getName().startsWith("org.flatland.drip.Switchable")) {
+
+            try {
+                FileDescriptor fd = (FileDescriptor) stream.getClass().getMethod("getFD").invoke(stream);
+                return FilenoUtil.filenoFrom(fd);
+            } catch (NoSuchMethodException nsme) {
+                nsme.printStackTrace(System.err);
+            } catch (IllegalAccessException iae) {
+                iae.printStackTrace(System.err);
+            } catch (InvocationTargetException ite) {
+                ite.printStackTrace(System.err);
+            }
+        }
+
+        return -1;
+    }
+
+
     @SuppressWarnings("unchecked")
     private static void defineGlobalEnvConstants(Ruby runtime) {
     	Map<RubyString, RubyString> environmentVariableMap = OSEnvironment.environmentVariableMap(runtime);
@@ -303,9 +362,6 @@ public class RubyGlobal {
             runtime.getInstanceConfig().isNativeEnabled() && runtime.getInstanceConfig().isUpdateNativeENVEnabled()
         );
         env.getSingletonClass().defineAnnotatedMethods(CaseInsensitiveStringOnlyRubyHash.class);
-        if ( ! runtime.is2_0() ) { // MRI 1.9.3 does not have ENV#to_h
-            env.getSingletonClass().undefineMethod("to_h");
-        }
         runtime.defineGlobalConstant("ENV", env);
         runtime.setENV(env);
 
@@ -325,7 +381,7 @@ public class RubyGlobal {
      */
     public static class CaseInsensitiveStringOnlyRubyHash extends StringOnlyRubyHash {
 
-        public CaseInsensitiveStringOnlyRubyHash(Ruby runtime, Map valueMap, IRubyObject defaultValue, boolean updateRealENV) {
+        public CaseInsensitiveStringOnlyRubyHash(Ruby runtime, Map<RubyString, RubyString> valueMap, IRubyObject defaultValue, boolean updateRealENV) {
             super(runtime, valueMap, defaultValue, updateRealENV);
         }
 
@@ -369,12 +425,12 @@ public class RubyGlobal {
         // the op_aset to also update the real ENV map via setenv/unsetenv.
         private final boolean updateRealENV;
 
-        public StringOnlyRubyHash(Ruby runtime, Map valueMap, IRubyObject defaultValue, boolean updateRealENV) {
+        public StringOnlyRubyHash(Ruby runtime, Map<RubyString, RubyString> valueMap, IRubyObject defaultValue, boolean updateRealENV) {
             super(runtime, valueMap, defaultValue);
             this.updateRealENV = updateRealENV;
         }
 
-        public StringOnlyRubyHash(Ruby runtime, Map valueMap, IRubyObject defaultValue) {
+        public StringOnlyRubyHash(Ruby runtime, Map<RubyString, RubyString> valueMap, IRubyObject defaultValue) {
             this(runtime, valueMap, defaultValue, false);
         }
 
@@ -426,9 +482,9 @@ public class RubyGlobal {
                 return super.delete(context, key, org.jruby.runtime.Block.NULL_BLOCK);
             }
 
-            IRubyObject keyAsStr = normalizeEnvString(Helpers.invoke(context, key, "to_str"));
+            IRubyObject keyAsStr = normalizeEnvString(context, key, Helpers.invoke(context, key, "to_str"));
             IRubyObject valueAsStr = value.isNil() ? context.nil :
-                    normalizeEnvString(Helpers.invoke(context, value, "to_str"));
+                    normalizeEnvString(context, key, Helpers.invoke(context, value, "to_str"));
 
             if (updateRealENV) {
                 POSIX posix = context.runtime.getPosix();
@@ -464,23 +520,35 @@ public class RubyGlobal {
             return actualKey;
         }
 
-        private IRubyObject normalizeEnvString(IRubyObject str) {
-            if (str instanceof RubyString) {
-                Encoding enc = getRuntime().getEncodingService().getLocaleEncoding();
-                RubyString newStr = getRuntime().newString(new ByteList(str.toString().getBytes(), enc));
-                newStr.setFrozen(true);
-                return newStr;
+        private IRubyObject normalizeEnvString(ThreadContext context, IRubyObject key, IRubyObject value) {
+            if (value instanceof RubyString) {
+                Ruby runtime = context.runtime;
+                RubyString valueStr = (RubyString) value;
+
+                // Ensure PATH is encoded like filesystem
+                if (Platform.IS_WINDOWS ?
+                        key.toString().equalsIgnoreCase("PATH") :
+                        key.toString().equals("PATH")) {
+                    Encoding enc = runtime.getEncodingService().getFileSystemEncoding();
+                    valueStr = EncodingUtils.strConvEnc(context, valueStr, valueStr.getEncoding(), enc);
+                } else {
+                    valueStr = RubyString.newString(runtime, valueStr.toString(), runtime.getEncodingService().getLocaleEncoding());
+                }
+
+                valueStr.setFrozen(true);
+
+                return valueStr;
             }
-            return str;
+            return value;
         }
     }
 
     private static class ReadOnlySystemPropertiesHash extends StringOnlyRubyHash {
-        public ReadOnlySystemPropertiesHash(Ruby runtime, Map valueMap, IRubyObject defaultValue, boolean updateRealENV) {
+        public ReadOnlySystemPropertiesHash(Ruby runtime, Map<RubyString, RubyString> valueMap, IRubyObject defaultValue, boolean updateRealENV) {
             super(runtime, valueMap, defaultValue, updateRealENV);
         }
 
-        public ReadOnlySystemPropertiesHash(Ruby runtime, Map valueMap, IRubyObject defaultValue) {
+        public ReadOnlySystemPropertiesHash(Ruby runtime, Map<RubyString, RubyString> valueMap, IRubyObject defaultValue) {
             this(runtime, valueMap, defaultValue, false);
         }
 
@@ -756,7 +824,7 @@ public class RubyGlobal {
         @Override
         public IRubyObject set(IRubyObject value) {
             if (runtime.getGlobalVariables().get("$!").isNil()) {
-                throw runtime.newArgumentError("$! not set.");
+                throw runtime.newArgumentError("$! not set");
             }
             runtime.getGlobalVariables().get("$!").callMethod(value.getRuntime().getCurrentContext(), "set_backtrace", value);
             return value;
@@ -805,28 +873,8 @@ public class RubyGlobal {
             if (value == get()) {
                 return value;
             }
-            if (value instanceof RubyIO) {
-                RubyIO io = (RubyIO)value;
 
-                // HACK: in order to have stdout/err act like ttys and flush always,
-                // we set anything assigned to stdout/stderr to sync
-                try {
-                    OpenFile of = io.getOpenFile();
-                    Stream write = of == null ? null : of.getWriteStreamSafe();
-
-                    if (write != null) {
-                        write.setSync(true);
-                    } else {
-                        // this is either a bogus IO subclass (see jruby/jruby#2373) or it is
-                        // a stream not really open for write; either way, we can't do anything
-                        // about its sync here.
-                    }
-                } catch (BadDescriptorException e) {
-                    throw runtime.newErrnoEBADFError();
-                }
-            }
-
-            if (!value.respondsTo("write")) {
+            if (!value.respondsTo("write") && !value.respondsToMissing("write")) {
                 throw runtime.newTypeError(name() + " must have write method, " +
                                     value.getType().getName() + " given");
             }

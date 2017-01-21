@@ -123,19 +123,15 @@ public final class StructLayout extends Type {
 
         RubyClass numberFieldClass = runtime.defineClassUnder("Number", fieldClass,
                 NumberFieldAllocator.INSTANCE, layoutClass);
-        numberFieldClass.defineAnnotatedMethods(NumberField.class);
 
         RubyClass enumFieldClass = runtime.defineClassUnder("Enum", fieldClass,
                 EnumFieldAllocator.INSTANCE, layoutClass);
-        enumFieldClass.defineAnnotatedMethods(EnumField.class);
 
         RubyClass stringFieldClass = runtime.defineClassUnder("String", fieldClass,
                 StringFieldAllocator.INSTANCE, layoutClass);
-        stringFieldClass.defineAnnotatedMethods(StringField.class);
 
         RubyClass pointerFieldClass = runtime.defineClassUnder("Pointer", fieldClass,
                 PointerFieldAllocator.INSTANCE, layoutClass);
-        pointerFieldClass.defineAnnotatedMethods(PointerField.class);
 
         RubyClass functionFieldClass = runtime.defineClassUnder("Function", fieldClass,
                 FunctionFieldAllocator.INSTANCE, layoutClass);
@@ -484,7 +480,7 @@ public final class StructLayout extends Type {
 
         @Override
         public int hashCode() {
-            return 53 * 5 + (int) (this.offset ^ (this.offset >>> 32)) + 37 * type.hashCode();
+            return 53 * 5 + this.offset + 37 * type.hashCode();
         }
         
         /**
@@ -964,10 +960,6 @@ public final class StructLayout extends Type {
                     || type.getComponentType() instanceof StructByValue);
         }
 
-        private final long getOffset(IRubyObject index) {
-            return getOffset(Util.int32Value(index));
-        }
-
         private final long getOffset(int index) {
             if (index < 0 || (index >= arrayType.length() && arrayType.length() > 0)) {
                 throw getRuntime().newIndexError("index " + index + " out of bounds");
@@ -1020,7 +1012,7 @@ public final class StructLayout extends Type {
                 elems[i] = get(context, i);
             }
 
-            return RubyArray.newArrayNoCopy(context.runtime, elems);
+            return RubyArray.newArrayMayCopy(context.runtime, elems);
         }
 
         @JRubyMethod(name = { "to_ptr" })

@@ -33,38 +33,26 @@
 package org.jruby.ast;
 
 import java.util.List;
-import org.jruby.Ruby;
-import org.jruby.RubyString;
 import org.jruby.ast.types.INameNode;
 import org.jruby.ast.visitor.NodeVisitor;
-import org.jruby.evaluator.ASTInterpreter;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.CallSite;
-import org.jruby.runtime.MethodIndex;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.util.ByteList;
-import org.jruby.util.DefinedMessage;
 
 /** 
  * Represents a method call with self as an implicit receiver.
  */
 public class FCallNode extends Node implements INameNode, IArgumentNode, BlockAcceptingNode {
+    private String name;
     protected Node argsNode;
     protected Node iterNode;
-    public CallSite callAdapter;
 
-    @Deprecated
-    public FCallNode(ISourcePosition position, String name, Node argsNode) {
-        this(position, name, argsNode, null);
+    public FCallNode(ISourcePosition position, String name) {
+        this(position, name, null, null);
     }
-    
-    protected FCallNode(ISourcePosition position, String name, Node argsNode, Node iterNode) {
-        super(position);
-        setArgsNode(argsNode);
+    public FCallNode(ISourcePosition position, String name, Node argsNode, Node iterNode) {
+        super(position, argsNode != null && argsNode.containsVariableAssignment() || iterNode != null && iterNode.containsVariableAssignment());
+        this.name = name;
+        this.argsNode = argsNode;
         this.iterNode = iterNode;
-        this.callAdapter = MethodIndex.getFunctionalCallSite(name);
     }
 
     public NodeType getNodeType() {
@@ -75,7 +63,7 @@ public class FCallNode extends Node implements INameNode, IArgumentNode, BlockAc
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitFCallNode(this);
     }
     
@@ -88,8 +76,7 @@ public class FCallNode extends Node implements INameNode, IArgumentNode, BlockAc
     
     public Node setIterNode(Node iterNode) {
         this.iterNode = iterNode;
-        callAdapter = MethodIndex.getFunctionalCallSite(callAdapter.methodName);
-        
+
         return this;
     }
 
@@ -102,16 +89,11 @@ public class FCallNode extends Node implements INameNode, IArgumentNode, BlockAc
     }
     
     /**
-     * Set the argsNode.  This is for re-writer and general interpretation.
-     * 
-     * @param argsNode set the arguments for this node.
+     * Set the argsNode.  Changes to parser means fcall is made before actual
+     * args are associated with fcall so we need a setter.
      */
     public Node setArgsNode(Node argsNode) {
         this.argsNode = argsNode;
-        // If we have more than one arg, make sure the array created to contain them is not ObjectSpaced
-        if (argsNode instanceof ArrayNode) {
-            ((ArrayNode)argsNode).setLightweight(true);
-        }
         
         return argsNode;
     }
@@ -121,32 +103,10 @@ public class FCallNode extends Node implements INameNode, IArgumentNode, BlockAc
      * @return Returns a String
      */
     public String getName() {
-        return callAdapter.methodName;
+        return name;
     }
     
     public List<Node> childNodes() {
         return createList(argsNode, iterNode);
-    }
-
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        assert false : "Should not happen anymore";
-
-        return null;
-    }
-    
-    @Override
-    public RubyString definition(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        if (self.getMetaClass().isMethodBound(getName(), false)) {
-            return ASTInterpreter.getArgumentDefinition(
-                    runtime,
-                    context,
-                    getArgsNode(),
-                    runtime.getDefinedMessage(DefinedMessage.METHOD),
-                    self,
-                    aBlock);
-        }
-            
-        return null;
     }
 }

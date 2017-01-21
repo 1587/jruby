@@ -46,8 +46,8 @@ public class AttrWriterMethod extends JavaMethodOne {
     private final String variableName;
     private VariableAccessor accessor = VariableAccessor.DUMMY_ACCESSOR;
 
-    public AttrWriterMethod(RubyModule implementationClass, Visibility visibility, CallConfiguration callConfig, String variableName) {
-        super(implementationClass, visibility, callConfig, variableName + "=");
+    public AttrWriterMethod(RubyModule implementationClass, Visibility visibility, String variableName) {
+        super(implementationClass, visibility, variableName + "=");
         this.variableName = variableName;
     }
 
@@ -75,5 +75,11 @@ public class AttrWriterMethod extends JavaMethodOne {
             methodData = new MethodData(name, "dummyfile", Arrays.asList(variableName));
         }
         return methodData;
+    }
+
+    // Used by racc extension, needed for backward-compat with 1.7.
+    @Deprecated
+    public AttrWriterMethod(RubyModule implementationClass, Visibility visibility, CallConfiguration callConfiguration, String variableName) {
+        this(implementationClass, visibility, variableName);
     }
 }

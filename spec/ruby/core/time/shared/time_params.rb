@@ -1,4 +1,4 @@
-describe :time_params, :shared => true do
+describe :time_params, shared: true do
   it "accepts 1 argument (year)" do
     Time.send(@method, 2000).should ==
       Time.send(@method, 2000, 1, 1, 0, 0, 0)
@@ -99,11 +99,9 @@ describe :time_params, :shared => true do
     Time.send(@method, 2008, 1, 1, 0, m).should == Time.send(@method, 2008, 1, 1, 0, 1)
   end
 
-  ruby_bug "6193", "2.0" do
-    it "handles a String second" do
-      Time.send(@method, 2000, 12, 1, 1, 1, "8").should ==
-        Time.send(@method, 2000, 12, 1, 1, 1, 8)
-    end
+  it "handles a String second" do
+    Time.send(@method, 2000, 12, 1, 1, 1, "8").should ==
+      Time.send(@method, 2000, 12, 1, 1, 1, 8)
   end
 
   it "coerces the second with #to_int" do
@@ -112,81 +110,35 @@ describe :time_params, :shared => true do
     Time.send(@method, 2008, 1, 1, 0, 0, m).should == Time.send(@method, 2008, 1, 1, 0, 0, 1)
   end
 
-  ruby_bug "6193", "2.0" do
-    it "interprets all numerals as base 10" do
-      Time.send(@method, "2000", "08", "08", "08", "08", "08").should ==
-        Time.send(@method, 2000, 8, 8, 8, 8, 8)
-      Time.send(@method, "2000", "09", "09", "09", "09", "09").should ==
-        Time.send(@method, 2000, 9, 9, 9, 9, 9)
+  it "interprets all numerals as base 10" do
+    Time.send(@method, "2000", "08", "08", "08", "08", "08").should ==
+      Time.send(@method, 2000, 8, 8, 8, 8, 8)
+    Time.send(@method, "2000", "09", "09", "09", "09", "09").should ==
+      Time.send(@method, 2000, 9, 9, 9, 9, 9)
+  end
+
+  it "handles fractional seconds as a Float" do
+    t = Time.send(@method, 2000, 1, 1, 20, 15, 1.75)
+    t.sec.should == 1
+    t.usec.should == 750000
+  end
+
+  it "handles fractional seconds as a Rational" do
+    t = Time.send(@method, 2000, 1, 1, 20, 15, Rational(99, 10))
+    t.sec.should == 9
+    t.usec.should == 900000
+  end
+
+  it "handles years from 0 as such" do
+    0.upto(2100) do |year|
+      t = Time.send(@method, year)
+      t.year.should == year
     end
   end
 
-  ruby_version_is "".."1.9" do
-    it "ignores fractional seconds as a Float" do
-      t = Time.send(@method, 2000, 1, 1, 20, 15, 1.75)
-      t.sec.should == 1
-      t.usec.should == 0
-    end
-  end
-
-  ruby_version_is "1.9" do
-    it "handles fractional seconds as a Float" do
-      t = Time.send(@method, 2000, 1, 1, 20, 15, 1.75)
-      t.sec.should == 1
-      t.usec.should == 750000
-    end
-
-    it "handles fractional seconds as a Rational" do
-      t = Time.send(@method, 2000, 1, 1, 20, 15, Rational(99, 10))
-      t.sec.should == 9
-      t.usec.should == 900000
-    end
-  end
-
-  ruby_version_is ""..."1.9.1" do
-    it "accepts various year ranges" do
-      Time.send(@method, 1901, 12, 31, 23, 59, 59, 0).wday.should == 2
-      Time.send(@method, 2037, 12, 31, 23, 59, 59, 0).wday.should == 4
-
-      not_compliant_on :rubinius do
-        platform_is :wordsize => 32 do
-          lambda {
-            Time.send(@method, 1900, 12, 31, 23, 59, 59, 0)
-          }.should raise_error(ArgumentError) # mon
-
-          lambda {
-            Time.send(@method, 2038, 12, 31, 23, 59, 59, 0)
-          }.should raise_error(ArgumentError) # mon
-        end
-
-        platform_is :wordsize => 64 do
-          Time.send(@method, 1900, 12, 31, 23, 59, 59, 0).wday.should == 1
-          Time.send(@method, 2038, 12, 31, 23, 59, 59, 0).wday.should == 5
-        end
-      end
-
-      deviates_on :rubinius do
-        Time.send(@method, 1900, 12, 31, 23, 59, 59, 0).wday.should == 1
-        Time.send(@method, 2038, 12, 31, 23, 59, 59, 0).wday.should == 5
-      end
-    end
-
-    not_compliant_on :rubinius do
-      platform_is :wordsize => 32 do
-        it "raises an ArgumentError for out of range year" do
-          lambda {
-            Time.send(@method, 1111, 12, 31, 23, 59, 59)
-          }.should raise_error(ArgumentError)
-        end
-      end
-    end
-  end
-
-  ruby_version_is "1.9" do
-    it "accepts various year ranges" do
-      Time.send(@method, 1801, 12, 31, 23, 59, 59).wday.should == 4
-      Time.send(@method, 3000, 12, 31, 23, 59, 59).wday.should == 3
-    end
+  it "accepts various year ranges" do
+    Time.send(@method, 1801, 12, 31, 23, 59, 59).wday.should == 4
+    Time.send(@method, 3000, 12, 31, 23, 59, 59).wday.should == 3
   end
 
   it "raises an ArgumentError for out of range month" do
@@ -229,11 +181,11 @@ describe :time_params, :shared => true do
 
   it "returns subclass instances" do
     c = Class.new(Time)
-    c.send(@method, 2008, "12").should be_kind_of(c)
+    c.send(@method, 2008, "12").should be_an_instance_of(c)
   end
 end
 
-describe :time_params_10_arg, :shared => true do
+describe :time_params_10_arg, shared: true do
   it "handles string arguments" do
     Time.send(@method, "1", "15", "20", "1", "1", "2000", :ignored, :ignored,
               :ignored, :ignored).should ==
@@ -246,102 +198,58 @@ describe :time_params_10_arg, :shared => true do
       Time.send(@method, 1, 15, 20, 1, 1, 2000, :ignored, :ignored, :ignored, :ignored)
   end
 
-  ruby_version_is ""..."1.9.1" do
-    it "raises an ArgumentError for out of range values" do
-      lambda {
-        Time.send(@method, 61, 59, 23, 31, 12, 2008, :ignored, :ignored, :ignored, :ignored)
-      }.should raise_error(ArgumentError) # sec
+  it "raises an ArgumentError for out of range values" do
+    lambda {
+      Time.send(@method, 61, 59, 23, 31, 12, 2008, :ignored, :ignored, :ignored, :ignored)
+    }.should raise_error(ArgumentError) # sec
 
-      lambda {
-        Time.send(@method, 59, 61, 23, 31, 12, 2008, :ignored, :ignored, :ignored, :ignored)
-      }.should raise_error(ArgumentError) # min
+    lambda {
+      Time.send(@method, 59, 61, 23, 31, 12, 2008, :ignored, :ignored, :ignored, :ignored)
+    }.should raise_error(ArgumentError) # min
 
-      lambda {
-        Time.send(@method, 59, 59, 25, 31, 12, 2008, :ignored, :ignored, :ignored, :ignored)
-      }.should raise_error(ArgumentError) # hour
+    lambda {
+      Time.send(@method, 59, 59, 25, 31, 12, 2008, :ignored, :ignored, :ignored, :ignored)
+    }.should raise_error(ArgumentError) # hour
 
-      lambda {
-        Time.send(@method, 59, 59, 23, 32, 12, 2008, :ignored, :ignored, :ignored, :ignored)
-      }.should raise_error(ArgumentError) # day
+    lambda {
+      Time.send(@method, 59, 59, 23, 32, 12, 2008, :ignored, :ignored, :ignored, :ignored)
+    }.should raise_error(ArgumentError) # day
 
-      lambda {
-        Time.send(@method, 59, 59, 23, 31, 13, 2008, :ignored, :ignored, :ignored, :ignored)
-      }.should raise_error(ArgumentError) # month
-
-      # Year range only fails on 32 bit archs
-      not_compliant_on :rubinius do
-        platform_is :wordsize => 32 do
-          lambda {
-            Time.send(@method, 59, 59, 23, 31, 12, 1111, :ignored, :ignored, :ignored, :ignored)
-          }.should raise_error(ArgumentError) # year
-        end
-      end
-    end
-  end
-
-  ruby_version_is "1.9" do
-    it "raises an ArgumentError for out of range values" do
-      lambda {
-        Time.send(@method, 61, 59, 23, 31, 12, 2008, :ignored, :ignored, :ignored, :ignored)
-      }.should raise_error(ArgumentError) # sec
-
-      lambda {
-        Time.send(@method, 59, 61, 23, 31, 12, 2008, :ignored, :ignored, :ignored, :ignored)
-      }.should raise_error(ArgumentError) # min
-
-      lambda {
-        Time.send(@method, 59, 59, 25, 31, 12, 2008, :ignored, :ignored, :ignored, :ignored)
-      }.should raise_error(ArgumentError) # hour
-
-      lambda {
-        Time.send(@method, 59, 59, 23, 32, 12, 2008, :ignored, :ignored, :ignored, :ignored)
-      }.should raise_error(ArgumentError) # day
-
-      lambda {
-        Time.send(@method, 59, 59, 23, 31, 13, 2008, :ignored, :ignored, :ignored, :ignored)
-      }.should raise_error(ArgumentError) # month
-    end
+    lambda {
+      Time.send(@method, 59, 59, 23, 31, 13, 2008, :ignored, :ignored, :ignored, :ignored)
+    }.should raise_error(ArgumentError) # month
   end
 end
 
-describe :time_params_microseconds, :shared => true do
+describe :time_params_microseconds, shared: true do
   it "handles microseconds" do
     t = Time.send(@method, 2000, 1, 1, 20, 15, 1, 123)
     t.usec.should == 123
   end
 
-  ruby_version_is "".."1.9" do
-    it "ignores fractional microseconds as a Float" do
-      t = Time.send(@method, 2000, 1, 1, 20, 15, 1, 1.75)
-      t.usec.should == 1
-    end
+  it "handles fractional microseconds as a Float" do
+    t = Time.send(@method, 2000, 1, 1, 20, 15, 1, 1.75)
+    t.usec.should == 1
+    t.nsec.should == 1750
   end
 
-  ruby_version_is "1.9" do
-    it "handles fractional microseconds as a Float" do
-      t = Time.send(@method, 2000, 1, 1, 20, 15, 1, 1.75)
-      t.usec.should == 1
-      t.nsec.should == 1750
-    end
+  it "handles fractional microseconds as a Rational" do
+    t = Time.send(@method, 2000, 1, 1, 20, 15, 1, Rational(99, 10))
+    t.usec.should == 9
+    t.nsec.should == 9900
+  end
 
-    it "handles fractional microseconds as a Rational" do
-      t = Time.send(@method, 2000, 1, 1, 20, 15, 1, Rational(99, 10))
-      t.usec.should == 9
-      t.nsec.should == 9900
-    end
+  it "ignores fractional seconds if a passed whole number of microseconds" do
+    t = Time.send(@method, 2000, 1, 1, 20, 15, 1.75, 2)
+    t.sec.should == 1
+    t.usec.should == 2
+    t.nsec.should == 2000
+  end
 
-    it "ignores fractional seconds if a passed whole number of microseconds" do
-      t = Time.send(@method, 2000, 1, 1, 20, 15, 1.75, 2)
-      t.sec.should == 1
-      t.usec.should == 2
-      t.nsec.should == 2000
-    end
-
-    it "ignores fractional seconds if a passed fractional number of microseconds" do
-      t = Time.send(@method, 2000, 1, 1, 20, 15, 1.75, Rational(99, 10))
-      t.sec.should == 1
-      t.usec.should == 9
-      t.nsec.should == 9900
-    end
+  it "ignores fractional seconds if a passed fractional number of microseconds" do
+    t = Time.send(@method, 2000, 1, 1, 20, 15, 1.75, Rational(99, 10))
+    t.sec.should == 1
+    t.usec.should == 9
+    t.nsec.should == 9900
   end
 end

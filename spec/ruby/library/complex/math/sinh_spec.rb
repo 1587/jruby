@@ -10,22 +10,6 @@ describe "Math#sinh" do
   end
 end
 
-ruby_version_is ""..."1.9" do
-  describe "Math#sinh!" do
-    it_behaves_like :complex_math_sinh_bang, :_, IncludesMath.new
-
-    it "is a private instance method" do
-      IncludesMath.should have_private_instance_method(:sinh!)
-    end
-  end
-end
-
 describe "Math.sinh" do
-  it_behaves_like :complex_math_sinh, :_, Math
-end
-
-ruby_version_is ""..."1.9" do
-  describe "Math.sinh!" do
-    it_behaves_like :complex_math_sinh_bang, :_, Math
-  end
+  it_behaves_like :complex_math_sinh, :_, CMath
 end

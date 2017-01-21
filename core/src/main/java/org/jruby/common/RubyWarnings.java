@@ -12,7 +12,7 @@
  * rights and limitations under the License.
  *
  * Copyright (C) 2004 Jan Arne Petersen <jpetersen@uni-bonn.de>
- * 
+ *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
  * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
@@ -36,7 +36,7 @@ import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.backtrace.RubyStackTraceElement;
 import org.jruby.runtime.builtin.IRubyObject;
 
-/** 
+/**
  *
  */
 public class RubyWarnings implements IRubyWarnings, WarnCallback {
@@ -69,7 +69,7 @@ public class RubyWarnings implements IRubyWarnings, WarnCallback {
     public void warn(ID id, ISourcePosition position, String message) {
         if (!runtime.warningsEnabled()) return;
 
-        warn(id, position.getFile(), position.getStartLine() + 1, message);
+        warn(id, position.getFile(), position.getLine() + 1, message);
     }
 
     /**
@@ -81,7 +81,22 @@ public class RubyWarnings implements IRubyWarnings, WarnCallback {
 
         StringBuilder buffer = new StringBuilder(100);
 
-        buffer.append(fileName).append(':').append(lineNumber).append(' ');
+        buffer.append(fileName).append(':').append(lineNumber).append(": ");
+        buffer.append("warning: ").append(message).append('\n');
+        IRubyObject errorStream = runtime.getGlobalVariables().get("$stderr");
+        errorStream.callMethod(runtime.getCurrentContext(), "write", runtime.newString(buffer.toString()));
+    }
+
+    /**
+     * Prints a warning, unless $VERBOSE is nil.
+     */
+    @Override
+    public void warn(ID id, String fileName, String message) {
+        if (!runtime.warningsEnabled()) return;
+
+        StringBuilder buffer = new StringBuilder(100);
+
+        buffer.append(fileName).append(' ');
         buffer.append("warning: ").append(message).append('\n');
         IRubyObject errorStream = runtime.getGlobalVariables().get("$stderr");
         errorStream.callMethod(runtime.getCurrentContext(), "write", runtime.newString(buffer.toString()));
@@ -105,7 +120,7 @@ public class RubyWarnings implements IRubyWarnings, WarnCallback {
 
         warn(id, file, line, message);
     }
-    
+
     public void warnOnce(ID id, String message) {
         if (!runtime.warningsEnabled()) return;
         if (oncelers.contains(id)) return;
@@ -119,6 +134,7 @@ public class RubyWarnings implements IRubyWarnings, WarnCallback {
      * before calling them
      */
     public void warning(String message) {
+        if (!isVerbose()) return;
         if (!runtime.warningsEnabled()) return;
 
         warning(ID.MISCELLANEOUS, message);
@@ -148,7 +164,7 @@ public class RubyWarnings implements IRubyWarnings, WarnCallback {
      */
     @Override
     public void warning(ID id, ISourcePosition position, String message) {
-        warning(id, position.getFile(), position.getStartLine() + 1, message);
+        warning(id, position.getFile(), position.getLine() + 1, message);
     }
 
     /**
@@ -166,56 +182,5 @@ public class RubyWarnings implements IRubyWarnings, WarnCallback {
         RubyStackTraceElement[] stack = context.createWarningBacktrace(runtime);
 
         return stack;
-    }
-
-    @Deprecated
-    @Override
-    public void warn(ID id, ISourcePosition position, String message, Object... data) {
-        warn(id, position.getFile(), position.getStartLine() + 1, message, data);
-    }
-
-    @Deprecated
-    @Override
-    public void warn(ID id, String fileName, int lineNumber, String message, Object... data) {
-        if (!runtime.warningsEnabled()) return;
-
-        StringBuilder buffer = new StringBuilder(100);
-
-        buffer.append(fileName).append(':').append(lineNumber).append(' ');
-        buffer.append("warning: ").append(message).append('\n');
-        IRubyObject errorStream = runtime.getGlobalVariables().get("$stderr");
-        errorStream.callMethod(runtime.getCurrentContext(), "write", runtime.newString(buffer.toString()));
-    }
-
-    @Deprecated
-    @Override
-    public void warn(ID id, String message, Object... data) {
-        ThreadContext context = runtime.getCurrentContext();
-        warn(id, context.getFile(), context.getLine(), message, data);
-    }
-
-    @Deprecated
-    public void warning(String message, Object... data) {
-        warning(ID.MISCELLANEOUS, message, data);
-    }
-
-    @Deprecated
-    @Override
-    public void warning(ID id, String message, Object... data) {
-        ThreadContext context = runtime.getCurrentContext();
-        warning(id, context.getFile(), context.getLine(), message, data);
-    }
-
-    @Deprecated
-    @Override
-    public void warning(ID id, ISourcePosition position, String message, Object... data) {
-        warning(id, position.getFile(), position.getStartLine() + 1, message, data);
-    }
-
-    @Deprecated
-    @Override
-    public void warning(ID id, String fileName, int lineNumber, String message, Object... data) {
-        if (!runtime.warningsEnabled() || !runtime.isVerbose()) return;
-        warn(id, fileName, lineNumber, message, data);
     }
 }

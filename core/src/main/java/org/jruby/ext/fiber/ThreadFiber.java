@@ -4,21 +4,30 @@ import java.lang.ref.WeakReference;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jruby.Ruby;
+import org.jruby.RubyArray;
 import org.jruby.RubyClass;
 import org.jruby.RubyObject;
 import org.jruby.RubyThread;
 import org.jruby.anno.JRubyMethod;
 import org.jruby.exceptions.JumpException;
 import org.jruby.exceptions.RaiseException;
-import org.jruby.ext.thread.SizedQueue;
 import org.jruby.javasupport.JavaUtil;
 import org.jruby.runtime.Block;
 import org.jruby.runtime.ExecutionContext;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.Visibility;
 import org.jruby.runtime.builtin.IRubyObject;
+import org.jruby.util.log.Logger;
+import org.jruby.util.log.LoggerFactory;
+
+import org.jruby.ir.runtime.IRBreakJump;
+import org.jruby.ir.runtime.IRReturnJump;
+import org.jruby.ir.operands.IRException;
 
 public class ThreadFiber extends RubyObject implements ExecutionContext {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ThreadFiber.class);
+
     public ThreadFiber(Ruby runtime, RubyClass klass) {
         super(runtime, klass);
     }
@@ -27,9 +36,8 @@ public class ThreadFiber extends RubyObject implements ExecutionContext {
         Ruby runtime = context.runtime;
         
         ThreadFiber rootFiber = new ThreadFiber(runtime, runtime.getClass("Fiber")); // FIXME: getFiber()
-        
-        assert runtime.getClass("SizedQueue") != null : "SizedQueue has not been loaded";
-        rootFiber.data = new FiberData(new SizedQueue(runtime, runtime.getClass("SizedQueue")), null, rootFiber);
+
+        rootFiber.data = new FiberData(new FiberQueue(runtime), null, rootFiber);
         rootFiber.thread = context.getThread();
         context.setRootFiber(rootFiber);
     }
@@ -39,8 +47,8 @@ public class ThreadFiber extends RubyObject implements ExecutionContext {
         Ruby runtime = context.runtime;
         
         if (!block.isGiven()) throw runtime.newArgumentError("tried to create Proc object without block");
-        
-        data = new FiberData(new SizedQueue(runtime, runtime.getClass("SizedQueue")), context.getFiberCurrentThread(), this);
+
+        data = new FiberData(new FiberQueue(runtime), context.getFiberCurrentThread(), this);
         
         FiberData currentFiberData = context.getFiber().data;
         
@@ -63,7 +71,7 @@ public class ThreadFiber extends RubyObject implements ExecutionContext {
             switch (values.length) {
                 case 0: return context.nil;
                 case 1: return values[0];
-                default: return runtime.newArrayNoCopyLight(values);
+                default: return RubyArray.newArrayMayCopy(runtime, values);
             }
         }
         
@@ -71,7 +79,7 @@ public class ThreadFiber extends RubyObject implements ExecutionContext {
         switch (values.length) {
             case 0: val = NEVER; break;
             case 1: val = values[0]; break;
-            default: val = runtime.newArrayNoCopyLight(values);
+            default: val = RubyArray.newArrayMayCopy(runtime, values);
         }
         
         if (data.parent != context.getFiberCurrentThread()) throw runtime.newFiberError("fiber called across threads");
@@ -86,35 +94,68 @@ public class ThreadFiber extends RubyObject implements ExecutionContext {
     }
 
     private static IRubyObject exchangeWithFiber(ThreadContext context, FiberData currentFiberData, FiberData targetFiberData, IRubyObject val) {
-        targetFiberData.queue.push(context, val);
+        // At this point we consider ourselves "in" the resume, so we need to enforce exception-propagation
+        // rules for both the push (to wake up fiber) and pop (to wait for fiber). Failure to do this can
+        // cause interrupts destined for the fiber to be caught after the fiber is running but before the
+        // resuming thread has started waiting for it, leaving the fiber to run rather than receiving the
+        // interrupt, and the parent thread propagates the error.
+
+        // Note: these need to be separate try/catches because of the while loop.
+        try {
+            targetFiberData.queue.push(context, new IRubyObject[] {val});
+        } catch (RaiseException re) {
+            handleExceptionDuringExchange(context, currentFiberData, targetFiberData, re);
+        }
 
         while (true) {
             try {
                 IRubyObject result = currentFiberData.queue.pop(context);
-                if (result == NEVER) result = context.nil;
-                return result;
+                return result == NEVER ? context.nil : result;
             } catch (RaiseException re) {
-                // If we received a LJC we need to bubble it out
-                if (context.runtime.getLocalJumpError().isInstance(re.getException())) {
-                    throw re;
-                }
-
-                // If we were trying to yield but our queue has been shut down,
-                // let the exception bubble out and (ideally) kill us.
-                if (currentFiberData.queue.isShutdown()) {
-                    throw re;
-                }
-
-                // re-raise if the target fiber has been shut down
-                if (targetFiberData.queue.isShutdown()) {
-                    throw re;
-                }
-
-                // Otherwise, we want to forward the exception to the target fiber
-                // since it has the ball
-                targetFiberData.fiber.get().thread.raise(re.getException());
+                handleExceptionDuringExchange(context, currentFiberData, targetFiberData, re);
             }
         }
+    }
+
+    /**
+     * Handle exceptions raised while exchanging data with a fiber.
+     *
+     * The rules work like this:
+     *
+     * <ul>
+     *     <li>If the thread has called Fiber#resume on the fiber and an interrupt is sent to the thread,
+     *     forward it to the fiber</li>
+     *     <li>If the fiber has called Fiber.yield and an interrupt is sent to the fiber (e.g. Timeout.timeout(x) { Fiber.yield })
+     *     forward it to the fiber's parent thread.</li>
+     * </ul>
+     *
+     * @param context
+     * @param currentFiberData
+     * @param targetFiberData
+     * @param re
+     */
+    private static void handleExceptionDuringExchange(ThreadContext context, FiberData currentFiberData, FiberData targetFiberData, RaiseException re) {
+        // If we received a LJC we need to bubble it out
+        if (context.runtime.getLocalJumpError().isInstance(re.getException())) {
+            throw re;
+        }
+
+        // If we were trying to yield but our queue has been shut down,
+        // let the exception bubble out and (ideally) kill us.
+        if (currentFiberData.queue.isShutdown()) {
+            throw re;
+        }
+
+        // re-raise if the target fiber has been shut down
+        if (targetFiberData.queue.isShutdown()) {
+            throw re;
+        }
+
+        // Otherwise, we want to forward the exception to the target fiber
+        // since it has the ball
+        final ThreadFiber fiber = targetFiberData.fiber.get();
+        if ( fiber != null ) fiber.thread.raise(re.getException());
+        else LOG.warn("no fiber thread to raise: {}", re.getException().inspect(context));
     }
 
     @JRubyMethod(rest = true)
@@ -131,7 +172,7 @@ public class ThreadFiber extends RubyObject implements ExecutionContext {
             switch (values.length) {
                 case 0: return context.nil;
                 case 1: return values[0];
-                default: return runtime.newArrayNoCopyLight(values);
+                default: return RubyArray.newArrayMayCopy(runtime, values);
             }
         }
         
@@ -139,7 +180,7 @@ public class ThreadFiber extends RubyObject implements ExecutionContext {
         switch (values.length) {
             case 0: val = NEVER; break;
             case 1: val = values[0]; break;
-            default: val = runtime.newArrayNoCopyLight(values);
+            default: val = RubyArray.newArrayMayCopy(runtime, values);
         }
         
         if (data.parent != context.getFiberCurrentThread()) throw runtime.newFiberError("fiber called across threads");
@@ -185,7 +226,7 @@ public class ThreadFiber extends RubyObject implements ExecutionContext {
     
     @JRubyMethod
     public IRubyObject __alive__(ThreadContext context) {
-        return context.runtime.newBoolean(thread != null && thread.isAlive());
+        return context.runtime.newBoolean(alive());
     }
     
     @JRubyMethod(meta = true)
@@ -202,47 +243,78 @@ public class ThreadFiber extends RubyObject implements ExecutionContext {
         return thread != null && thread.isAlive() && !data.queue.isShutdown();
     }
     
-    static RubyThread createThread(final Ruby runtime, final FiberData data, final SizedQueue queue, final Block block) {
+    static RubyThread createThread(final Ruby runtime, final FiberData data, final FiberQueue queue, final Block block) {
         final AtomicReference<RubyThread> fiberThread = new AtomicReference();
-        runtime.getFiberExecutor().execute(new Runnable() {
-            public void run() {
-                ThreadContext context = runtime.getCurrentContext();
-                context.setFiber(data.fiber.get());
-                context.setRootThread(data.parent);
-                fiberThread.set(context.getThread());
 
-                try {
-                    IRubyObject init = data.queue.pop(context);
-                    
+        // retry with GC once
+        boolean retried = true;
+
+        try {
+            runtime.getFiberExecutor().execute(new Runnable() {
+                public void run() {
+                    ThreadContext context = runtime.getCurrentContext();
+                    context.setFiber(data.fiber.get());
+                    fiberThread.set(context.getThread());
+                    context.getThread().setFiberCurrentThread(data.parent);
+
                     try {
-                        IRubyObject result;
+                        IRubyObject init = data.queue.pop(context);
 
-                        if (init == NEVER) {
-                            result = block.yieldSpecific(context);
-                        } else {
-                            result = block.yieldArray(context, init, null, null);
+                        try {
+                            IRubyObject result;
+
+                            if (init == NEVER) {
+                                result = block.yieldSpecific(context);
+                            } else {
+                                result = block.yieldArray(context, init, null);
+                            }
+
+                            data.prev.data.queue.push(context, new IRubyObject[]{result});
+                        } finally {
+                            data.queue.shutdown();
+                            runtime.getThreadService().disposeCurrentThread();
                         }
-
-                        data.prev.data.queue.push(context, result);
+                    } catch (JumpException.FlowControlException fce) {
+                        if (data.prev != null) {
+                            data.prev.thread.raise(fce.buildException(runtime).getException());
+                        }
+                    } catch (IRBreakJump bj) {
+                        // This is one of the rare cases where IR flow-control jumps
+                        // leaks into the runtime impl.
+                        if (data.prev != null) {
+                            data.prev.thread.raise(((RaiseException) IRException.BREAK_LocalJumpError.getException(runtime)).getException());
+                        }
+                    } catch (IRReturnJump rj) {
+                        // This is one of the rare cases where IR flow-control jumps
+                        // leaks into the runtime impl.
+                        if (data.prev != null) {
+                            data.prev.thread.raise(((RaiseException) IRException.RETURN_LocalJumpError.getException(runtime)).getException());
+                        }
+                    } catch (RaiseException re) {
+                        if (data.prev != null) {
+                            data.prev.thread.raise(re.getException());
+                        }
+                    } catch (Throwable t) {
+                        if (data.prev != null) {
+                            data.prev.thread.raise(JavaUtil.convertJavaToUsableRubyObject(runtime, t));
+                        }
                     } finally {
-                        data.queue.shutdown();
-                        runtime.getThreadService().disposeCurrentThread();
-                    }
-                } catch (JumpException.FlowControlException fce) {
-                    if (data.prev != null) {
-                        data.prev.thread.raise(fce.buildException(runtime).getException());
-                    }
-                } catch (RaiseException re) {
-                    if (data.prev != null) {
-                        data.prev.thread.raise(re.getException());
-                    }
-                } catch (Throwable t) {
-                    if (data.prev != null) {
-                        data.prev.thread.raise(JavaUtil.convertJavaToUsableRubyObject(runtime, t));
+                        // clear reference to the fiber's thread
+                        ThreadFiber tf = data.fiber.get();
+                        if (tf != null) tf.thread = null;
                     }
                 }
+            });
+        } catch (OutOfMemoryError oome) {
+            String oomeMessage = oome.getMessage();
+            if (!retried && oomeMessage != null && oomeMessage.contains("unable to create new native thread")) {
+                // try to clean out stale enumerator threads by forcing GC
+                System.gc();
+                retried = true;
+            } else {
+                throw oome;
             }
-        });
+        }
         
         while (fiberThread.get() == null) {Thread.yield();}
         
@@ -284,7 +356,7 @@ public class ThreadFiber extends RubyObject implements ExecutionContext {
     }
     
     public static class FiberData {
-        FiberData(SizedQueue queue, RubyThread parent, ThreadFiber fiber) {
+        FiberData(FiberQueue queue, RubyThread parent, ThreadFiber fiber) {
             this.queue = queue;
             this.parent = parent;
             this.fiber = new WeakReference<ThreadFiber>(fiber);
@@ -294,7 +366,7 @@ public class ThreadFiber extends RubyObject implements ExecutionContext {
             return prev;
         }
         
-        final SizedQueue queue;
+        final FiberQueue queue;
         volatile ThreadFiber prev;
         final RubyThread parent;
         final WeakReference<ThreadFiber> fiber;

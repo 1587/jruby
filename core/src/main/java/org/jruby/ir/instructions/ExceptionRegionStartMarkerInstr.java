@@ -3,37 +3,32 @@ package org.jruby.ir.instructions;
 import org.jruby.ir.IRVisitor;
 import org.jruby.ir.Operation;
 import org.jruby.ir.operands.Label;
-import org.jruby.ir.operands.Operand;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
+import org.jruby.ir.transformations.inlining.CloneInfo;
 
-public class ExceptionRegionStartMarkerInstr extends Instr {
-    final public Label begin;
-    final public Label end;
-    final public Label firstRescueBlockLabel;
-    final public Label ensureBlockLabel;
+public class ExceptionRegionStartMarkerInstr extends OneOperandInstr implements FixedArityInstr {
+    public ExceptionRegionStartMarkerInstr(Label firstRescueBlockLabel) {
+        super(Operation.EXC_REGION_START, firstRescueBlockLabel);
+    }
 
-    public ExceptionRegionStartMarkerInstr(Label begin, Label end,
-            Label ensureBlockLabel, Label firstRescueBlockLabel) {
-        super(Operation.EXC_REGION_START);
-
-        this.begin = begin;
-        this.end = end;
-        this.firstRescueBlockLabel = firstRescueBlockLabel;
-        this.ensureBlockLabel = ensureBlockLabel;
+    public Label getFirstRescueBlockLabel() {
+        return (Label) getOperand1();
     }
 
     @Override
-    public String toString() {
-        StringBuilder buf = new StringBuilder(super.toString());
-
-        buf.append("(").append(begin).append(", ").append(end).append(", rescue[").append(firstRescueBlockLabel).append("]");
-        if (ensureBlockLabel != null) buf.append(", ensure[").append(ensureBlockLabel).append("]");
-        buf.append(")");
-
-        return buf.toString();
+    public Instr clone(CloneInfo ii) {
+        return new ExceptionRegionStartMarkerInstr(ii.getRenamedLabel(getFirstRescueBlockLabel()));
     }
 
-    public Operand[] getOperands() {
-        return EMPTY_OPERANDS;
+    @Override
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+        e.encode(getFirstRescueBlockLabel());
+    }
+
+    public static ExceptionRegionStartMarkerInstr decode(IRReaderDecoder d) {
+        return new ExceptionRegionStartMarkerInstr(d.decodeLabel());
     }
 
     @Override

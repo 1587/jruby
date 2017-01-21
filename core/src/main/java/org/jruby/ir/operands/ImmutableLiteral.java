@@ -1,6 +1,7 @@
 package org.jruby.ir.operands;
 
-import org.jruby.ir.transformations.inlining.InlinerInfo;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.parser.StaticScope;
 import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
@@ -10,9 +11,8 @@ import java.util.List;
 /**
  * Operands extending this type can make a reasonable assumption of
  * immutability.  In Ruby, almost nothing is truly immutable (set_instance_var)
- * but for the sake of our compiler we can assume the basic behavior will
- * continue to work unchanged (the value of an instance of fixnum 3 will remain
- * 3).
+ * but for the sake of our compiler, we can assume the basic behavior will
+ * continue to work unchanged (the value of an instance of fixnum 3 will remain 3).
  *
  * Knowing that we have a literal which will not change can be used for
  * optimizations like constant propagation.
@@ -25,6 +25,10 @@ import java.util.List;
  */
 public abstract class ImmutableLiteral extends Operand {
     private Object cachedObject = null;
+
+    public ImmutableLiteral() {
+       super();
+   }
 
     @Override
     public boolean hasKnownValue() {
@@ -42,7 +46,7 @@ public abstract class ImmutableLiteral extends Operand {
     }
 
     @Override
-    public Operand cloneForInlining(InlinerInfo ii) {
+    public Operand cloneForInlining(CloneInfo ii) {
         return this;
     }
 
@@ -50,7 +54,6 @@ public abstract class ImmutableLiteral extends Operand {
      * Implementing class is responsible for constructing the cached value.
      */
     public abstract Object createCacheObject(ThreadContext context);
-
 
     /**
      * Returns the cached object.  If not then it asks class to create an
@@ -77,7 +80,7 @@ public abstract class ImmutableLiteral extends Operand {
      * assume the cost of constructing literals which may never be used.
      */
     @Override
-    public Object retrieve(ThreadContext context, IRubyObject self, DynamicScope currDynScope, Object[] temp) {
+    public Object retrieve(ThreadContext context, IRubyObject self, StaticScope currScope, DynamicScope currDynScope, Object[] temp) {
         return cachedObject(context);
     }
 }

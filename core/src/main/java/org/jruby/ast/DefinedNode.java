@@ -34,14 +34,8 @@ package org.jruby.ast;
 
 import java.util.List;
 
-import org.jruby.Ruby;
-import org.jruby.RubyString;
 import org.jruby.ast.visitor.NodeVisitor;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.util.ByteList;
 
 /**
  * a defined statement.
@@ -50,7 +44,7 @@ public class DefinedNode extends Node {
     private final Node expressionNode;
 
     public DefinedNode(ISourcePosition position, Node expressionNode) {
-        super(position);
+        super(position, expressionNode.containsVariableAssignment());
         
         assert expressionNode != null : "expressionNode is not null";
         
@@ -65,7 +59,7 @@ public class DefinedNode extends Node {
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitDefinedNode(this);
     }
 
@@ -79,11 +73,5 @@ public class DefinedNode extends Node {
     
     public List<Node> childNodes() {
         return createList(expressionNode);
-    }
-
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-			RubyString definition = expressionNode.definition(runtime, context, self, aBlock);
-			return definition != null ? definition : runtime.getNil();
     }
 }

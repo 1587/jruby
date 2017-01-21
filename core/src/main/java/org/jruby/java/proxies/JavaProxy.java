@@ -18,7 +18,6 @@ import org.jruby.Ruby;
 import org.jruby.RubyArray;
 import org.jruby.RubyClass;
 import org.jruby.RubyHash;
-import org.jruby.RubyHash.Visitor;
 import org.jruby.RubyMethod;
 import org.jruby.RubyModule;
 import org.jruby.RubyObject;
@@ -36,6 +35,7 @@ import org.jruby.javasupport.Java;
 import org.jruby.javasupport.JavaClass;
 import org.jruby.javasupport.JavaMethod;
 import org.jruby.javasupport.JavaObject;
+import org.jruby.javasupport.JavaUtil;
 import org.jruby.runtime.Helpers;
 import org.jruby.runtime.Block;
 import org.jruby.runtime.ObjectAllocator;
@@ -79,26 +79,20 @@ public class JavaProxy extends RubyObject {
     }
 
     @Override
-    public Object dataGetStruct() {
-        return getJavaObject();
+    public final Object dataGetStruct() {
+        if (javaObject == null) {
+            javaObject = asJavaObject(object);
+        }
+        return javaObject;
     }
 
     @Override
-    public void dataWrapStruct(Object object) {
+    public final void dataWrapStruct(Object object) {
         this.javaObject = (JavaObject) object;
         this.object = javaObject.getValue();
     }
 
-    public Object getObject() {
-        // FIXME: Added this because marshal_spec seemed to reconstitute objects without calling dataWrapStruct
-        // this resulted in object being null after unmarshalling...
-        if (object == null) {
-            if (javaObject == null) {
-                throw getRuntime().newRuntimeError("Java wrapper with no contents: " + this.getMetaClass().getName());
-            } else {
-                object = javaObject.getValue();
-            }
-        }
+    public final Object getObject() {
         return object;
     }
 
@@ -108,27 +102,24 @@ public class JavaProxy extends RubyObject {
 
     public Object unwrap() { return getObject(); }
 
-    private JavaObject getJavaObject() {
-        if (javaObject == null) {
-            javaObject = JavaObject.wrap(getRuntime(), object);
-        }
-        return javaObject;
+    protected JavaObject asJavaObject(final Object object) {
+        return JavaObject.wrap(getRuntime(), object);
     }
 
     @Override
-    public Class getJavaClass() {
+    public Class<?> getJavaClass() {
         return getObject().getClass();
     }
 
     static JavaClass java_class(final ThreadContext context, final RubyModule module) {
-        return (JavaClass) Helpers.invoke(context, module, "java_class");
+        return (JavaClass) JavaClass.java_class(context, module);
     }
 
     @JRubyMethod(meta = true, frame = true) // framed for invokeSuper
     public static IRubyObject inherited(ThreadContext context, IRubyObject recv, IRubyObject subclass) {
-        IRubyObject subJavaClass = Helpers.invoke(context, subclass, "java_class");
+        IRubyObject subJavaClass = JavaClass.java_class(context, (RubyClass) subclass);
         if (subJavaClass.isNil()) {
-            subJavaClass = Helpers.invoke(context, recv, "java_class");
+            subJavaClass = JavaClass.java_class(context, (RubyClass) recv);
             Helpers.invoke(context, subclass, "java_class=", subJavaClass);
         }
         return Helpers.invokeSuper(context, recv, subclass, Block.NULL_BLOCK);
@@ -171,25 +162,30 @@ public class JavaProxy extends RubyObject {
     public IRubyObject initialize_copy(IRubyObject original) {
         super.initialize_copy(original);
         // because we lazily init JavaObject in the data-wrapped slot, explicitly copy over the object
-        setObject( ((JavaProxy) original).getObject() );
+        setObject( ((JavaProxy) original).cloneObject() );
         return this;
+    }
+
+    protected Object cloneObject() {
+        final Object object = getObject();
+        if (object instanceof Cloneable) {
+            // sufficient for java.util collection classes e.g. HashSet, ArrayList
+            Object clone = JavaUtil.clone(object);
+            return clone == null ? object : clone;
+        }
+        return object; // this is what JRuby did prior to <= 9.0.5
     }
 
     /**
      * Create a name/newname map of fields to be exposed as methods.
      */
-    private static Map<String, String> getFieldListFromArgs(final IRubyObject[] args) {
-        final Map<String, String> map = new HashMap<String, String>();
+    private static Map<String, String> getFieldListFromArgs(ThreadContext context, IRubyObject[] args) {
+        final HashMap<String, String> map = new HashMap<>(args.length, 1);
         // Get map of all fields we want to define.
         for (int i = 0; i < args.length; i++) {
             final IRubyObject arg = args[i];
             if ( arg instanceof RubyHash ) {
-                ((RubyHash) arg).visitAll(new Visitor() {
-                    @Override
-                    public void visit(IRubyObject key, IRubyObject value) {
-                        map.put(key.asString().toString(), value.asString().toString());
-                    }
-                });
+                ((RubyHash) arg).visitAll(context, MapPopulatorVisitor, map);
             } else {
                 String value = arg.asString().toString();
                 map.put(value, value);
@@ -197,6 +193,13 @@ public class JavaProxy extends RubyObject {
         }
         return map;
     }
+
+    private static final RubyHash.VisitorWithState<Map> MapPopulatorVisitor = new RubyHash.VisitorWithState<Map>() {
+        @Override
+        public void visit(ThreadContext context, RubyHash self, IRubyObject key, IRubyObject value, int index, Map map) {
+            map.put(key.asString().toString(), value.asString().toString());
+        }
+    };
 
     // Look through all mappings to find a match entry for this field
     private static void installField(final ThreadContext context,
@@ -210,44 +213,58 @@ public class JavaProxy extends RubyObject {
             final Map.Entry<String,String> entry = iter.next();
             if ( entry.getKey().equals( fieldName ) ) {
 
-                if ( Ruby.isSecurityRestricted() && ! Modifier.isPublic(field.getModifiers()) ) {
-                    throw context.runtime.newSecurityError("Cannot change accessibility on fields in a restricted mode: field '" + fieldName + "'");
-                }
+                installField(context, entry.getValue(), field, module, asReader, asWriter);
 
-                String asName = entry.getValue();
-
-                if ( Modifier.isStatic(field.getModifiers()) ) {
-                    if ( asReader ) {
-                        module.getSingletonClass().addMethod(asName, new StaticFieldGetter(fieldName, module, field));
-                    }
-                    if ( asWriter ) {
-                        if ( Modifier.isFinal(field.getModifiers()) ) {
-                            throw context.runtime.newSecurityError("Cannot change final field '" + fieldName + "'");
-                        }
-                        module.getSingletonClass().addMethod(asName + '=', new StaticFieldSetter(fieldName, module, field));
-                    }
-                } else {
-                    if ( asReader ) {
-                        module.addMethod(asName, new InstanceFieldGetter(fieldName, module, field));
-                    }
-                    if ( asWriter ) {
-                        if ( Modifier.isFinal(field.getModifiers()) ) {
-                            throw context.runtime.newSecurityError("Cannot change final field '" + fieldName + "'");
-                        }
-                        module.addMethod(asName + '=', new InstanceFieldSetter(fieldName, module, field));
-                    }
-                }
-
-                iter.remove();
-                break;
+                iter.remove(); break;
             }
         }
+    }
+
+    private static void installField(final ThreadContext context,
+        final String asName, final Field field, final RubyModule target,
+        boolean asReader, Boolean asWriter) {
+
+        if ( Ruby.isSecurityRestricted() && ! Modifier.isPublic(field.getModifiers()) ) {
+            throw context.runtime.newSecurityError("Cannot change accessibility on field in restricted mode  '" + field + "'");
+        }
+
+        final String fieldName = field.getName();
+
+        if ( Modifier.isStatic(field.getModifiers()) ) {
+            if ( asReader ) {
+                target.getSingletonClass().addMethod(asName, new StaticFieldGetter(fieldName, target, field));
+            }
+            if ( asWriter == null || asWriter ) {
+                if ( Modifier.isFinal(field.getModifiers()) ) {
+                    if ( asWriter == null ) return;
+                    // e.g. Cannot change final field 'private final char[] java.lang.String.value'
+                    throw context.runtime.newSecurityError("Cannot change final field '" + field + "'");
+                }
+                target.getSingletonClass().addMethod(asName + '=', new StaticFieldSetter(fieldName, target, field));
+            }
+        } else {
+            if ( asReader ) {
+                target.addMethod(asName, new InstanceFieldGetter(fieldName, target, field));
+            }
+            if ( asWriter == null || asWriter ) {
+                if ( Modifier.isFinal(field.getModifiers()) ) {
+                    if ( asWriter == null ) return;
+                    throw context.runtime.newSecurityError("Cannot change final field '" + field + "'");
+                }
+                target.addMethod(asName + '=', new InstanceFieldSetter(fieldName, target, field));
+            }
+        }
+    }
+
+    public static void installField(final ThreadContext context,
+        final String asName, final Field field, final RubyModule target) {
+        installField(context, asName, field, target, true, null);
     }
 
     private static void findFields(final ThreadContext context,
         final RubyModule topModule, final IRubyObject[] args,
         final boolean asReader, final boolean asWriter) {
-        final Map<String, String> fieldMap = getFieldListFromArgs(args);
+        final Map<String, String> fieldMap = getFieldListFromArgs(context, args);
 
         for (RubyModule module = topModule; module != null; module = module.getSuperClass()) {
             final Class<?> javaClass = JavaClass.getJavaClassIfProxy(context, module);
@@ -262,8 +279,7 @@ public class JavaProxy extends RubyObject {
 
         // We could not find all of them print out first one (we could print them all?)
         if ( ! fieldMap.isEmpty() ) {
-            throw JavaClass.undefinedFieldError(context.runtime,
-                    topModule.getName(), fieldMap.keySet().iterator().next());
+            throw JavaClass.undefinedFieldError(context.runtime, topModule.getName(), fieldMap.keySet().iterator().next());
         }
 
     }
@@ -301,8 +317,8 @@ public class JavaProxy extends RubyObject {
         String name = rubyName.asJavaString();
         Ruby runtime = context.runtime;
 
-        JavaMethod method = new JavaMethod(runtime, getMethod(name));
-        return method.invokeDirect(getObject());
+        JavaMethod method = new JavaMethod(runtime, getMethod(context, name));
+        return method.invokeDirect(context, getObject());
     }
 
     @JRubyMethod
@@ -313,8 +329,8 @@ public class JavaProxy extends RubyObject {
 
         checkArgSizeMismatch(runtime, 0, argTypesAry);
 
-        JavaMethod method = new JavaMethod(runtime, getMethod(name));
-        return method.invokeDirect(getObject());
+        JavaMethod method = new JavaMethod(runtime, getMethod(context, name));
+        return method.invokeDirect(context, getObject());
     }
 
     @JRubyMethod
@@ -327,11 +343,11 @@ public class JavaProxy extends RubyObject {
 
         Class argTypeClass = (Class) argTypesAry.eltInternal(0).toJava(Class.class);
 
-        JavaMethod method = new JavaMethod(runtime, getMethod(name, argTypeClass));
-        return method.invokeDirect(getObject(), arg0.toJava(argTypeClass));
+        JavaMethod method = new JavaMethod(runtime, getMethod(context, name, argTypeClass));
+        return method.invokeDirect(context, getObject(), arg0.toJava(argTypeClass));
     }
 
-    @JRubyMethod(required = 4, rest = true)
+    @JRubyMethod(required = 1, rest = true)
     public IRubyObject java_send(ThreadContext context, IRubyObject[] args) {
         Ruby runtime = context.runtime;
 
@@ -348,8 +364,8 @@ public class JavaProxy extends RubyObject {
             javaArgs[i] = args[i + 2].toJava( argTypesClasses[i] );
         }
 
-        JavaMethod method = new JavaMethod(runtime, getMethod(name, argTypesClasses));
-        return method.invokeDirect(getObject(), javaArgs);
+        JavaMethod method = new JavaMethod(runtime, getMethod(context, name, argTypesClasses));
+        return method.invokeDirect(context, getObject(), javaArgs);
     }
 
     private static void checkArgSizeMismatch(final Ruby runtime, final int expected, final RubyArray argTypes) {
@@ -363,7 +379,7 @@ public class JavaProxy extends RubyObject {
     public IRubyObject java_method(ThreadContext context, IRubyObject rubyName) {
         String name = rubyName.asJavaString();
 
-        return getRubyMethod(name);
+        return getRubyMethod(context, name);
     }
 
     @JRubyMethod
@@ -372,7 +388,7 @@ public class JavaProxy extends RubyObject {
         RubyArray argTypesAry = argTypes.convertToArray();
         Class[] argTypesClasses = (Class[]) argTypesAry.toArray(new Class[argTypesAry.size()]);
 
-        return getRubyMethod(name, argTypesClasses);
+        return getRubyMethod(context, name, argTypesClasses);
     }
 
     @JRubyMethod
@@ -419,11 +435,11 @@ public class JavaProxy extends RubyObject {
         return System.identityHashCode(object);
     }
 
-    private Method getMethod(String name, Class... argTypes) {
+    private Method getMethod(ThreadContext context, String name, Class... argTypes) {
         try {
             return getObject().getClass().getMethod(name, argTypes);
         } catch (NoSuchMethodException nsme) {
-            throw JavaMethod.newMethodNotFoundError(getRuntime(), getObject().getClass(), name + CodegenUtils.prettyParams(argTypes), name);
+            throw JavaMethod.newMethodNotFoundError(context.runtime, getObject().getClass(), name + CodegenUtils.prettyParams(argTypes), name);
         }
     }
 
@@ -435,8 +451,8 @@ public class JavaProxy extends RubyObject {
         }
     }
 
-    private RubyMethod getRubyMethod(String name, Class... argTypes) {
-        Method jmethod = getMethod(name, argTypes);
+    private RubyMethod getRubyMethod(ThreadContext context, String name, Class... argTypes) {
+        Method jmethod = getMethod(context, name, argTypes);
         if (Modifier.isStatic(jmethod.getModifiers())) {
             return RubyMethod.newMethod(metaClass.getSingletonClass(), CodegenUtils.prettyParams(argTypes).toString(), metaClass.getSingletonClass(), name, getMethodInvoker(jmethod), getMetaClass());
         } else {
@@ -451,6 +467,7 @@ public class JavaProxy extends RubyObject {
         final Class<?> clazz = object.getClass();
 
         if ( type.isAssignableFrom(clazz) ) return object;
+        if ( type.isAssignableFrom(getClass()) ) return this; // e.g. IRubyObject.class
 
         throw getRuntime().newTypeError("failed to coerce " + clazz.getName() + " to " + type.getName());
     }
@@ -500,6 +517,12 @@ public class JavaProxy extends RubyObject {
 
     public static class ClassMethods {
 
+        // handling non-public inner classes retrieval ... like private constants
+        @JRubyMethod(name = "const_missing", required = 1, meta = true, visibility = Visibility.PRIVATE, frame = true)
+        public static IRubyObject const_missing(ThreadContext context, IRubyObject self, IRubyObject name) {
+            return Java.get_inner_class(context, (RubyModule) self, name);
+        }
+
         @JRubyMethod(meta = true)
         public static IRubyObject java_method(ThreadContext context, IRubyObject proxyClass, IRubyObject rubyName) {
             String name = rubyName.asJavaString();
@@ -522,7 +545,7 @@ public class JavaProxy extends RubyObject {
             final Ruby runtime = context.runtime;
 
             JavaMethod method = new JavaMethod(runtime, getMethodFromClass(context, recv, name));
-            return method.invokeStaticDirect();
+            return method.invokeStaticDirect(context);
         }
 
         @JRubyMethod(meta = true)
@@ -534,7 +557,7 @@ public class JavaProxy extends RubyObject {
             checkArgSizeMismatch(runtime, 0, argTypesAry);
 
             JavaMethod method = new JavaMethod(runtime, getMethodFromClass(context, recv, name));
-            return method.invokeStaticDirect();
+            return method.invokeStaticDirect(context);
         }
 
         @JRubyMethod(meta = true)
@@ -548,10 +571,10 @@ public class JavaProxy extends RubyObject {
             Class argTypeClass = (Class) argTypesAry.eltInternal(0).toJava(Class.class);
 
             JavaMethod method = new JavaMethod(runtime, getMethodFromClass(context, recv, name, argTypeClass));
-            return method.invokeStaticDirect(arg0.toJava(argTypeClass));
+            return method.invokeStaticDirect(context, arg0.toJava(argTypeClass));
         }
 
-        @JRubyMethod(required = 4, rest = true, meta = true)
+        @JRubyMethod(required = 1, rest = true, meta = true)
         public static IRubyObject java_send(ThreadContext context, IRubyObject recv, IRubyObject[] args) {
             switch (args.length) {
                 case 1: return java_send(context, recv, args[0]);
@@ -575,7 +598,7 @@ public class JavaProxy extends RubyObject {
             }
 
             JavaMethod method = new JavaMethod(runtime, getMethodFromClass(context, recv, name, argTypesClasses));
-            return method.invokeStaticDirect(javaArgs);
+            return method.invokeStaticDirect(context, javaArgs);
         }
 
         @JRubyMethod(meta = true, visibility = Visibility.PRIVATE)

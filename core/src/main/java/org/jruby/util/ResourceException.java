@@ -1,5 +1,6 @@
 package org.jruby.util;
 
+import jnr.constants.platform.Errno;
 import org.jruby.Ruby;
 import org.jruby.exceptions.RaiseException;
 import java.io.IOException;
@@ -7,6 +8,11 @@ import java.io.IOException;
 // While it is public, please don't use this, since in master it will be
 // marked private and replaced by RaisableException usage.
 public abstract class ResourceException extends IOException {
+    public ResourceException() {}
+    public ResourceException(Throwable t) {
+        super(t);
+    }
+
     abstract static class ErrnoException extends ResourceException {
         private final String path;
         private final String errnoClass;
@@ -22,26 +28,35 @@ public abstract class ResourceException extends IOException {
         }
     }
 
-    static class FileIsDirectory extends ErrnoException {
+    public static class FileIsDirectory extends ErrnoException {
         public FileIsDirectory(String path) { super("EISDIR", path); }
     }
 
-    static class FileExists extends ErrnoException {
+    public static class FileExists extends ErrnoException {
         public FileExists(String path) { super("EEXIST", path); }
     }
 
-    static class NotFound extends ErrnoException {
+    public static class NotFound extends ErrnoException {
         public NotFound(String path) { super("ENOENT", path); }
     }
 
-    static class PermissionDenied extends ErrnoException {
+    public static class PermissionDenied extends ErrnoException {
         public PermissionDenied(String path) { super("EACCES", path); }
     }
 
-    static class IOError extends ResourceException {
+    public static class InvalidArguments extends ErrnoException {
+        public InvalidArguments(String path) { super("EINVAL", path); }
+    }
+
+    public static class TooManySymlinks extends ErrnoException {
+        public TooManySymlinks(String path) { super("ELOOP", path); }
+    }
+
+    public static class IOError extends ResourceException {
         private final IOException ioe;
 
         IOError(IOException ioe) {
+            super(ioe);
             this.ioe = ioe;
         }
 

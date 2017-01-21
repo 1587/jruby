@@ -39,6 +39,30 @@
  ***** END LICENSE BLOCK *****/
 package org.jruby;
 
+import org.jcodings.specific.UTF8Encoding;
+import org.jruby.anno.TypePopulator;
+import org.jruby.ast.ArrayNode;
+import org.jruby.ast.BlockNode;
+import org.jruby.ast.CallNode;
+import org.jruby.ast.FCallNode;
+import org.jruby.ast.GlobalAsgnNode;
+import org.jruby.ast.GlobalVarNode;
+import org.jruby.ast.StrNode;
+import org.jruby.ast.VCallNode;
+import org.jruby.ast.WhileNode;
+import org.jruby.compiler.Constantizable;
+import org.jruby.compiler.NotCompilableException;
+import org.jruby.ext.thread.ThreadLibrary;
+import org.jruby.ir.IRScope;
+import org.jruby.ir.IRScriptBody;
+import org.jruby.javasupport.JavaSupport;
+import org.jruby.javasupport.JavaSupportImpl;
+import org.jruby.lexer.yacc.ISourcePosition;
+import org.jruby.parser.StaticScope;
+import org.jruby.runtime.JavaSites;
+import org.jruby.runtime.invokedynamic.InvokeDynamicSupport;
+import org.objectweb.asm.util.TraceClassVisitor;
+
 import jnr.constants.Constant;
 import jnr.constants.ConstantSet;
 import jnr.constants.platform.Errno;
@@ -50,18 +74,13 @@ import org.joda.time.DateTimeZone;
 import org.jruby.RubyInstanceConfig.CompileMode;
 import org.jruby.ast.Node;
 import org.jruby.ast.RootNode;
-import org.jruby.ast.executable.AbstractScript;
 import org.jruby.ast.executable.RuntimeCache;
 import org.jruby.ast.executable.Script;
+import org.jruby.ast.executable.ScriptAndCode;
 import org.jruby.common.IRubyWarnings.ID;
 import org.jruby.common.RubyWarnings;
-import org.jruby.compiler.ASTCompiler;
-import org.jruby.compiler.ASTInspector;
 import org.jruby.compiler.JITCompiler;
-import org.jruby.compiler.impl.StandardASMCompiler;
 import org.jruby.embed.Extension;
-import org.jruby.evaluator.ASTInterpreter;
-import org.jruby.exceptions.JumpException;
 import org.jruby.exceptions.MainExitException;
 import org.jruby.exceptions.RaiseException;
 import org.jruby.exceptions.Unrescuable;
@@ -71,36 +90,30 @@ import org.jruby.ext.coverage.CoverageData;
 import org.jruby.ext.ffi.FFI;
 import org.jruby.ext.fiber.ThreadFiber;
 import org.jruby.ext.fiber.ThreadFiberLibrary;
-import org.jruby.ext.jruby.JRubyConfigLibrary;
 import org.jruby.ext.tracepoint.TracePoint;
 import org.jruby.internal.runtime.GlobalVariables;
 import org.jruby.internal.runtime.ThreadService;
 import org.jruby.internal.runtime.ValueAccessor;
-import org.jruby.internal.runtime.methods.CallConfiguration;
 import org.jruby.internal.runtime.methods.DynamicMethod;
-import org.jruby.ir.IRBuilder;
 import org.jruby.internal.runtime.methods.JavaMethod;
+import org.jruby.ir.Compiler;
 import org.jruby.ir.IRManager;
-import org.jruby.ir.IRScope;
 import org.jruby.ir.interpreter.Interpreter;
-import org.jruby.ir.targets.JVMVisitor;
-import org.jruby.javasupport.JavaSupport;
+import org.jruby.ir.persistence.IRReader;
+import org.jruby.ir.persistence.IRReaderStream;
+import org.jruby.ir.persistence.util.IRFileExpert;
 import org.jruby.javasupport.proxy.JavaProxyClassFactory;
 import org.jruby.management.BeanManager;
 import org.jruby.management.BeanManagerFactory;
-import org.jruby.management.ClassCache;
 import org.jruby.management.Config;
 import org.jruby.management.ParserStats;
-import org.jruby.parser.IRStaticScopeFactory;
 import org.jruby.parser.Parser;
 import org.jruby.parser.ParserConfiguration;
-import org.jruby.parser.StaticScope;
 import org.jruby.parser.StaticScopeFactory;
 import org.jruby.platform.Platform;
 import org.jruby.runtime.Binding;
 import org.jruby.runtime.Block;
 import org.jruby.runtime.CallSite;
-import org.jruby.runtime.CallbackFactory;
 import org.jruby.runtime.ClassIndex;
 import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.EventHook;
@@ -128,33 +141,40 @@ import org.jruby.runtime.profile.builtin.ProfiledMethods;
 import org.jruby.runtime.scope.ManyVarsDynamicScope;
 import org.jruby.threading.DaemonThreadFactory;
 import org.jruby.util.ByteList;
+import org.jruby.util.ClassDefiningClassLoader;
 import org.jruby.util.DefinedMessage;
+import org.jruby.util.JRubyClassLoader;
+import org.jruby.util.SecurityHelper;
+import org.jruby.util.SelfFirstJRubyClassLoader;
 import org.jruby.util.IOInputStream;
 import org.jruby.util.IOOutputStream;
-import org.jruby.util.JRubyClassLoader;
-import org.jruby.util.JavaNameMangler;
+import org.jruby.util.ClassDefiningJRubyClassLoader;
 import org.jruby.util.KCode;
 import org.jruby.util.SafePropertyAccessor;
+import org.jruby.util.cli.Options;
 import org.jruby.util.collections.WeakHashSet;
 import org.jruby.util.func.Function1;
-import org.jruby.util.io.ChannelDescriptor;
+import org.jruby.util.io.FilenoUtil;
 import org.jruby.util.io.SelectorPool;
 import org.jruby.util.log.Logger;
 import org.jruby.util.log.LoggerFactory;
+import org.objectweb.asm.ClassReader;
 
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileDescriptor;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
-import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
+import java.io.PrintWriter;
+import java.lang.invoke.MethodHandle;
+import java.lang.ref.WeakReference;
+import java.lang.reflect.Constructor;
 import java.net.BindException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.channels.ClosedChannelException;
+import java.nio.charset.Charset;
 import java.security.AccessControlException;
 import java.security.SecureRandom;
 import java.util.ArrayList;
@@ -173,7 +193,6 @@ import java.util.Stack;
 import java.util.WeakHashMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -182,11 +201,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
-import static org.jruby.internal.runtime.GlobalVariable.Scope.*;
-
-import org.jruby.internal.runtime.methods.CallConfiguration;
-import org.jruby.internal.runtime.methods.JavaMethod;
-import org.jruby.util.cli.Options;
+import static java.lang.invoke.MethodHandles.explicitCastArguments;
+import static java.lang.invoke.MethodHandles.insertArguments;
+import static java.lang.invoke.MethodType.methodType;
+import static org.jruby.internal.runtime.GlobalVariable.Scope.GLOBAL;
 
 /**
  * The Ruby object represents the top-level of a JRuby "instance" in a given VM.
@@ -201,12 +219,15 @@ import org.jruby.util.cli.Options;
  * provides a number of utility methods for constructing global types and
  * accessing global runtime structures.
  */
-public final class Ruby {
+public final class Ruby implements Constantizable {
 
     /**
      * The logger used to log relevant bits.
      */
-    private static final Logger LOG = LoggerFactory.getLogger("Ruby");
+    private static final Logger LOG = LoggerFactory.getLogger(Ruby.class);
+    static { // enable DEBUG output
+        if (RubyInstanceConfig.JIT_LOADING_DEBUG) LOG.setDebugEnable(true);
+    }
 
     /**
      * Create and initialize a new JRuby runtime. The properties of the
@@ -221,22 +242,16 @@ public final class Ruby {
         this.threadService      = new ThreadService(this);
 
         if( config.isProfiling() ) {
-            this.profiledMethods        = new ProfiledMethods(this);
             this.profilingServiceLookup = new ProfilingServiceLookup(this);
         } else {
-            this.profiledMethods        = null;
             this.profilingServiceLookup = null;
         }
 
+        constant = OptoFactory.newConstantWrapper(Ruby.class, this);
+
         getJRubyClassLoader(); // force JRubyClassLoader to init if possible
 
-        if (config.getCompileMode() == CompileMode.OFFIR ||
-                config.getCompileMode() == CompileMode.FORCEIR) {
-            this.staticScopeFactory = new IRStaticScopeFactory(this);
-        } else {
-            this.staticScopeFactory = new StaticScopeFactory(this);
-        }
-
+        this.staticScopeFactory = new StaticScopeFactory(this);
         this.beanManager        = BeanManagerFactory.create(this, config.isManagementEnabled());
         this.jitCompiler        = new JITCompiler(this);
         this.parserStats        = new ParserStats(this);
@@ -259,13 +274,12 @@ public final class Ruby {
         }
 
         this.configBean = new Config(this);
-        this.classCacheBean = new ClassCache(this);
         this.runtimeBean = new org.jruby.management.Runtime(this);
 
         registerMBeans();
 
         this.runtimeCache = new RuntimeCache();
-        runtimeCache.initMethodCache(ClassIndex.MAX_CLASSES * MethodNames.values().length - 1);
+        runtimeCache.initMethodCache(ClassIndex.MAX_CLASSES.ordinal() * MethodNames.values().length - 1);
 
         checkpointInvalidator = OptoFactory.newConstantInvalidator();
 
@@ -282,22 +296,12 @@ public final class Ruby {
         this.beanManager.register(jitCompiler);
         this.beanManager.register(configBean);
         this.beanManager.register(parserStats);
-        this.beanManager.register(classCacheBean);
         this.beanManager.register(runtimeBean);
     }
 
     void reinitialize(boolean reinitCore) {
-        this.is1_9              = config.getCompatVersion().is1_9();
-        this.is2_0              = config.getCompatVersion().is2_0();
-        this.doNotReverseLookupEnabled = is1_9;
-
-        if (config.getCompileMode() == CompileMode.OFFIR ||
-                config.getCompileMode() == CompileMode.FORCEIR) {
-            this.staticScopeFactory = new IRStaticScopeFactory(this);
-        } else {
-            this.staticScopeFactory = new StaticScopeFactory(this);
-        }
-
+        this.doNotReverseLookupEnabled = true;
+        this.staticScopeFactory = new StaticScopeFactory(this);
         this.in                 = config.getInput();
         this.out                = config.getOutput();
         this.err                = config.getError();
@@ -309,6 +313,7 @@ public final class Ruby {
 
         if (reinitCore) {
             RubyGlobal.initARGV(this);
+            RubyGlobal.initSTDIO(this, globalVariables);
         }
     }
 
@@ -401,8 +406,7 @@ public final class Ruby {
      */
     public void useAsGlobalRuntime() {
         synchronized(Ruby.class) {
-            globalRuntime = null;
-            setGlobalRuntimeFirstTimeOnly(this);
+            globalRuntime = this;
         }
     }
 
@@ -468,17 +472,12 @@ public final class Ruby {
      */
     public IRubyObject evalScriptlet(String script, DynamicScope scope) {
         ThreadContext context = getCurrentContext();
-        Node node = parseEval(script, "<script>", scope, 0);
+        Node rootNode = parseEval(script, "<script>", scope, 0);
+
+        context.preEvalScriptlet(scope);
 
         try {
-            context.preEvalScriptlet(scope);
-            return ASTInterpreter.INTERPRET_ROOT(this, context, node, context.getFrameSelf(), Block.NULL_BLOCK);
-        } catch (JumpException.ReturnJump rj) {
-            throw newLocalJumpError(RubyLocalJumpError.Reason.RETURN, (IRubyObject)rj.getValue(), "unexpected return");
-        } catch (JumpException.BreakJump bj) {
-            throw newLocalJumpError(RubyLocalJumpError.Reason.BREAK, (IRubyObject)bj.getValue(), "unexpected break");
-        } catch (JumpException.RedoJump rj) {
-            throw newLocalJumpError(RubyLocalJumpError.Reason.REDO, (IRubyObject)rj.getValue(), "unexpected redo");
+            return interpreter.execute(this, rootNode, context.getFrameSelf());
         } finally {
             context.postEvalScriptlet();
         }
@@ -495,16 +494,16 @@ public final class Ruby {
      * @return The last value of the script
      */
     public IRubyObject executeScript(String script, String filename) {
-        byte[] bytes = script.getBytes();
+        byte[] bytes = encodeToBytes(script);
 
-        Node node = parseInline(new ByteArrayInputStream(bytes), filename, null);
+        RootNode root = (RootNode) parseInline(new ByteArrayInputStream(bytes), filename, null);
         ThreadContext context = getCurrentContext();
 
         String oldFile = context.getFile();
         int oldLine = context.getLine();
         try {
-            context.setFileAndLine(node.getPosition());
-            return runInterpreter(node);
+            context.setFileAndLine(root.getFile(), root.getLine());
+            return runInterpreter(root);
         } finally {
             context.setFileAndLine(oldFile, oldLine);
         }
@@ -534,51 +533,70 @@ public final class Ruby {
         getGlobalVariables().define("$PROGRAM_NAME", d, GLOBAL);
         getGlobalVariables().define("$0", d, GLOBAL);
 
-        for (Iterator i = config.getOptionGlobals().entrySet().iterator(); i.hasNext();) {
-            Map.Entry entry = (Map.Entry) i.next();
-            Object value = entry.getValue();
-            IRubyObject varvalue;
-            if (value != null) {
-                varvalue = newString(value.toString());
+        for (Map.Entry<String, String> entry : config.getOptionGlobals().entrySet()) {
+            final IRubyObject varvalue;
+            if (entry.getValue() != null) {
+                varvalue = newString(entry.getValue());
             } else {
                 varvalue = getTrue();
             }
-            getGlobalVariables().set('$' + entry.getKey().toString(), varvalue);
+            getGlobalVariables().set('$' + entry.getKey(), varvalue);
         }
 
         if (filename.endsWith(".class")) {
             // we are presumably running a precompiled class; load directly
-            Script script = CompiledScriptLoader.loadScriptFromFile(this, inputStream, filename);
+            IRScope script = CompiledScriptLoader.loadScriptFromFile(this, inputStream, null, filename, false);
             if (script == null) {
                 throw new MainExitException(1, "error: .class file specified is not a compiled JRuby script");
             }
-            script.setFilename(filename);
-            runScript(script);
+            script.setFileName(filename);
+            runInterpreter(script);
             return;
         }
 
-        Node scriptNode = parseFromMain(inputStream, filename);
+        if (getInstanceConfig().getCompileMode() == CompileMode.TRUFFLE) {
+            final JRubyTruffleInterface truffleContext = getTruffleContext();
+            Main.printTruffleTimeMetric("before-run");
+            int exitCode;
+            try {
+                exitCode = truffleContext.execute(filename);
+            } finally {
+                Main.printTruffleTimeMetric("after-run");
+                shutdownTruffleContextIfRunning();
+            }
+
+            throw new MainExitException(exitCode);
+        }
+
+        ParseResult parseResult = parseFromMain(filename, inputStream);
 
         // if no DATA, we're done with the stream, shut it down
         if (fetchGlobalConstant("DATA") == null) {
             try {inputStream.close();} catch (IOException ioe) {}
         }
 
-        ThreadContext context = getCurrentContext();
+        if (parseResult instanceof RootNode) {
+            RootNode scriptNode = (RootNode) parseResult;
 
-        String oldFile = context.getFile();
-        int oldLine = context.getLine();
-        try {
-            context.setFileAndLine(scriptNode.getPosition());
+            ThreadContext context = getCurrentContext();
 
-            if (config.isAssumePrinting() || config.isAssumeLoop()) {
-                runWithGetsLoop(scriptNode, config.isAssumePrinting(), config.isProcessLineEnds(),
-                        config.isSplit());
-            } else {
-                runNormally(scriptNode);
+            String oldFile = context.getFile();
+            int oldLine = context.getLine();
+            try {
+                context.setFileAndLine(scriptNode.getFile(), scriptNode.getLine());
+
+                if (config.isAssumePrinting() || config.isAssumeLoop()) {
+                    runWithGetsLoop(scriptNode, config.isAssumePrinting(), config.isProcessLineEnds(),
+                            config.isSplit());
+                } else {
+                    runNormally(scriptNode);
+                }
+            } finally {
+                context.setFileAndLine(oldFile, oldLine);
             }
-        } finally {
-            context.setFileAndLine(oldFile, oldLine);
+        } else {
+            // TODO: Only interpreter supported so far
+            runInterpreter(parseResult);
         }
     }
 
@@ -601,6 +619,12 @@ public final class Ruby {
         }
     }
 
+    public ParseResult parseFromMain(String fileName, InputStream in) {
+        if (config.isInlineScript()) return parseInline(in, fileName, getCurrentContext().getCurrentScope());
+
+        return parseFileFromMain(fileName, in, getCurrentContext().getCurrentScope());
+    }
+
     /**
      * Run the given script with a "while gets; end" loop wrapped around it.
      * This is primarily used for the -n command-line flag, to allow writing
@@ -617,7 +641,7 @@ public final class Ruby {
      */
     @Deprecated
     public IRubyObject runWithGetsLoop(Node scriptNode, boolean printing, boolean processLineEnds, boolean split, boolean unused) {
-        return runWithGetsLoop(scriptNode, printing, processLineEnds, split);
+        return runWithGetsLoop((RootNode) scriptNode, printing, processLineEnds, split);
     }
 
     /**
@@ -634,21 +658,35 @@ public final class Ruby {
      * bytecode before executing.
      * @return The result of executing the specified script
      */
-    public IRubyObject runWithGetsLoop(Node scriptNode, boolean printing, boolean processLineEnds, boolean split) {
+    public IRubyObject runWithGetsLoop(RootNode scriptNode, boolean printing, boolean processLineEnds, boolean split) {
         ThreadContext context = getCurrentContext();
+
+        // We do not want special scope types in IR so we ammend the AST tree to contain the elements representing
+        // a while gets; ...your code...; end
+        scriptNode = addGetsLoop(scriptNode, printing, processLineEnds, split);
 
         Script script = null;
         boolean compile = getInstanceConfig().getCompileMode().shouldPrecompileCLI();
         if (compile) {
-            script = tryCompile(scriptNode);
-            if (compile && script == null) {
-                // terminate; tryCompile will have printed out an error and we're done
-                return getNil();
+            try {
+                script = tryCompile(scriptNode);
+                if (Options.JIT_LOGGING.load()) {
+                    LOG.info("Successfully compiled: {}", scriptNode.getFile());
+                }
+            } catch (Throwable e) {
+                if (Options.JIT_LOGGING.load()) {
+                    if (Options.JIT_LOGGING_VERBOSE.load()) {
+                        LOG.error("Failed to compile: " + scriptNode.getFile(), e);
+                    }
+                    else {
+                        LOG.error("Failed to compile: " + scriptNode.getFile());
+                    }
+                }
             }
-        }
-
-        if (processLineEnds) {
-            getGlobalVariables().set("$\\", getGlobalVariables().get("$/"));
+            if (compile && script == null) {
+                // IR JIT does not handle all scripts yet, so let those that fail run in interpreter instead
+                // FIXME: restore error once JIT should handle everything
+            }
         }
 
         // we do pre and post load outside the "body" versions to pre-prepare
@@ -656,41 +694,44 @@ public final class Ruby {
         Helpers.preLoad(context, ((RootNode) scriptNode).getStaticScope().getVariables());
 
         try {
-            while (RubyKernel.gets(context, getTopSelf(), IRubyObject.NULL_ARRAY).isTrue()) {
-                loop: while (true) { // Used for the 'redo' command
-                    try {
-                        if (processLineEnds) {
-                            getGlobalVariables().get("$_").callMethod(context, "chop!");
-                        }
-
-                        if (split) {
-                            getGlobalVariables().set("$F", getGlobalVariables().get("$_").callMethod(context, "split"));
-                        }
-
-                        if (script != null) {
-                            runScriptBody(script);
-                        } else {
-                            runInterpreterBody(scriptNode);
-                        }
-
-                        if (printing) RubyKernel.print(context, getKernel(), new IRubyObject[] {getGlobalVariables().get("$_")});
-                        break loop;
-                    } catch (JumpException.RedoJump rj) {
-                        // do nothing, this iteration restarts
-                    } catch (JumpException.NextJump nj) {
-                        // recheck condition
-                        break loop;
-                    } catch (JumpException.BreakJump bj) {
-                        // end loop
-                        return (IRubyObject) bj.getValue();
-                    }
-                }
+            if (script != null) {
+                runScriptBody(script);
+            } else {
+                runInterpreterBody(scriptNode);
             }
+
         } finally {
             Helpers.postLoad(context);
         }
 
         return getNil();
+    }
+
+    // Modifies incoming source for -n, -p, and -F
+    private RootNode addGetsLoop(RootNode oldRoot, boolean printing, boolean processLineEndings, boolean split) {
+        ISourcePosition pos = oldRoot.getPosition();
+        BlockNode newBody = new BlockNode(pos);
+        newBody.add(new GlobalAsgnNode(pos, "$/", new StrNode(pos, ((RubyString) globalVariables.get("$/")).getByteList())));
+
+        if (processLineEndings) newBody.add(new GlobalAsgnNode(pos, "$\\", new GlobalVarNode(pos, "$/")));
+
+        GlobalVarNode dollarUnderscore = new GlobalVarNode(pos, "$_");
+
+        BlockNode whileBody = new BlockNode(pos);
+        newBody.add(new WhileNode(pos, new VCallNode(pos, "gets"), whileBody));
+
+        if (processLineEndings) whileBody.add(new CallNode(pos, dollarUnderscore, "chop!", null, null));
+        if (split) whileBody.add(new GlobalAsgnNode(pos, "$F", new CallNode(pos, dollarUnderscore, "split", null, null)));
+
+        if (oldRoot.getBodyNode() instanceof BlockNode) {   // common case n stmts
+            whileBody.addAll(((BlockNode) oldRoot.getBodyNode()));
+        } else {                                            // single expr script
+            whileBody.add(oldRoot.getBodyNode());
+        }
+
+        if (printing) whileBody.add(new FCallNode(pos, "puts", new ArrayNode(pos, dollarUnderscore), null));
+
+        return new RootNode(pos, oldRoot.getScope(), newBody, oldRoot.getFile());
     }
 
     /**
@@ -699,11 +740,31 @@ public final class Ruby {
      *
      * @param scriptNode The root node of the script to be executed
      * bytecode before execution
+ *     @param wrap whether to wrap the execution in an anonymous module
      * @return The result of executing the script
      */
-    @Deprecated
-    public IRubyObject runNormally(Node scriptNode, boolean unused) {
-        return runNormally(scriptNode);
+    public IRubyObject runNormally(Node scriptNode, boolean wrap) {
+        ScriptAndCode scriptAndCode = null;
+        boolean compile = getInstanceConfig().getCompileMode().shouldPrecompileCLI();
+        if (compile || config.isShowBytecode()) {
+            scriptAndCode = precompileCLI((RootNode) scriptNode);
+        }
+
+        if (scriptAndCode != null) {
+            if (config.isShowBytecode()) {
+                TraceClassVisitor tracer = new TraceClassVisitor(new PrintWriter(System.err));
+                ClassReader reader = new ClassReader(scriptAndCode.bytecode());
+                reader.accept(tracer, 0);
+                return getNil();
+            }
+
+            return runScript(scriptAndCode.script(), wrap);
+        } else {
+            // FIXME: temporarily allowing JIT to fail for $0 and fall back on interpreter
+//            failForcedCompile(scriptNode);
+
+            return runInterpreter(scriptNode);
+        }
     }
 
     /**
@@ -715,23 +776,28 @@ public final class Ruby {
      * @return The result of executing the script
      */
     public IRubyObject runNormally(Node scriptNode) {
-        Script script = null;
-        boolean compile = getInstanceConfig().getCompileMode().shouldPrecompileCLI();
-        if (compile || config.isShowBytecode()) {
-            script = tryCompile(scriptNode, null, new JRubyClassLoader(getJRubyClassLoader()), config.isShowBytecode());
-        }
+        return runNormally(scriptNode, false);
+    }
 
-        if (script != null) {
-            if (config.isShowBytecode()) {
-                return getNil();
+    private ScriptAndCode precompileCLI(RootNode scriptNode) {
+        ScriptAndCode scriptAndCode = null;
+
+        // IR JIT does not handle all scripts yet, so let those that fail run in interpreter instead
+        // FIXME: restore error once JIT should handle everything
+        try {
+            scriptAndCode = tryCompile(scriptNode, new ClassDefiningJRubyClassLoader(getJRubyClassLoader()));
+            if (scriptAndCode != null && Options.JIT_LOGGING.load()) {
+                LOG.info("done compiling target script: " + scriptNode.getFile());
             }
-
-            return runScript(script);
-        } else {
-            failForcedCompile(scriptNode);
-
-            return runInterpreter(scriptNode);
+        } catch (Exception e) {
+            if (Options.JIT_LOGGING.load()) {
+                LOG.error("failed to compile target script '" + scriptNode.getFile() + "'");
+                if (Options.JIT_LOGGING_VERBOSE.load()) {
+                    e.printStackTrace();
+                }
+            }
         }
+        return scriptAndCode;
     }
 
     /**
@@ -743,107 +809,29 @@ public final class Ruby {
      * @return an instance of the successfully-compiled Script, or null.
      */
     public Script tryCompile(Node node) {
-        return tryCompile(node, null, new JRubyClassLoader(getJRubyClassLoader()), false);
+        return tryCompile((RootNode) node, new ClassDefiningJRubyClassLoader(getJRubyClassLoader())).script();
     }
 
-    /**
-     * Try to compile the code associated with the given Node, returning an
-     * instance of the successfully-compiled Script or null if the script could
-     * not be compiled. This version accepts an ASTInspector instance assumed to
-     * have appropriate flags set for compile optimizations, such as to turn
-     * on heap-based local variables to share an existing scope.
-     *
-     * @param node The node to attempt to compiled
-     * @param inspector The ASTInspector to use for making optimization decisions
-     * @return an instance of the successfully-compiled Script, or null.
-     */
-    public Script tryCompile(Node node, ASTInspector inspector) {
-        return tryCompile(node, null, new JRubyClassLoader(getJRubyClassLoader()), inspector, false);
-    }
-
-    private void failForcedCompile(Node scriptNode) throws RaiseException {
+    private void failForcedCompile(RootNode scriptNode) throws RaiseException {
         if (config.getCompileMode().shouldPrecompileAll()) {
-            throw newRuntimeError("could not compile and compile mode is 'force': " + scriptNode.getPosition().getFile());
+            throw newRuntimeError("could not compile and compile mode is 'force': " + scriptNode.getFile());
         }
     }
 
-    private void handeCompileError(Node node, Throwable t) {
-        if (config.isJitLoggingVerbose() || config.isDebug()) {
-            LOG.error("warning: could not compile: {}; full trace follows", node.getPosition().getFile());
-            LOG.error(t.getMessage(), t);
-        }
-    }
-
-    private Script tryCompile(Node node, String cachedClassName, JRubyClassLoader classLoader, boolean dump) {
-        if (config.getCompileMode() == CompileMode.FORCEIR) {
-            final IRScope scope = IRBuilder.createIRBuilder(this, getIRManager()).buildRoot((RootNode) node);
-            final Class compiled = JVMVisitor.compile(this, scope, classLoader);
-            final StaticScope staticScope = scope.getStaticScope();
-            staticScope.setModule(getTopSelf().getMetaClass());
-            return new AbstractScript() {
-                @Override
-                public IRubyObject __file__(ThreadContext context, IRubyObject self, IRubyObject[] args, Block block) {
-                    try {
-                        return (IRubyObject)compiled.getMethod("__script__0", ThreadContext.class, StaticScope.class, IRubyObject.class, Block.class).invoke(null, getCurrentContext(), scope.getStaticScope(), getTopSelf(), block);
-                    } catch (InvocationTargetException ite) {
-                        if (ite.getCause() instanceof JumpException) {
-                            throw (JumpException)ite.getCause();
-                        } else {
-                            throw new RuntimeException(ite);
-                        }
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
-                }
-
-                @Override
-                public IRubyObject load(ThreadContext context, IRubyObject self, boolean wrap) {
-                    try {
-                        Helpers.preLoadCommon(context, staticScope, false);
-                        return __file__(context, self, IRubyObject.NULL_ARRAY, Block.NULL_BLOCK);
-                    } finally {
-                        Helpers.postLoad(context);
-                    }
-                }
-            };
-        }
-        ASTInspector inspector = new ASTInspector();
-        inspector.inspect(node);
-
-        return tryCompile(node, cachedClassName, classLoader, inspector, dump);
-    }
-
-    private Script tryCompile(Node node, String cachedClassName, JRubyClassLoader classLoader, ASTInspector inspector, boolean dump) {
-        Script script = null;
+    private ScriptAndCode tryCompile(RootNode root, ClassDefiningClassLoader classLoader) {
         try {
-            String filename = node.getPosition().getFile();
-            String classname = JavaNameMangler.mangledFilenameForStartupClasspath(filename);
-
-            StandardASMCompiler asmCompiler = new StandardASMCompiler(classname, filename);
-            ASTCompiler compiler = config.newCompiler();
-            if (dump) {
-                compiler.compileRoot(node, asmCompiler, inspector, false, false);
-                asmCompiler.dumpClass(System.out);
-            } else {
-                compiler.compileRoot(node, asmCompiler, inspector, true, false);
+            return Compiler.getInstance().execute(this, root, classLoader);
+        } catch (NotCompilableException e) {
+            if (Options.JIT_LOGGING.load()) {
+                if (Options.JIT_LOGGING_VERBOSE.load()) {
+                    LOG.error("failed to compile target script " + root.getFile() + ": ", e);
+                }
+                else {
+                    LOG.error("failed to compile target script " + root.getFile() + ": " + e.getLocalizedMessage());
+                }
             }
-
-            script = (Script)asmCompiler.loadClass(classLoader).newInstance();
-
-            // __file__ method expects its scope at 0, so prepare that here
-            // this is only needed for the "gets loop" which skips calling load
-            StaticScope rootScope = ((RootNode)node).getStaticScope();
-            if (rootScope.getModule() == null) rootScope.setModule(objectClass);
-            script.setRootScope(rootScope);
-
-            if (config.isJitLogging()) {
-                LOG.info("compiled: " + node.getPosition().getFile());
-            }
-        } catch (Throwable t) {
-            handeCompileError(node, t);
+            return null;
         }
-
-        return script;
     }
 
     public IRubyObject runScript(Script script) {
@@ -851,13 +839,11 @@ public final class Ruby {
     }
 
     public IRubyObject runScript(Script script, boolean wrap) {
-        ThreadContext context = getCurrentContext();
-
-        try {
-            return script.load(context, getTopSelf(), wrap);
-        } catch (JumpException.ReturnJump rj) {
-            return (IRubyObject) rj.getValue();
+        if (getInstanceConfig().getCompileMode() == CompileMode.TRUFFLE) {
+            throw new UnsupportedOperationException();
         }
+
+        return script.load(getCurrentContext(), getTopSelf(), wrap);
     }
 
     /**
@@ -865,31 +851,28 @@ public final class Ruby {
      * already-prepared, already-pushed scope for the script body.
      */
     public IRubyObject runScriptBody(Script script) {
-        ThreadContext context = getCurrentContext();
-
-        try {
-            return script.__file__(context, getTopSelf(), Block.NULL_BLOCK);
-        } catch (JumpException.ReturnJump rj) {
-            return (IRubyObject) rj.getValue();
-        }
+        return script.__file__(getCurrentContext(), getTopSelf(), Block.NULL_BLOCK);
     }
 
-    public IRubyObject runInterpreter(ThreadContext context, Node rootNode, IRubyObject self) {
-        assert rootNode != null : "scriptNode is not null";
-
-        try {
-            if (getInstanceConfig().getCompileMode() == CompileMode.OFFIR) {
-                return Interpreter.interpret(this, rootNode, self);
-            } else {
-                return ASTInterpreter.INTERPRET_ROOT(this, context, rootNode, getTopSelf(), Block.NULL_BLOCK);
-            }
-        } catch (JumpException.ReturnJump rj) {
-            return (IRubyObject) rj.getValue();
+    public IRubyObject runInterpreter(ThreadContext context, ParseResult parseResult, IRubyObject self) {
+        if (getInstanceConfig().getCompileMode() == CompileMode.TRUFFLE) {
+            throw new UnsupportedOperationException();
         }
+
+        return interpreter.execute(this, parseResult, self);
+   }
+
+    public IRubyObject runInterpreter(ThreadContext context,  Node rootNode, IRubyObject self) {
+        assert rootNode != null : "scriptNode is not null";
+        return interpreter.execute(this, rootNode, self);
     }
 
     public IRubyObject runInterpreter(Node scriptNode) {
         return runInterpreter(getCurrentContext(), scriptNode, getTopSelf());
+    }
+
+    public IRubyObject runInterpreter(ParseResult parseResult) {
+        return runInterpreter(getCurrentContext(), parseResult, getTopSelf());
     }
 
     /**
@@ -900,7 +883,7 @@ public final class Ruby {
         assert scriptNode != null : "scriptNode is not null";
         assert scriptNode instanceof RootNode : "scriptNode is not a RootNode";
 
-        return runInterpreter(((RootNode) scriptNode).getBodyNode());
+        return runInterpreter(scriptNode);
     }
 
     public Parser getParser() {
@@ -913,6 +896,56 @@ public final class Ruby {
 
     public JITCompiler getJITCompiler() {
         return jitCompiler;
+    }
+
+    public JRubyTruffleInterface getTruffleContext() {
+        synchronized (truffleContextMonitor) {
+            if (truffleContext == null) {
+                truffleContext = loadTruffle();
+            }
+            return truffleContext;
+        }
+    }
+
+    private JRubyTruffleInterface loadTruffle() {
+        Main.printTruffleTimeMetric("before-load-context");
+
+        String javaVersion = System.getProperty("java.version");
+        String[] parts = javaVersion.split("\\D+");
+        int firstPart = Integer.valueOf(parts[0]);
+        if (!(firstPart >= 9 || Integer.valueOf(parts[1]) >= 8)) {
+            System.err.println("JRuby+Truffle needs Java 8 to run (found " + javaVersion + ").");
+            System.exit(1);
+        }
+
+        final Class<?> clazz;
+
+        try {
+            clazz = getJRubyClassLoader().loadClass("org.jruby.truffle.JRubyTruffleImpl");
+        } catch (Exception e) {
+            throw new RuntimeException("JRuby's Truffle backend not available - either it was not compiled because JRuby was built with Java 7, or it has been removed", e);
+        }
+
+        final JRubyTruffleInterface truffleContext;
+
+        try {
+            Constructor<?> con = clazz.getConstructor(Ruby.class);
+            truffleContext = (JRubyTruffleInterface) con.newInstance(this);
+        } catch (Exception e) {
+            throw new RuntimeException("Error while calling the constructor of Truffle's RubyContext", e);
+        }
+
+        Main.printTruffleTimeMetric("after-load-context");
+
+        return truffleContext;
+    }
+
+    public void shutdownTruffleContextIfRunning() {
+        synchronized (truffleContextMonitor) {
+            if (truffleContext != null) {
+                truffleContext.dispose();
+            }
+        }
     }
 
     /**
@@ -1180,7 +1213,7 @@ public final class Ruby {
         // Construct key services
         loadService = config.createLoadService(this);
         posix = POSIXFactory.getPOSIX(new JRubyPOSIXHandler(this), config.isNativeEnabled());
-        javaSupport = new JavaSupport(this);
+        javaSupport = loadJavaSupport();
 
         executor = new ThreadPoolExecutor(
                 RubyInstanceConfig.POOL_MIN,
@@ -1219,7 +1252,12 @@ public final class Ruby {
         // set up thread statuses
         initThreadStatuses();
 
-        irManager = new IRManager();
+        // Create an IR manager and a top-level IR scope and bind it to the top-level static-scope object
+        irManager = new IRManager(getInstanceConfig());
+        // FIXME: This registers itself into static scope as a side-effect.  Let's make this
+        // relationship handled either more directly or through a descriptice method
+        // FIXME: We need a failing test case for this since removing it did not regress tests
+        new IRScriptBody(irManager, "", context.getCurrentScope().getStaticScope());
 
         // Initialize the "dummy" class used as a marker
         dummyClass = new RubyClass(this, classClass);
@@ -1236,39 +1274,32 @@ public final class Ruby {
 
         // load JRuby internals, which loads Java support
         // if we can't use reflection, 'jruby' and 'java' won't work; no load.
-        boolean reflectionWorks;
-        try {
-            ClassLoader.class.getDeclaredMethod("getResourceAsStream", String.class);
-            reflectionWorks = true;
-        } catch (Exception e) {
-            reflectionWorks = false;
-        }
+        boolean reflectionWorks = doesReflectionWork();
 
-        if (!RubyInstanceConfig.DEBUG_PARSER && reflectionWorks) {
+        if (!RubyInstanceConfig.DEBUG_PARSER && reflectionWorks
+                && getInstanceConfig().getCompileMode() != CompileMode.TRUFFLE) {
             loadService.require("jruby");
         }
 
-        // attempt to enable unlimited-strength crypto on OpenJDK
-        try {
-            Class jceSecurity = Class.forName("javax.crypto.JceSecurity");
-            Field isRestricted = jceSecurity.getDeclaredField("isRestricted");
-            isRestricted.setAccessible(true);
-            isRestricted.set(null, false);
-            isRestricted.setAccessible(false);
-        } catch (Exception e) {
-            if (isDebug()) {
-                System.err.println("unable to enable unlimited-strength crypto");
-                e.printStackTrace();
-            }
-        }
+        SecurityHelper.checkCryptoRestrictions(this);
 
         // out of base boot mode
-        booting = false;
+        bootingCore = false;
 
-        // init Ruby-based kernel
-        initRubyKernel();
+        if (getInstanceConfig().getCompileMode() != CompileMode.TRUFFLE) {
+            // init Ruby-based kernel
+            initRubyKernel();
 
-        if (is1_9()) {
+            // Define blank modules for feature detection in preludes
+            if (!config.isDisableGems()) {
+                defineModule("Gem");
+            }
+            if (!config.isDisableDidYouMean()) {
+                defineModule("DidYouMean");
+            }
+
+            initRubyPreludes();
+
             // everything booted, so SizedQueue should be available; set up root fiber
             ThreadFiber.initRootFiber(context);
         }
@@ -1284,24 +1315,43 @@ public final class Ruby {
         }
 
         if (config.getLoadGemfile()) {
-            loadService.loadFromClassLoader(getClassLoader(), "jruby/bundler/startup.rb", false);
+            loadBundler();
         }
 
         setNetworkStack();
 
+        // Done booting JRuby runtime
+        bootingRuntime = false;
+
         // Require in all libraries specified on command line
-        for (String scriptName : config.getRequiredLibraries()) {
-            if (is1_9) {
+        if (getInstanceConfig().getCompileMode() != CompileMode.TRUFFLE) {
+            for (String scriptName : config.getRequiredLibraries()) {
                 topSelf.callMethod(context, "require", RubyString.newString(this, scriptName));
-            } else {
-                loadService.require(scriptName);
             }
+        }
+    }
+
+    public JavaSupport loadJavaSupport() {
+        return new JavaSupportImpl(this);
+    }
+
+    private void loadBundler() {
+        loadService.loadFromClassLoader(getClassLoader(), "jruby/bundler/startup.rb", false);
+    }
+
+    private boolean doesReflectionWork() {
+        try {
+            ClassLoader.class.getDeclaredMethod("getResourceAsStream", String.class);
+            return true;
+        } catch (Exception e) {
+            return false;
         }
     }
 
     private void bootstrap() {
         initCore();
         initExceptions();
+        initLibraries();
     }
 
     private void initDefinedMessages() {
@@ -1321,35 +1371,30 @@ public final class Ruby {
     }
 
     private void initRoot() {
-        boolean oneNine = is1_9();
         // Bootstrap the top of the hierarchy
-        if (oneNine) {
-            basicObjectClass = RubyClass.createBootstrapClass(this, "BasicObject", null, RubyBasicObject.BASICOBJECT_ALLOCATOR);
-            objectClass = RubyClass.createBootstrapClass(this, "Object", basicObjectClass, RubyObject.OBJECT_ALLOCATOR);
-        } else {
-            objectClass = RubyClass.createBootstrapClass(this, "Object", null, RubyObject.OBJECT_ALLOCATOR);
-        }
+        basicObjectClass = RubyClass.createBootstrapClass(this, "BasicObject", null, RubyBasicObject.BASICOBJECT_ALLOCATOR);
+        objectClass = RubyClass.createBootstrapClass(this, "Object", basicObjectClass, RubyObject.OBJECT_ALLOCATOR);
         moduleClass = RubyClass.createBootstrapClass(this, "Module", objectClass, RubyModule.MODULE_ALLOCATOR);
         classClass = RubyClass.createBootstrapClass(this, "Class", moduleClass, RubyClass.CLASS_ALLOCATOR);
 
-        if (oneNine) basicObjectClass.setMetaClass(classClass);
-        objectClass.setMetaClass(classClass);
+        basicObjectClass.setMetaClass(classClass);
+        objectClass.setMetaClass(basicObjectClass);
         moduleClass.setMetaClass(classClass);
         classClass.setMetaClass(classClass);
 
         RubyClass metaClass;
-        if (oneNine) metaClass = basicObjectClass.makeMetaClass(classClass);
-        metaClass = objectClass.makeMetaClass(classClass);
+        metaClass = basicObjectClass.makeMetaClass(classClass);
+        metaClass = objectClass.makeMetaClass(metaClass);
         metaClass = moduleClass.makeMetaClass(metaClass);
         metaClass = classClass.makeMetaClass(metaClass);
 
-        if (oneNine) RubyBasicObject.createBasicObjectClass(this, basicObjectClass);
+        RubyBasicObject.createBasicObjectClass(this, basicObjectClass);
         RubyObject.createObjectClass(this, objectClass);
         RubyModule.createModuleClass(this, moduleClass);
         RubyClass.createClassClass(this, classClass);
 
         // set constants now that they're initialized
-        if (oneNine) basicObjectClass.setConstant("BasicObject", basicObjectClass);
+        basicObjectClass.setConstant("BasicObject", basicObjectClass);
         objectClass.setConstant("Object", objectClass);
         objectClass.setConstant("Class", classClass);
         objectClass.setConstant("Module", moduleClass);
@@ -1359,8 +1404,8 @@ public final class Ruby {
         objectClass.includeModule(kernelModule);
 
         // In 1.9 and later, Kernel.gsub is defined only when '-p' or '-n' is given on the command line
-        if (oneNine && config.getKernelGsubDefined()) {
-            kernel.addMethod("gsub", new JavaMethod(kernel, Visibility.PRIVATE, CallConfiguration.FrameFullScopeNone) {
+        if (config.getKernelGsubDefined()) {
+            kernel.addMethod("gsub", new JavaMethod(kernel, Visibility.PRIVATE) {
 
                 @Override
                 public IRubyObject call(ThreadContext context, IRubyObject self, RubyModule clazz, String name, IRubyObject[] args, Block block) {
@@ -1377,7 +1422,7 @@ public final class Ruby {
         }
 
         // Object is ready, create top self
-        topSelf = TopSelfFactory.createTopSelf(this);
+        topSelf = TopSelfFactory.createTopSelf(this, false);
 
         // Pre-create all the core classes potentially referenced during startup
         RubyNil.createNilClass(this);
@@ -1389,7 +1434,9 @@ public final class Ruby {
         singleNilArray = new IRubyObject[] {nilObject};
 
         falseObject = new RubyBoolean.False(this);
+        falseObject.setFrozen(true);
         trueObject = new RubyBoolean.True(this);
+        trueObject.setFrozen(true);
     }
 
     private void initCore() {
@@ -1417,12 +1464,6 @@ public final class Ruby {
             RubyException.createExceptionClass(this);
         }
 
-        if (!is1_9()) {
-            if (profile.allowModule("Precision")) {
-                RubyPrecision.createPrecisionModule(this);
-            }
-        }
-
         if (profile.allowClass("Numeric")) {
             RubyNumeric.createNumericClass(this);
         }
@@ -1433,38 +1474,36 @@ public final class Ruby {
             RubyFixnum.createFixnumClass(this);
         }
 
-        if (is1_9()) {
-            RubyEncoding.createEncodingClass(this);
-            RubyConverter.createConverterClass(this);
+        RubyEncoding.createEncodingClass(this);
+        RubyConverter.createConverterClass(this);
 
-            encodingService.defineEncodings();
-            encodingService.defineAliases();
+        encodingService.defineEncodings();
+        encodingService.defineAliases();
 
-            // External should always have a value, but Encoding.external_encoding{,=} will lazily setup
-            String encoding = config.getExternalEncoding();
-            if (encoding != null && !encoding.equals("")) {
-                Encoding loadedEncoding = encodingService.loadEncoding(ByteList.create(encoding));
-                if (loadedEncoding == null) throw new MainExitException(1, "unknown encoding name - " + encoding);
-                setDefaultExternalEncoding(loadedEncoding);
-            } else {
-                Encoding consoleEncoding = encodingService.getConsoleEncoding();
-                Encoding availableEncoding = consoleEncoding == null ? encodingService.getLocaleEncoding() : consoleEncoding;
-                setDefaultExternalEncoding(availableEncoding);
-            }
+        // External should always have a value, but Encoding.external_encoding{,=} will lazily setup
+        String encoding = config.getExternalEncoding();
+        if (encoding != null && !encoding.equals("")) {
+            Encoding loadedEncoding = encodingService.loadEncoding(ByteList.create(encoding));
+            if (loadedEncoding == null) throw new MainExitException(1, "unknown encoding name - " + encoding);
+            setDefaultExternalEncoding(loadedEncoding);
+        } else {
+            Encoding consoleEncoding = encodingService.getConsoleEncoding();
+            Encoding availableEncoding = consoleEncoding == null ? encodingService.getLocaleEncoding() : consoleEncoding;
+            setDefaultExternalEncoding(availableEncoding);
+        }
 
-            encoding = config.getInternalEncoding();
-            if (encoding != null && !encoding.equals("")) {
-                Encoding loadedEncoding = encodingService.loadEncoding(ByteList.create(encoding));
-                if (loadedEncoding == null) throw new MainExitException(1, "unknown encoding name - " + encoding);
-                setDefaultInternalEncoding(loadedEncoding);
-            }
+        encoding = config.getInternalEncoding();
+        if (encoding != null && !encoding.equals("")) {
+            Encoding loadedEncoding = encodingService.loadEncoding(ByteList.create(encoding));
+            if (loadedEncoding == null) throw new MainExitException(1, "unknown encoding name - " + encoding);
+            setDefaultInternalEncoding(loadedEncoding);
+        }
 
-            if (profile.allowClass("Complex")) {
-                RubyComplex.createComplexClass(this);
-            }
-            if (profile.allowClass("Rational")) {
-                RubyRational.createRationalClass(this);
-            }
+        if (profile.allowClass("Complex")) {
+            RubyComplex.createComplexClass(this);
+        }
+        if (profile.allowClass("Rational")) {
+            RubyRational.createRationalClass(this);
         }
 
         if (profile.allowClass("Hash")) {
@@ -1481,19 +1520,12 @@ public final class Ruby {
         if (profile.allowClass("Bignum")) {
             RubyBignum.createBignumClass(this);
             // RubyRandom depends on Bignum existence.
-            if (is1_9()) {
-                RubyRandom.createRandomClass(this);
-            } else {
-                setDefaultRand(new RubyRandom.RandomType(this));
-            }
+            RubyRandom.createRandomClass(this);
         }
         ioClass = RubyIO.createIOClass(this);
 
         if (profile.allowClass("Struct")) {
             RubyStruct.createStructClass(this);
-        }
-        if (profile.allowClass("Tms")) {
-            tmsStruct = RubyStruct.newInstance(structClass, new IRubyObject[]{newString("Tms"), newSymbol("utime"), newSymbol("stime"), newSymbol("cutime"), newSymbol("cstime")}, Block.NULL_BLOCK);
         }
 
         if (profile.allowClass("Binding")) {
@@ -1560,16 +1592,7 @@ public final class Ruby {
             RubyEnumerator.defineEnumerator(this);
         }
 
-        if (is1_9()) {
-            new ThreadFiberLibrary().load(this, false);
-        }
-
-        if (is2_0()) {
-            TracePoint.createTracePointClass(this);
-        }
-
-        // Load the JRuby::Config module for accessing configuration settings from Ruby
-        new JRubyConfigLibrary().load(this, false);
+        TracePoint.createTracePointClass(this);
     }
 
     public static final int NIL_PREFILLED_ARRAY_SIZE = RubyArray.ARRAY_DEFAULT_SIZE * 8;
@@ -1584,8 +1607,10 @@ public final class Ruby {
         ioError = defineClassIfAllowed("IOError", standardError);
         scriptError = defineClassIfAllowed("ScriptError", exceptionClass);
         rangeError = defineClassIfAllowed("RangeError", standardError);
-        signalException = defineClassIfAllowed("SignalException", exceptionClass);
 
+        if (profile.allowClass("SignalException")) {
+            signalException = RubySignalException.createSignalExceptionClass(this, exceptionClass);
+        }
         if (profile.allowClass("NameError")) {
             nameError = RubyNameError.createNameErrorClass(this, standardError);
             nameErrorMessage = RubyNameError.createNameErrorMessageClass(this, nameError);
@@ -1607,11 +1632,18 @@ public final class Ruby {
         }
 
         fatal = defineClassIfAllowed("Fatal", exceptionClass);
-        interrupt = defineClassIfAllowed("Interrupt", signalException);
+        if (profile.allowClass("Interrupt")) {
+            interrupt = RubyInterrupt.createInterruptClass(this, signalException);
+        }
         typeError = defineClassIfAllowed("TypeError", standardError);
         argumentError = defineClassIfAllowed("ArgumentError", standardError);
+        if (profile.allowClass("UncaughtThrowError")) {
+            uncaughtThrowError = RubyUncaughtThrowError.createUncaughtThrowErrorClass(this, argumentError);
+        }
         indexError = defineClassIfAllowed("IndexError", standardError);
-        stopIteration = defineClassIfAllowed("StopIteration", indexError);
+        if (profile.allowClass("StopIteration")) {
+            stopIteration = RubyStopIteration.createStopIterationClass(this, indexError);
+        }
         syntaxError = defineClassIfAllowed("SyntaxError", scriptError);
         loadError = defineClassIfAllowed("LoadError", scriptError);
         notImplementedError = defineClassIfAllowed("NotImplementedError", scriptError);
@@ -1622,29 +1654,34 @@ public final class Ruby {
         eofError = defineClassIfAllowed("EOFError", ioError);
         threadError = defineClassIfAllowed("ThreadError", standardError);
         concurrencyError = defineClassIfAllowed("ConcurrencyError", threadError);
-        systemStackError = defineClassIfAllowed("SystemStackError", is1_9 ? exceptionClass : standardError);
+        systemStackError = defineClassIfAllowed("SystemStackError", exceptionClass);
         zeroDivisionError = defineClassIfAllowed("ZeroDivisionError", standardError);
         floatDomainError  = defineClassIfAllowed("FloatDomainError", rangeError);
 
-        if (is1_9()) {
-            if (profile.allowClass("EncodingError")) {
-                encodingError = defineClass("EncodingError", standardError, standardError.getAllocator());
-                encodingCompatibilityError = defineClassUnder("CompatibilityError", encodingError, encodingError.getAllocator(), encodingClass);
-                invalidByteSequenceError = defineClassUnder("InvalidByteSequenceError", encodingError, encodingError.getAllocator(), encodingClass);
-                invalidByteSequenceError.defineAnnotatedMethods(RubyConverter.EncodingErrorMethods.class);
-                undefinedConversionError = defineClassUnder("UndefinedConversionError", encodingError, encodingError.getAllocator(), encodingClass);
-                undefinedConversionError.defineAnnotatedMethods(RubyConverter.EncodingErrorMethods.class);
-                converterNotFoundError = defineClassUnder("ConverterNotFoundError", encodingError, encodingError.getAllocator(), encodingClass);
-                fiberError = defineClass("FiberError", standardError, standardError.getAllocator());
-            }
-            concurrencyError = defineClassIfAllowed("ConcurrencyError", threadError);
-            keyError = defineClassIfAllowed("KeyError", indexError);
-
-            mathDomainError = defineClassUnder("DomainError", argumentError, argumentError.getAllocator(), mathModule);
-            inRecursiveListOperation.set(false);
+        if (profile.allowClass("EncodingError")) {
+            encodingError = defineClass("EncodingError", standardError, standardError.getAllocator());
+            encodingCompatibilityError = defineClassUnder("CompatibilityError", encodingError, encodingError.getAllocator(), encodingClass);
+            invalidByteSequenceError = defineClassUnder("InvalidByteSequenceError", encodingError, encodingError.getAllocator(), encodingClass);
+            invalidByteSequenceError.defineAnnotatedMethods(RubyConverter.EncodingErrorMethods.class);
+            invalidByteSequenceError.defineAnnotatedMethods(RubyConverter.InvalidByteSequenceErrorMethods.class);
+            undefinedConversionError = defineClassUnder("UndefinedConversionError", encodingError, encodingError.getAllocator(), encodingClass);
+            undefinedConversionError.defineAnnotatedMethods(RubyConverter.EncodingErrorMethods.class);
+            undefinedConversionError.defineAnnotatedMethods(RubyConverter.UndefinedConversionErrorMethods.class);
+            converterNotFoundError = defineClassUnder("ConverterNotFoundError", encodingError, encodingError.getAllocator(), encodingClass);
+            fiberError = defineClass("FiberError", standardError, standardError.getAllocator());
         }
+        concurrencyError = defineClassIfAllowed("ConcurrencyError", threadError);
+        keyError = defineClassIfAllowed("KeyError", indexError);
+
+        mathDomainError = defineClassUnder("DomainError", argumentError, argumentError.getAllocator(), mathModule);
+        inRecursiveListOperation.set(false);
 
         initErrno();
+    }
+
+    private void initLibraries() {
+        new ThreadLibrary().load(this, false);
+        new ThreadFiberLibrary().load(this, false);
     }
 
     private RubyClass defineClassIfAllowed(String name, RubyClass superClass) {
@@ -1663,7 +1700,7 @@ public final class Ruby {
     }
 
     /**
-     * Create module Errno's Variables.  We have this method since Errno does not have it's
+     * Create module Errno's Variables.  We have this method since Errno does not have its
      * own java class.
      */
     private void initErrno() {
@@ -1719,12 +1756,10 @@ public final class Ruby {
         addLazyBuiltin("jruby.rb", "jruby", "org.jruby.ext.jruby.JRubyLibrary");
         addLazyBuiltin("jruby/util.rb", "jruby/util", "org.jruby.ext.jruby.JRubyUtilLibrary");
         addLazyBuiltin("jruby/type.rb", "jruby/type", "org.jruby.ext.jruby.JRubyTypeLibrary");
-        addLazyBuiltin("iconv.jar", "iconv", "org.jruby.ext.iconv.IConvLibrary");
         addLazyBuiltin("nkf.jar", "nkf", "org.jruby.ext.nkf.NKFLibrary");
         addLazyBuiltin("stringio.jar", "stringio", "org.jruby.ext.stringio.StringIOLibrary");
         addLazyBuiltin("strscan.jar", "strscan", "org.jruby.ext.strscan.StringScannerLibrary");
         addLazyBuiltin("zlib.jar", "zlib", "org.jruby.ext.zlib.ZlibLibrary");
-        addLazyBuiltin("enumerator.jar", "enumerator", "org.jruby.ext.enumerator.EnumeratorLibrary");
         addLazyBuiltin("thread.jar", "thread", "org.jruby.ext.thread.ThreadLibrary");
         addLazyBuiltin("thread.rb", "thread", "org.jruby.ext.thread.ThreadLibrary");
         addLazyBuiltin("digest.jar", "digest.so", "org.jruby.ext.digest.DigestLibrary");
@@ -1732,11 +1767,11 @@ public final class Ruby {
         addLazyBuiltin("digest/rmd160.jar", "digest/rmd160", "org.jruby.ext.digest.RMD160");
         addLazyBuiltin("digest/sha1.jar", "digest/sha1", "org.jruby.ext.digest.SHA1");
         addLazyBuiltin("digest/sha2.jar", "digest/sha2", "org.jruby.ext.digest.SHA2");
+        addLazyBuiltin("digest/bubblebabble.jar", "digest/bubblebabble", "org.jruby.ext.digest.BubbleBabble");
         addLazyBuiltin("bigdecimal.jar", "bigdecimal", "org.jruby.ext.bigdecimal.BigDecimalLibrary");
         addLazyBuiltin("io/wait.jar", "io/wait", "org.jruby.ext.io.wait.IOWaitLibrary");
         addLazyBuiltin("etc.jar", "etc", "org.jruby.ext.etc.EtcLibrary");
         addLazyBuiltin("weakref.rb", "weakref", "org.jruby.ext.weakref.WeakRefLibrary");
-        addLazyBuiltin("native_delegate.jar", "native_delegate", "org.jruby.ext.delegate.NativeDelegateLibrary");
         addLazyBuiltin("timeout.rb", "timeout", "org.jruby.ext.timeout.Timeout");
         addLazyBuiltin("socket.jar", "socket", "org.jruby.ext.socket.SocketLibrary");
         addLazyBuiltin("rbconfig.rb", "rbconfig", "org.jruby.ext.rbconfig.RbConfigLibrary");
@@ -1744,25 +1779,23 @@ public final class Ruby {
         addLazyBuiltin("ffi-internal.jar", "ffi-internal", "org.jruby.ext.ffi.FFIService");
         addLazyBuiltin("tempfile.jar", "tempfile", "org.jruby.ext.tempfile.TempfileLibrary");
         addLazyBuiltin("fcntl.rb", "fcntl", "org.jruby.ext.fcntl.FcntlLibrary");
-        addLazyBuiltin("yecht.jar", "yecht", "YechtService");
-        addLazyBuiltin("io/try_nonblock.jar", "io/try_nonblock", "org.jruby.ext.io.try_nonblock.IOTryNonblockLibrary");
-        addLazyBuiltin("pathname_ext.jar", "pathname_ext", "org.jruby.ext.pathname.PathnameLibrary");
+        addLazyBuiltin("pathname.jar", "pathname", "org.jruby.ext.pathname.PathnameLibrary");
 
-        if (is1_9()) {
-            addLazyBuiltin("mathn/complex.jar", "mathn/complex", "org.jruby.ext.mathn.Complex");
-            addLazyBuiltin("mathn/rational.jar", "mathn/rational", "org.jruby.ext.mathn.Rational");
-            addLazyBuiltin("psych.jar", "psych", "org.jruby.ext.psych.PsychLibrary");
-            addLazyBuiltin("coverage.jar", "coverage", "org.jruby.ext.coverage.CoverageLibrary");
+        addLazyBuiltin("mathn/complex.jar", "mathn/complex", "org.jruby.ext.mathn.Complex");
+        addLazyBuiltin("mathn/rational.jar", "mathn/rational", "org.jruby.ext.mathn.Rational");
+        addLazyBuiltin("ripper.jar", "ripper", "org.jruby.ext.ripper.RipperLibrary");
+        addLazyBuiltin("coverage.jar", "coverage", "org.jruby.ext.coverage.CoverageLibrary");
 
-            // TODO: implement something for these?
-            Library dummy = new Library() {
-                public void load(Ruby runtime, boolean wrap) throws IOException {
-                    // dummy library that does nothing right now
-                }
-            };
-            addBuiltinIfAllowed("continuation.rb", dummy);
-            addBuiltinIfAllowed("io/nonblock.rb", dummy);
-        }
+        // TODO: implement something for these?
+        addBuiltinIfAllowed("continuation.rb", Library.DUMMY);
+
+        // for backward compatibility
+        loadService.provide("enumerator.jar"); // can't be in RubyEnumerator because LoadService isn't ready then
+        loadService.provide("rational.jar");
+        loadService.provide("complex.jar");
+
+        // we define the classes at boot because we need them
+        addBuiltinIfAllowed("thread.rb", Library.DUMMY);
 
         if(RubyInstanceConfig.NATIVE_NET_PROTOCOL) {
             addLazyBuiltin("net/protocol.rb", "net/protocol", "org.jruby.ext.net.protocol.NetProtocolBufferedIOLibrary");
@@ -1781,18 +1814,14 @@ public final class Ruby {
 
         // load Ruby parts of core
         loadService.loadFromClassLoader(getClassLoader(), "jruby/kernel.rb", false);
+    }
 
-        switch (config.getCompatVersion()) {
-            case RUBY1_8:
-                loadService.loadFromClassLoader(getClassLoader(), "jruby/kernel18.rb", false);
-                break;
-            case RUBY1_9:
-                loadService.loadFromClassLoader(getClassLoader(), "jruby/kernel19.rb", false);
-                break;
-            case RUBY2_0:
-                loadService.loadFromClassLoader(getClassLoader(), "jruby/kernel20.rb", false);
-                break;
-        }
+    private void initRubyPreludes() {
+        // We cannot load any .rb and debug new parser features
+        if (RubyInstanceConfig.DEBUG_PARSER) return;
+
+        // load Ruby parts of core
+        loadService.loadFromClassLoader(getClassLoader(), "jruby/preludes.rb", false);
     }
 
     private void addLazyBuiltin(String name, String shortName, String className) {
@@ -1928,8 +1957,14 @@ public final class Ruby {
         return defaultMethodMissing;
     }
 
-    public void setDefaultMethodMissing(DynamicMethod method) {
+    public boolean isDefaultMethodMissing(DynamicMethod method) {
+        return defaultMethodMissing == method || defaultModuleMethodMissing == method;
+
+    }
+
+    public void setDefaultMethodMissing(DynamicMethod method, DynamicMethod moduleMethod) {
         defaultMethodMissing = method;
+        defaultModuleMethodMissing = moduleMethod;
     }
 
     public DynamicMethod getRespondToMethod() {
@@ -2020,6 +2055,20 @@ public final class Ruby {
     }
     void setYielder(RubyClass yielderClass) {
         this.yielderClass = yielderClass;
+    }
+
+    public RubyClass getGenerator() {
+        return generatorClass;
+    }
+    public void setGenerator(RubyClass generatorClass) {
+        this.generatorClass = generatorClass;
+    }
+
+    public RubyClass getFiber() {
+        return fiberClass;
+    }
+    public void setFiber(RubyClass fiberClass) {
+        this.fiberClass = fiberClass;
     }
 
     public RubyClass getString() {
@@ -2424,6 +2473,10 @@ public final class Ruby {
         return argumentError;
     }
 
+    public RubyClass getUncaughtThrowError() {
+        return uncaughtThrowError;
+    }
+
     public RubyClass getIndexError() {
         return indexError;
     }
@@ -2605,7 +2658,12 @@ public final class Ruby {
     public synchronized JRubyClassLoader getJRubyClassLoader() {
         // FIXME: Get rid of laziness and handle restricted access elsewhere
         if (!Ruby.isSecurityRestricted() && jrubyClassLoader == null) {
-            jrubyClassLoader = new JRubyClassLoader(config.getLoader());
+            if (config.isClassloaderDelegate()){
+                jrubyClassLoader = new JRubyClassLoader(config.getLoader());
+            }
+            else {
+                jrubyClassLoader = new SelfFirstJRubyClassLoader(config.getLoader());
+            }
         }
 
         return jrubyClassLoader;
@@ -2634,57 +2692,101 @@ public final class Ruby {
         globalVariables.defineReadonly(name, new ValueAccessor(value), scope);
     }
 
-    public Node parseFile(InputStream in, String file, DynamicScope scope, int lineNumber) {
-        if (parserStats != null) parserStats.addLoadParse();
-        ParserConfiguration parserConfig =
-                new ParserConfiguration(this, lineNumber, false, false, true, config);
-        if (is2_0 ||
-                (is1_9 && config.getSourceEncoding() != null)) {
-            setupSourceEncoding(parserConfig);
-        }
-        return parser.parse(file, in, scope, parserConfig);
-    }
-
-    public Node parseFileFromMain(InputStream in, String file, DynamicScope scope) {
-        if (parserStats != null) parserStats.addLoadParse();
-        ParserConfiguration parserConfig =
-                new ParserConfiguration(this, 0, false, false, true, true, config);
-        if (is2_0 ||
-                (is1_9 && config.getSourceEncoding() != null)) {
-            setupSourceEncoding(parserConfig);
-        }
-        return parser.parse(file, in, scope, parserConfig);
-    }
-
+    // Obsolete parseFile function
     public Node parseFile(InputStream in, String file, DynamicScope scope) {
         return parseFile(in, file, scope, 0);
     }
 
+    // Modern variant of parsFile function above
+    public ParseResult parseFile(String file, InputStream in, DynamicScope scope) {
+       return parseFile(file, in, scope, 0);
+    }
+
+    // Obsolete parseFile function
+    public Node parseFile(InputStream in, String file, DynamicScope scope, int lineNumber) {
+        addLoadParseToStats();
+        return parseFileAndGetAST(in, file, scope, lineNumber, false);
+    }
+
+    // Modern variant of parseFile function above
+    public ParseResult parseFile(String file, InputStream in, DynamicScope scope, int lineNumber) {
+        addLoadParseToStats();
+
+        if (!RubyInstanceConfig.IR_READING) return parseFileAndGetAST(in, file, scope, lineNumber, false);
+
+        try {
+            // Get IR from .ir file
+            return IRReader.load(getIRManager(), new IRReaderStream(getIRManager(), IRFileExpert.getIRPersistedFile(file), new ByteList(file.getBytes())));
+        } catch (IOException e) {
+            // FIXME: What is something actually throws IOException
+            return parseFileAndGetAST(in, file, scope, lineNumber, false);
+        }
+    }
+
+    // Obsolete parseFileFromMain function
+    public Node parseFileFromMain(InputStream in, String file, DynamicScope scope) {
+        addLoadParseToStats();
+
+        return parseFileFromMainAndGetAST(in, file, scope);
+    }
+
+    // Modern variant of parseFileFromMain function above
+    public ParseResult parseFileFromMain(String file, InputStream in, DynamicScope scope) {
+        addLoadParseToStats();
+
+        if (!RubyInstanceConfig.IR_READING) return parseFileFromMainAndGetAST(in, file, scope);
+
+        try {
+            return IRReader.load(getIRManager(), new IRReaderStream(getIRManager(), IRFileExpert.getIRPersistedFile(file), new ByteList(file.getBytes())));
+        } catch (IOException e) {
+            System.out.println(e);
+            e.printStackTrace();
+            return parseFileFromMainAndGetAST(in, file, scope);
+        }
+    }
+
+     private Node parseFileFromMainAndGetAST(InputStream in, String file, DynamicScope scope) {
+         return parseFileAndGetAST(in, file, scope, 0, true);
+     }
+
+     private Node parseFileAndGetAST(InputStream in, String file, DynamicScope scope, int lineNumber, boolean isFromMain) {
+         ParserConfiguration parserConfig =
+                 new ParserConfiguration(this, lineNumber, false, true, isFromMain, config);
+         setupSourceEncoding(parserConfig, UTF8Encoding.INSTANCE);
+         return parser.parse(file, in, scope, parserConfig);
+     }
+
     public Node parseInline(InputStream in, String file, DynamicScope scope) {
-        if (parserStats != null) parserStats.addEvalParse();
+        addEvalParseToStats();
         ParserConfiguration parserConfig =
                 new ParserConfiguration(this, 0, false, true, false, config);
-        if (is1_9) {
-            setupSourceEncoding(parserConfig);
-        }
+        setupSourceEncoding(parserConfig, getEncodingService().getLocaleEncoding());
         return parser.parse(file, in, scope, parserConfig);
     }
 
-    private void setupSourceEncoding(ParserConfiguration parserConfig) {
+    private void setupSourceEncoding(ParserConfiguration parserConfig, Encoding defaultEncoding) {
         if (config.getSourceEncoding() != null) {
             if (config.isVerbose()) {
                 config.getError().println("-K is specified; it is for 1.8 compatibility and may cause odd behavior");
             }
             parserConfig.setDefaultEncoding(getEncodingService().getEncodingFromString(config.getSourceEncoding()));
         } else {
-            parserConfig.setDefaultEncoding(getEncodingService().getLocaleEncoding());
+            parserConfig.setDefaultEncoding(defaultEncoding);
         }
     }
 
     public Node parseEval(String content, String file, DynamicScope scope, int lineNumber) {
-        if (parserStats != null) parserStats.addEvalParse();
-        return parser.parse(file, content.getBytes(), scope, new ParserConfiguration(this,
-                lineNumber, false, false, false, false, config));
+        addEvalParseToStats();
+
+        return parser.parse(file, encodeToBytes(content), scope, new ParserConfiguration(this, lineNumber, false, false, config));
+    }
+
+    private byte[] encodeToBytes(String string) {
+        Charset charset = getDefaultCharset();
+
+        byte[] bytes = charset == null ? string.getBytes() : string.getBytes(charset);
+
+        return bytes;
     }
 
     @Deprecated
@@ -2695,14 +2797,14 @@ public final class Ruby {
     }
 
     public Node parseEval(ByteList content, String file, DynamicScope scope, int lineNumber) {
-        if (parserStats != null) parserStats.addEvalParse();
+        addEvalParseToStats();
         return parser.parse(file, content, scope, new ParserConfiguration(this,
                 lineNumber, false, false, false, config));
     }
 
     public Node parse(ByteList content, String file, DynamicScope scope, int lineNumber,
             boolean extraPositionInformation) {
-        if (parserStats != null) parserStats.addJRubyModuleParse();
+        addEvalParseToStats();
         return parser.parse(file, content, scope, new ParserConfiguration(this,
                 lineNumber, extraPositionInformation, false, true, config));
     }
@@ -2744,6 +2846,20 @@ public final class Ruby {
 
     public void setDefaultExternalEncoding(Encoding defaultExternalEncoding) {
         this.defaultExternalEncoding = defaultExternalEncoding;
+    }
+
+    /**
+     * Get the default java.nio.charset.Charset for the current default internal encoding.
+     */
+    public Charset getDefaultCharset() {
+        Encoding enc = getDefaultInternalEncoding();
+        if (enc == null) {
+            enc = UTF8Encoding.INSTANCE;
+        }
+
+        Charset charset = enc.getCharset();
+
+        return charset;
     }
 
     public EncodingService getEncodingService() {
@@ -2794,7 +2910,7 @@ public final class Ruby {
 
             IRubyObject cc = c.getConstant(str);
             if ( ! ( cc instanceof RubyModule ) ) {
-                throw newTypeError("" + path + " does not refer to class/module");
+                throw newTypeError(path + " does not refer to class/module");
             }
             c = (RubyModule) cc;
         }
@@ -2812,100 +2928,79 @@ public final class Ruby {
         }
 
         PrintStream errorStream = getErrorStream();
-        errorStream.print(config.getTraceType().printBacktrace(excp, errorStream == System.err && getPosix().isatty(FileDescriptor.err)));
+        String backtrace = config.getTraceType().printBacktrace(excp, errorStream == System.err && getPosix().isatty(FileDescriptor.err));
+        try {
+            errorStream.print(backtrace);
+        } catch (Exception e) {
+            System.err.print(backtrace);
+        }
     }
 
     public void loadFile(String scriptName, InputStream in, boolean wrap) {
-        IRubyObject self = wrap ? TopSelfFactory.createTopSelf(this) : getTopSelf();
+        IRubyObject self = wrap ? getTopSelf().rbClone() : getTopSelf();
         ThreadContext context = getCurrentContext();
         String file = context.getFile();
-        RubyModule scopeClass = objectClass;
-
-        Node node = parseFile(in, scriptName, null);
-
-        if (wrap) {
-            // toss an anonymous module into the search path
-            scopeClass = RubyModule.newModule(this);
-            ((RootNode)node).getStaticScope().setModule(scopeClass);
-        }
-
-        context.preNodeEval(scopeClass, self, scriptName);
 
         try {
             ThreadContext.pushBacktrace(context, "(root)", file, 0);
+            context.preNodeEval(self);
+            ParseResult parseResult = parseFile(scriptName, in, null);
 
-            runInterpreter(context, node, self);
-        } catch (JumpException.ReturnJump rj) {
-            return;
+            if (wrap) {
+                // toss an anonymous module into the search path
+                RubyModule wrapper = RubyModule.newModule(this);
+                ((RubyBasicObject)self).extend(new IRubyObject[] {wrapper});
+                RootNode root = (RootNode) parseResult;
+                StaticScope top = root.getStaticScope();
+                StaticScope newTop = staticScopeFactory.newLocalScope(null);
+                top.setPreviousCRefScope(newTop);
+                top.setModule(wrapper);
+            }
+
+            runInterpreter(context, parseResult, self);
         } finally {
-            ThreadContext.popBacktrace(context);
-
             context.postNodeEval();
+            ThreadContext.popBacktrace(context);
+        }
+    }
+
+    public void loadScope(IRScope scope, boolean wrap) {
+        IRubyObject self = wrap ? TopSelfFactory.createTopSelf(this, true) : getTopSelf();
+        ThreadContext context = getCurrentContext();
+        String file = context.getFile();
+
+        try {
+            ThreadContext.pushBacktrace(context, "(root)", file, 0);
+            context.preNodeEval(self);
+
+            if (wrap) {
+                // toss an anonymous module into the search path
+                scope.getStaticScope().setModule(RubyModule.newModule(this));
+            }
+
+            runInterpreter(context, scope, self);
+        } finally {
+            context.postNodeEval();
+            ThreadContext.popBacktrace(context);
         }
     }
 
     public void compileAndLoadFile(String filename, InputStream in, boolean wrap) {
-        ThreadContext context = getCurrentContext();
-        String file = context.getFile();
         InputStream readStream = in;
 
+        // script was not found in cache above, so proceed to compile
+        RootNode scriptNode = (RootNode) parseFile(readStream, filename, null);
+
+        ThreadContext context = getCurrentContext();
+
+        String oldFile = context.getFile();
+        int oldLine = context.getLine();
         try {
-            Script script = null;
-            String className = null;
+            context.setFileAndLine(scriptNode.getFile(), scriptNode.getLine());
 
-            try {
-                // read full contents of file, hash it, and try to load that class first
-                ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                byte[] buffer = new byte[1024];
-                int num;
-                while ((num = in.read(buffer)) > -1) {
-                    baos.write(buffer, 0, num);
-                }
-                buffer = baos.toByteArray();
-                String hash = JITCompiler.getHashForBytes(buffer);
-                className = JITCompiler.RUBY_JIT_PREFIX + ".FILE_" + hash;
-
-                // FIXME: duplicated from ClassCache
-                Class contents;
-                try {
-                    contents = jrubyClassLoader.loadClass(className);
-                    if (RubyInstanceConfig.JIT_LOADING_DEBUG) {
-                        LOG.info("found jitted code for " + filename + " at class: " + className);
-                    }
-                    script = (Script)contents.newInstance();
-                    readStream = new ByteArrayInputStream(buffer);
-                } catch (ClassNotFoundException cnfe) {
-                    if (RubyInstanceConfig.JIT_LOADING_DEBUG) {
-                        LOG.info("no jitted code in classloader for file " + filename + " at class: " + className);
-                    }
-                } catch (InstantiationException ie) {
-                    if (RubyInstanceConfig.JIT_LOADING_DEBUG) {
-                        LOG.info("jitted code could not be instantiated for file " + filename + " at class: " + className);
-                    }
-                } catch (IllegalAccessException iae) {
-                    if (RubyInstanceConfig.JIT_LOADING_DEBUG) {
-                        LOG.info("jitted code could not be instantiated for file " + filename + " at class: " + className);
-                    }
-                }
-            } catch (IOException ioe) {
-                // TODO: log something?
-            }
-
-            // script was not found in cache above, so proceed to compile
-            Node scriptNode = parseFile(readStream, filename, null);
-            if (script == null) {
-                script = tryCompile(scriptNode, className, new JRubyClassLoader(jrubyClassLoader), false);
-            }
-
-            if (script == null) {
-                failForcedCompile(scriptNode);
-
-                runInterpreter(scriptNode);
-            } else {
-                runScript(script, wrap);
-            }
-        } catch (JumpException.ReturnJump rj) {
-            return;
+            runNormally(scriptNode, wrap);
+        } finally {
+            context.setFileAndLine(oldFile, oldLine);
         }
     }
 
@@ -2914,14 +3009,7 @@ public final class Ruby {
     }
 
     public void loadScript(Script script, boolean wrap) {
-        IRubyObject self = getTopSelf();
-        ThreadContext context = getCurrentContext();
-
-        try {
-            script.load(context, self, wrap);
-        } catch (JumpException.ReturnJump rj) {
-            return;
-        }
+        script.load(getCurrentContext(), getTopSelf(), wrap);
     }
 
     /**
@@ -2933,7 +3021,7 @@ public final class Ruby {
      * @param wrap Whether to use a new "self" for toplevel
      */
     public void loadExtension(String extName, BasicLibraryService extension, boolean wrap) {
-        IRubyObject self = wrap ? TopSelfFactory.createTopSelf(this) : getTopSelf();
+        IRubyObject self = wrap ? TopSelfFactory.createTopSelf(this, true) : getTopSelf();
         ThreadContext context = getCurrentContext();
 
         try {
@@ -2942,8 +3030,6 @@ public final class Ruby {
             extension.basicLoad(this);
         } catch (IOException ioe) {
             throw newIOErrorFromException(ioe);
-        } catch (JumpException.ReturnJump rj) {
-            return;
         } finally {
             context.postNodeEval();
         }
@@ -2970,14 +3056,19 @@ public final class Ruby {
         return javaProxyClassFactory;
     }
 
-    private static final EnumSet<RubyEvent> EVENTS2_0 = EnumSet.of(RubyEvent.B_CALL, RubyEvent.B_RETURN, RubyEvent.THREAD_BEGIN, RubyEvent.THREAD_END);
     public class CallTraceFuncHook extends EventHook {
         private RubyProc traceFunc;
-        // filter out 2.0 events on non 2.0
         private EnumSet<RubyEvent> interest =
-                is2_0() ?
-                EnumSet.complementOf(EVENTS2_0) :
-                EnumSet.allOf(RubyEvent.class);
+                EnumSet.of(
+                        RubyEvent.C_CALL,
+                        RubyEvent.C_RETURN,
+                        RubyEvent.CALL,
+                        RubyEvent.CLASS,
+                        RubyEvent.END,
+                        RubyEvent.LINE,
+                        RubyEvent.RAISE,
+                        RubyEvent.RETURN
+                );
 
         public void setTraceFunc(RubyProc traceFunc) {
             this.traceFunc = traceFunc;
@@ -2986,7 +3077,7 @@ public final class Ruby {
         public void eventHandler(ThreadContext context, String eventName, String file, int line, String name, IRubyObject type) {
             if (!context.isWithinTrace()) {
                 if (file == null) file = "(ruby)";
-                if (type == null) type = getFalse();
+                if (type == null) type = getNil();
 
                 RubyBinding binding = RubyBinding.newBinding(Ruby.this, context.currentBinding());
 
@@ -3065,7 +3156,9 @@ public final class Ruby {
 
     public void callEventHooks(ThreadContext context, RubyEvent event, String file, int line, String name, IRubyObject type) {
         if (context.isEventHooksEnabled()) {
-            for (EventHook eventHook : eventHooks) {
+            for (int i = 0; i < eventHooks.length; i++) {
+                EventHook eventHook = eventHooks[i];
+
                 if (eventHook.isInterestedInEvent(event)) {
                     eventHook.event(context, event, file, line, name, type);
                 }
@@ -3155,22 +3248,44 @@ public final class Ruby {
         // clear out threadlocals so they don't leak
         recursive = new ThreadLocal<Map<String, RubyHash>>();
 
+        final ThreadContext context = getCurrentContext();
+
+        // FIXME: 73df3d230b9d92c7237d581c6366df1b92ad9b2b exposed no toplevel scope existing anymore (I think the
+        // bogus scope I removed was playing surrogate toplevel scope and wallpapering this bug).  For now, add a
+        // bogus scope back for at_exit block run.  This is buggy if at_exit is capturing vars.
+        if (!context.hasAnyScopes()) {
+            StaticScope topStaticScope = getStaticScopeFactory().newLocalScope(null);
+            context.pushScope(new ManyVarsDynamicScope(topStaticScope, null));
+        }
+
         while (!atExitBlocks.empty()) {
             RubyProc proc = atExitBlocks.pop();
+            // IRubyObject oldExc = context.runtime.getGlobalVariables().get("$!"); // Save $!
             try {
-                proc.call(getCurrentContext(), IRubyObject.NULL_ARRAY);
+                proc.call(context, IRubyObject.NULL_ARRAY);
             } catch (RaiseException rj) {
                 RubyException raisedException = rj.getException();
                 if (!getSystemExit().isInstance(raisedException)) {
                     status = 1;
                     printError(raisedException);
                 } else {
-                    IRubyObject statusObj = raisedException.callMethod(
-                            getCurrentContext(), "status");
+                    IRubyObject statusObj = raisedException.callMethod(context, "status");
                     if (statusObj != null && !statusObj.isNil()) {
                         status = RubyNumeric.fix2int(statusObj);
                     }
                 }
+                // Reset $! now that rj has been handled
+                // context.runtime.getGlobalVariables().set("$!", oldExc);
+            }
+        }
+
+        // Fetches (and unsets) the SIGEXIT handler, if one exists.
+        IRubyObject trapResult = RubySignal.__jtrap_osdefault_kernel(this.getNil(), this.newString("EXIT"));
+        if (trapResult instanceof RubyArray) {
+            IRubyObject[] trapResultEntries = ((RubyArray) trapResult).toJavaArray();
+            IRubyObject exitHandlerProc = trapResultEntries[0];
+            if (exitHandlerProc instanceof RubyProc) {
+                ((RubyProc) exitHandlerProc).call(context, getSingleNilArray());
             }
         }
 
@@ -3212,22 +3327,12 @@ public final class Ruby {
         getBeanManager().unregisterCompiler();
         getBeanManager().unregisterConfig();
         getBeanManager().unregisterParserStats();
-        getBeanManager().unregisterClassCache();
         getBeanManager().unregisterMethodCache();
         getBeanManager().unregisterRuntime();
 
         getSelectorPool().cleanup();
 
-        getJITCompiler().tearDown();
-
-        if (getJRubyClassLoader() != null) {
-            getJRubyClassLoader().tearDown(isDebug());
-        }
-
-        // Unregister stdio ChannelDescriptors so they don't leak
-        ChannelDescriptor.unregisterDescriptor(getFilenoExtMap(0));
-        ChannelDescriptor.unregisterDescriptor(getFilenoExtMap(1));
-        ChannelDescriptor.unregisterDescriptor(getFilenoExtMap(2));
+        // NOTE: its intentional that we're not doing releaseClassLoader();
 
         if (config.isProfilingEntireRun()) {
             // not using logging because it's formatted
@@ -3237,6 +3342,18 @@ public final class Ruby {
 
         if (systemExit && status != 0) {
             throw newSystemExit(status);
+        }
+
+        // This is a rather gross way to ensure nobody else performs the same clearing of globalRuntime followed by
+        // initializing a new runtime, which would cause our clear below to clear the wrong runtime. Synchronizing
+        // against the class is a problem, but the overhead of teardown and creating new containers should outstrip
+        // a global synchronize around a few field accesses. -CON
+        if (this == globalRuntime) {
+            synchronized (Ruby.class) {
+                if (this == globalRuntime) {
+                    globalRuntime = null;
+                }
+            }
         }
     }
 
@@ -3249,13 +3366,15 @@ public final class Ruby {
      * release the runtime loader but not otherwise - you should do that manually.
      */
     public void releaseClassLoader() {
-        JRubyClassLoader.close( getJRubyClassLoader() );
+        if ( jrubyClassLoader != null ) {
+            getJRubyClassLoader().close();
+            jrubyClassLoader = null;
+        }
     }
 
     /**
      * TDOD remove the synchronized. Synchronization should be a implementation detail of the ProfilingService.
      * @param profileData
-     * @param output
      */
     public synchronized void printProfileData( ProfileCollection profileData ) {
         getProfilingService().newProfileReporter(getCurrentContext()).report(profileData);
@@ -3367,17 +3486,13 @@ public final class Ruby {
     public RubyProc newProc(Block.Type type, Block block) {
         if (type != Block.Type.LAMBDA && block.getProcObject() != null) return block.getProcObject();
 
-        RubyProc proc =  RubyProc.newProc(this, block, type);
-
-        return proc;
+        return RubyProc.newProc(this, block, type);
     }
 
     public RubyProc newBlockPassProc(Block.Type type, Block block) {
         if (type != Block.Type.LAMBDA && block.getProcObject() != null) return block.getProcObject();
 
-        RubyProc proc =  RubyProc.newProc(this, block, type);
-
-        return proc;
+        return RubyProc.newProc(this, block, type);
     }
 
     public RubyBinding newBinding() {
@@ -3407,6 +3522,11 @@ public final class Ruby {
 
     public RubySymbol newSymbol(String name) {
         return symbolTable.getSymbol(name);
+    }
+
+    public RubySymbol newSymbol(String name, Encoding encoding) {
+        ByteList byteList = RubyString.encodeBytelist(name, encoding);
+        return symbolTable.getSymbol(byteList);
     }
 
     public RubySymbol newSymbol(ByteList name) {
@@ -3482,6 +3602,10 @@ public final class Ruby {
         return newRaiseException(getErrno().getClass("ECONNREFUSED"), "Connection refused");
     }
 
+    public RaiseException newErrnoECONNREFUSEDError(String message) {
+        return newRaiseException(getErrno().getClass("ECONNREFUSED"), message);
+    }
+
     public RaiseException newErrnoECONNRESETError() {
         return newRaiseException(getErrno().getClass("ECONNRESET"), "Connection reset by peer");
     }
@@ -3500,6 +3624,18 @@ public final class Ruby {
 
     public RaiseException newErrnoEINVALError() {
         return newRaiseException(getErrno().getClass("EINVAL"), "Invalid file");
+    }
+
+    public RaiseException newErrnoELOOPError() {
+        return newRaiseException(getErrno().getClass("ELOOP"), "Too many levels of symbolic links");
+    }
+
+    public RaiseException newErrnoEMFILEError() {
+        return newRaiseException(getErrno().getClass("EMFILE"), "Too many open files");
+    }
+
+    public RaiseException newErrnoENFILEError() {
+        return newRaiseException(getErrno().getClass("ENFILE"), "Too many open files in system");
     }
 
     public RaiseException newErrnoENOENTError() {
@@ -3582,6 +3718,10 @@ public final class Ruby {
         return newRaiseException(getErrno().getClass("ENOENT"), message);
     }
 
+    public RaiseException newErrnoEOPNOTSUPPError(String message) {
+        return newRaiseException(getErrno().getClass("EOPNOTSUPP"), message);
+    }
+
     public RaiseException newErrnoESPIPEError(String message) {
         return newRaiseException(getErrno().getClass("ESPIPE"), message);
     }
@@ -3614,6 +3754,10 @@ public final class Ruby {
         return newRaiseException(getErrno().getClass("EDESTADDRREQ"), func);
     }
 
+    public RaiseException newErrnoENETUNREACHError() {
+        return newRaiseException(getErrno().getClass("ENETUNREACH"), null);
+    }
+
     public RaiseException newIndexError(String message) {
         return newRaiseException(getIndexError(), message);
     }
@@ -3628,6 +3772,14 @@ public final class Ruby {
 
     public RaiseException newKeyError(String message) {
         return newRaiseException(getKeyError(), message);
+    }
+
+    public RaiseException newErrnoEINTRError() {
+        return newRaiseException(getErrno().getClass("EINTR"), "Interrupted");
+    }
+
+    public RaiseException newErrnoEAFNOSUPPORTError(String message) {
+        return newRaiseException(getErrno().getClass("EAFNOSUPPORT"), message);
     }
 
     public RaiseException newErrnoFromLastPOSIXErrno() {
@@ -3653,6 +3805,13 @@ public final class Ruby {
         } else {
             return newSystemCallError("Unknown Error (" + errno + ") - " + message);
         }
+    }
+
+    public RaiseException newErrnoFromErrno(Errno errno, String message) {
+        if (errno == null || errno == Errno.__UNKNOWN_CONSTANT__) {
+            return newSystemCallError(message);
+        }
+        return newErrnoFromInt(errno.intValue(), message);
     }
 
     public RaiseException newErrnoFromInt(int errno) {
@@ -3722,33 +3881,66 @@ public final class Ruby {
         return newRaiseException(getNotImplementedError(), message);
     }
 
+    @Deprecated
     public RaiseException newInvalidEncoding(String message) {
-        return newRaiseException(fastGetClass("Iconv").getClass("InvalidEncoding"), message);
+        return newRaiseException(getClass("Iconv").getClass("InvalidEncoding"), message);
     }
 
+    @Deprecated
     public RaiseException newIllegalSequence(String message) {
-        return newRaiseException(fastGetClass("Iconv").getClass("IllegalSequence"), message);
+        return newRaiseException(getClass("Iconv").getClass("IllegalSequence"), message);
     }
 
-    public RaiseException newNoMethodError(String message, String name, IRubyObject args) {
-        return new RaiseException(new RubyNoMethodError(this, getNoMethodError(), message, name, args), true);
+    /**
+     * Construct a NameError that formats its message with an sprintf format string.
+     *
+     * The arguments given to sprintf are as follows:
+     *
+     * 0: the name that failed
+     * 1: the receiver object that failed
+     * 2: a ":" character for non-singleton recv, blank otherwise
+     * 3: the name of the a non-singleton recv's class, blank if recv is a singleton
+     *
+     * Passing a string with no format characters will warn in verbose mode and error in debug mode.
+     *
+     * See jruby/jruby#3934.
+     *
+     * @param message an sprintf format string for the message
+     * @param recv the receiver object
+     * @param name the name that failed
+     * @return a new NameError
+     */
+    public RaiseException newNameError(String message, IRubyObject recv, IRubyObject name) {
+        IRubyObject msg = new RubyNameError.RubyNameErrorMessage(this, message, recv, name);
+        RubyException err = RubyNameError.newNameError(getNameError(), msg, name);
+
+        return new RaiseException(err);
     }
 
-    public RaiseException newNameError(String message, String name) {
-        return newNameError(message, name, null);
+    /**
+     * Construct a NameError that formats its message with an sprintf format string.
+     *
+     * This version just accepts a java.lang.String for the name.
+     *
+     * @see Ruby#newNameError(String, IRubyObject, IRubyObject)
+     */
+    public RaiseException newNameError(String message, IRubyObject recv, String name) {
+        RubySymbol nameSym = newSymbol(name);
+        return newNameError(message, recv, nameSym);
     }
 
-    // This name sucks and should be replaced by newNameErrorfor 9k.
-    public RaiseException newNameErrorObject(String message, IRubyObject name) {
-        RubyException error = new RubyNameError(this, getNameError(), message, name);
-
-        return new RaiseException(error, false);
-    }
-
-    public RaiseException newNameError(String message, String name, Throwable origException) {
-        return newNameError(message, name, origException, false);
-    }
-
+    /**
+     * Construct a NameError with the given pre-formatted message, name, and optional original exception.
+     *
+     * If the original exception is given, and either we are in verbose mode with printWhenVerbose set to true
+     * or we are in debug mode.
+     *
+     * @param message the pre-formatted message for the NameError
+     * @param name the name that failed
+     * @param origException the original exception, or null
+     * @param printWhenVerbose whether to log this exception when verbose mode is enabled
+     * @return a new NameError
+     */
     public RaiseException newNameError(String message, String name, Throwable origException, boolean printWhenVerbose) {
         if (origException != null) {
             if (printWhenVerbose && isVerbose()) {
@@ -3758,8 +3950,66 @@ public final class Ruby {
             }
         }
 
-        return new RaiseException(new RubyNameError(
-                this, getNameError(), message, name), false);
+        return new RaiseException(new RubyNameError(this, getNameError(), message, name), false);
+    }
+
+    /**
+     * Construct a NameError with a pre-formatted message and name.
+     *
+     * This is the same as calling {@link #newNameError(String, String, Throwable)} with a null
+     * originating exception.
+     *
+     * @param message the pre-formatted message for the error
+     * @param name the name that failed
+     * @return a new NameError
+     */
+    public RaiseException newNameError(String message, String name) {
+        return newNameError(message, name, null);
+    }
+
+    /**
+     * Construct a NameError with an optional originating exception and a pre-formatted message.
+     *
+     * This is the same as calling {@link #newNameError(String, String, Throwable, boolean)} with a null
+     * originating exception and false for verbose-mode logging.
+     *
+     * @param message a formatted string message for the error
+     * @param name the name that failed
+     * @param origException the original exception, or null if none
+     * @return a new NameError
+     */
+    public RaiseException newNameError(String message, String name, Throwable origException) {
+        return newNameError(message, name, origException, false);
+    }
+
+    /**
+     * Construct a NoMethodError that formats its message with an sprintf format string.
+     *
+     * This works like {@link #newNameError(String, IRubyObject, IRubyObject)} but accepts
+     * a java.lang.String for name and a RubyArray of the original call arguments.
+     *
+     * @see Ruby#newNameError(String, IRubyObject, IRubyObject)
+     *
+     * @return a new NoMethodError
+     */
+    public RaiseException newNoMethodError(String message, IRubyObject recv, String name, RubyArray args) {
+        RubySymbol nameStr = newSymbol(name);
+        IRubyObject msg = new RubyNameError.RubyNameErrorMessage(this, message, recv, nameStr);
+        RubyException err = RubyNoMethodError.newNoMethodError(getNoMethodError(), msg, nameStr, args);
+
+        return new RaiseException(err);
+    }
+
+    /**
+     * Construct a NoMethodError with a pre-formatted message.
+     *
+     * @param message the pre-formatted message
+     * @param name the name that failed
+     * @param args the original arguments to the call that failed
+     * @return a new NoMethodError
+     */
+    public RaiseException newNoMethodError(String message, String name, IRubyObject args) {
+        return new RaiseException(new RubyNoMethodError(this, getNoMethodError(), message, name, args), true);
     }
 
     public RaiseException newLocalJumpError(RubyLocalJumpError.Reason reason, IRubyObject exitValue, String message) {
@@ -3780,7 +4030,7 @@ public final class Ruby {
 
     public RaiseException newLoadError(String message, String path) {
         RaiseException loadError = newRaiseException(getLoadError(), message);
-        if (is2_0()) loadError.getException().setInstanceVariable("@path", newString(path));
+        loadError.getException().setInstanceVariable("@path", newString(path));
         return loadError;
     }
 
@@ -3790,7 +4040,7 @@ public final class Ruby {
 
     public RaiseException newFrozenError(String objectType, boolean runtimeError) {
         // TODO: Should frozen error have its own distinct class?  If not should more share?
-        return newRaiseException(is1_9() || runtimeError ? getRuntimeError() : getTypeError(), "can't modify frozen " + objectType);
+        return newRaiseException(getRuntimeError(), "can't modify frozen " + objectType);
     }
 
     public RaiseException newSystemStackError(String message) {
@@ -3798,9 +4048,7 @@ public final class Ruby {
     }
 
     public RaiseException newSystemStackError(String message, StackOverflowError soe) {
-        if (getDebug().isTrue()) {
-            LOG.debug(soe.getMessage(), soe);
-        }
+        if ( isDebug() ) LOG.debug(soe);
         return newRaiseException(getSystemStackError(), message);
     }
 
@@ -3820,23 +4068,52 @@ public final class Ruby {
         return newRaiseException(getStandardError(), message);
     }
 
-    public RaiseException newIOErrorFromException(IOException ioe) {
-        if (ioe instanceof ClosedChannelException || ioe.getMessage().equals("Bad file descriptor")) {
-            throw newErrnoEBADFError();
-        }
-
-        // TODO: this is kinda gross
-        if(ioe.getMessage() != null) {
-            if (ioe.getMessage().equals("Broken pipe")) {
-                throw newErrnoEPIPEError();
-            } else if (ioe.getMessage().equals("Connection reset by peer") ||
-                    (Platform.IS_WINDOWS && ioe.getMessage().contains("connection was aborted"))) {
-                throw newErrnoECONNRESETError();
+    /**
+     * Java does not give us enough information for specific error conditions
+     * so we are reduced to divining them through string matches...
+     *
+     * TODO: Should ECONNABORTED get thrown earlier in the descriptor itself or is it ok to handle this late?
+     * TODO: Should we include this into Errno code somewhere do we can use this from other places as well?
+     */
+    public RaiseException newIOErrorFromException(final IOException ex) {
+        final String errorMessage = ex.getMessage();
+        if ( errorMessage != null ) {
+            // All errors to sysread should be SystemCallErrors, but on a closed stream
+            // Ruby returns an IOError.  Java throws same exception for all errors so
+            // we resort to this hack...
+            switch ( errorMessage ) {
+                case "Bad file descriptor" :
+                    if ( ex instanceof ClosedChannelException ) throw newErrnoEBADFError();
+                    break;
+                case "File not open" :
+                    return newIOError(errorMessage);
+                case "An established connection was aborted by the software in your host machine" :
+                    return newErrnoECONNABORTEDError();
+                case "Broken pipe" :
+                    return newErrnoEPIPEError();
+                case "Connection reset by peer" :
+                case "An existing connection was forcibly closed by the remote host" :
+                    return newErrnoECONNRESETError();
+                case "Too many levels of symbolic links" :
+                    return newErrnoELOOPError();
+                case "Too many open files" :
+                    return newErrnoEMFILEError();
+                case "Too many open files in system" :
+                    return newErrnoENFILEError();
+                case "Network is unreachable" :
+                    return newErrnoENETUNREACHError();
+                case "Address already in use" :
+                    return newErrnoEADDRINUSEError();
+                default :
+                    if ( Platform.IS_WINDOWS ) {
+                        if ( errorMessage.contains("connection was aborted") ) {
+                            return newErrnoECONNRESETError();
+                        }
+                    }
             }
-            return newRaiseException(getIOError(), ioe.getMessage());
-        } else {
-            return newRaiseException(getIOError(), "IO Error");
+            return newRaiseException(getIOError(), errorMessage);
         }
+        return newRaiseException(getIOError(), "IO Error");
     }
 
     public RaiseException newTypeError(IRubyObject receivedObject, RubyClass expectedType) {
@@ -3920,7 +4197,7 @@ public final class Ruby {
         if (RubyInstanceConfig.ERRNO_BACKTRACE) {
             return new RaiseException(this, exceptionClass, message, true);
         } else {
-            return new RaiseException(this, exceptionClass, ERRNO_BACKTRACE_MESSAGE, RubyArray.newEmptyArray(this), true);
+            return new RaiseException(this, exceptionClass, ERRNO_BACKTRACE_MESSAGE, disabledBacktrace(), true);
         }
     }
 
@@ -3935,12 +4212,24 @@ public final class Ruby {
      *
      * @param message the message for the exception
      */
-    public RaiseException newLightweightStopIterationError(String message) {
+    public RaiseException newStopIteration(IRubyObject result, String message) {
+        final ThreadContext context = getCurrentContext();
         if (RubyInstanceConfig.STOPITERATION_BACKTRACE) {
-            return new RaiseException(this, stopIteration, message, true);
-        } else {
-            return new RaiseException(this, stopIteration, STOPIERATION_BACKTRACE_MESSAGE, RubyArray.newEmptyArray(this), true);
+            RubyException ex = RubyStopIteration.newInstance(context, result, message);
+            return new RaiseException(ex);
         }
+        if ( message == null ) message = STOPIERATION_BACKTRACE_MESSAGE;
+        RubyException ex = RubyStopIteration.newInstance(context, result, message);
+        return new RaiseException(ex, disabledBacktrace());
+    }
+
+    @Deprecated
+    public RaiseException newLightweightStopIterationError(String message) {
+        return newStopIteration(null, message);
+    }
+
+    private IRubyObject disabledBacktrace() {
+        return RubyArray.newEmptyArray(this);
     }
 
     // Equivalent of Data_Wrap_Struct
@@ -3954,63 +4243,6 @@ public final class Ruby {
 
     public ObjectSpace getObjectSpace() {
         return objectSpace;
-    }
-
-    private final Map<Integer, Integer> filenoExtIntMap = new HashMap<Integer, Integer>();
-    private final Map<Integer, Integer> filenoIntExtMap = new HashMap<Integer, Integer>();
-
-    public void putFilenoMap(int external, int internal) {
-        filenoExtIntMap.put(external, internal);
-        filenoIntExtMap.put(internal, external);
-    }
-
-    public int getFilenoExtMap(int external) {
-        Integer internal = filenoExtIntMap.get(external);
-        if (internal != null) return internal;
-        return external;
-    }
-
-    public int getFilenoIntMap(int internal) {
-        Integer external = filenoIntExtMap.get(internal);
-        if (external != null) return external;
-        return internal;
-    }
-
-    public int getFilenoIntMapSize() {
-        return filenoIntExtMap.size();
-    }
-
-    public void removeFilenoIntMap(int internal) {
-        filenoIntExtMap.remove(internal);
-    }
-
-    /**
-     * Get the "external" fileno for a given ChannelDescriptor. Primarily for
-     * the shared 0, 1, and 2 filenos, which we can't actually share across
-     * JRuby runtimes.
-     *
-     * @param descriptor The descriptor for which to getService the fileno
-     * @return The external fileno for the descriptor
-     */
-    public int getFileno(ChannelDescriptor descriptor) {
-        return getFilenoIntMap(descriptor.getFileno());
-    }
-
-    @Deprecated
-    public void registerDescriptor(ChannelDescriptor descriptor, boolean isRetained) {
-    }
-
-    @Deprecated
-    public void registerDescriptor(ChannelDescriptor descriptor) {
-    }
-
-    @Deprecated
-    public void unregisterDescriptor(int aFileno) {
-    }
-
-    @Deprecated
-    public ChannelDescriptor getDescriptorByFileno(int aFileno) {
-        return ChannelDescriptor.getDescriptorByFileno(aFileno);
     }
 
     public InputStream getIn() {
@@ -4058,7 +4290,11 @@ public final class Ruby {
         if (val != null ) val.remove(obj);
     }
 
-    public static interface RecursiveFunction {
+    public interface RecursiveFunctionEx<T> {
+        IRubyObject call(ThreadContext context, T state, IRubyObject obj, boolean recur);
+    }
+
+    public interface RecursiveFunction  {
         IRubyObject call(IRubyObject obj, boolean recur);
     }
 
@@ -4086,7 +4322,6 @@ public final class Ruby {
         }
         if(list == null || list.isNil()) {
             list = RubyHash.newHash(this);
-            list.setUntrusted(true);
             hash.put(sym, (RubyHash)list);
         }
         return list;
@@ -4119,9 +4354,8 @@ public final class Ruby {
             if (!(pair_list instanceof RubyHash)) {
                 IRubyObject other_paired_obj = pair_list;
                 pair_list = RubyHash.newHash(this);
-                pair_list.setUntrusted(true);
-                ((RubyHash)pair_list).op_aset(context, other_paired_obj, getTrue());
-                ((RubyHash)list).op_aset(context, obj, pair_list);
+                ((RubyHash) pair_list).op_aset(context, other_paired_obj, getTrue());
+                ((RubyHash) list).op_aset(context, obj, pair_list);
             }
             ((RubyHash)pair_list).op_aset(context, paired_obj, getTrue());
         }
@@ -4212,6 +4446,69 @@ public final class Ruby {
             }
 
             return result;
+        }
+    }
+
+    ThreadLocal<Map<String, Map<IRubyObject, IRubyObject>>> symMap = new ThreadLocal<>();
+
+    public <T> IRubyObject safeRecurse(RecursiveFunctionEx<T> func, ThreadContext context, T state, IRubyObject obj, String name, boolean outer) {
+        Map<IRubyObject, IRubyObject> guards = safeRecurseGetGuards(name);
+
+        boolean outermost = outer && !guards.containsKey(recursiveKey);
+
+        // check guards
+        if (guards.containsKey(obj)) {
+            if (outer && !outermost) {
+                throw new RecursiveError(guards);
+            }
+            return func.call(context, state, obj, true);
+        } else {
+            if (outermost) {
+                return safeRecurseOutermost(func, context, state, obj, guards);
+            } else {
+                return safeRecurseInner(func, context, state, obj, guards);
+            }
+        }
+    }
+
+    private <T> IRubyObject safeRecurseOutermost(RecursiveFunctionEx<T> func, ThreadContext context, T state, IRubyObject obj, Map<IRubyObject, IRubyObject> guards) {
+        boolean recursed = false;
+        guards.put(recursiveKey, recursiveKey);
+
+        try {
+            return safeRecurseInner(func, context, state, obj, guards);
+        } catch (RecursiveError re) {
+            if (re.tag != guards) {
+                throw re;
+            }
+            recursed = true;
+            guards.remove(recursiveKey);
+            return func.call(context, state, obj, true);
+        } finally {
+            if (!recursed) guards.remove(recursiveKey);
+        }
+    }
+
+    private Map<IRubyObject, IRubyObject> safeRecurseGetGuards(String name) {
+        Map<String, Map<IRubyObject, IRubyObject>> symToGuards = symMap.get();
+        if (symToGuards == null) {
+            symToGuards = new HashMap<>();
+            symMap.set(symToGuards);
+        }
+
+        Map<IRubyObject, IRubyObject> guards = symToGuards.get(name);
+        if (guards == null) {
+            guards = new IdentityHashMap<>();
+            symToGuards.put(name, guards);
+        } return guards;
+    }
+
+    private <T> IRubyObject safeRecurseInner(RecursiveFunctionEx<T> func, ThreadContext context, T state, IRubyObject obj, Map<IRubyObject, IRubyObject> guards) {
+        try {
+            guards.put(obj, obj);
+            return func.call(context, state, obj, false);
+        } finally {
+            guards.remove(obj);
         }
     }
 
@@ -4316,16 +4613,8 @@ public final class Ruby {
         return config;
     }
 
-    public boolean is1_8() {
-        return !(is1_9() || is2_0());
-    }
-
-    public boolean is1_9() {
-        return is1_9;
-    }
-
     public boolean is2_0() {
-        return is2_0;
+        return true;
     }
 
     /** GET_VM_STATE_VERSION */
@@ -4360,10 +4649,6 @@ public final class Ruby {
 
     public GlobalVariable getRecordSeparatorVar() {
         return recordSeparatorVar;
-    }
-
-    public Set<Script> getJittedMethods() {
-        return jittedMethods;
     }
 
     public ExecutorService getExecutor() {
@@ -4466,29 +4751,16 @@ public final class Ruby {
     }
 
     /**
-     * Get the list of method holders for methods being profiled.
-     * @return all known profiled methods
-     * @deprecated This should be an implementation detail of the ProfilingService and should remove from the Ruby class.
-     */
-    @Deprecated
-    public ProfiledMethods getProfiledMethods() {
-        return profiledMethods;
-    }
-
-    /**
      * Add a method, so it can be printed out later.
      *
      * @param name the name of the method
      * @param method
-     * @deprecated This should be an implementation detail of the ProfilingService and should remove from the Ruby class.
      */
-    @Deprecated
     void addProfiledMethod(final String name, final DynamicMethod method) {
         if (!config.isProfiling()) return;
         if (method.isUndefined()) return;
 
-        getProfiledMethods().addProfiledMethod( name, method );
-
+        getProfilingService().addProfiledMethod( name, method );
     }
 
     /**
@@ -4599,8 +4871,12 @@ public final class Ruby {
         return floatReopened;
     }
 
+    public boolean isBootingCore() {
+        return bootingCore;
+    }
+
     public boolean isBooting() {
-        return booting;
+        return bootingRuntime;
     }
 
     public CoverageData getCoverageData() {
@@ -4632,11 +4908,46 @@ public final class Ruby {
     }
 
     public RubyString getDefinedMessage(DefinedMessage definedMessage) {
-        return definedMessages.get(definedMessage);
+        return freezeAndDedupString(definedMessages.get(definedMessage));
     }
 
     public RubyString getThreadStatus(RubyThread.Status status) {
         return threadStatuses.get(status);
+    }
+
+    /**
+     * Given a Ruby string, cache a frozen, duplicated copy of it, or find an
+     * existing copy already prepared. This is used to reduce in-memory
+     * duplication of pre-frozen or known-frozen strings.
+     *
+     * Note that this cache does some sync against the Ruby instance. This
+     * could cause contention under heavy concurrent load, so a reexamination
+     * of this design might be warranted.
+     *
+     * @param string the string to freeze-dup if an equivalent does not already exist
+     * @return the freeze-duped version of the string
+     */
+    public RubyString freezeAndDedupString(RubyString string) {
+        if (string.getMetaClass() != stringClass) {
+            // never cache a non-natural String
+            RubyString duped = string.strDup(this);
+            duped.setFrozen(true);
+            return duped;
+        }
+
+        WeakReference<RubyString> dedupedRef = dedupMap.get(string);
+        RubyString deduped;
+
+        if (dedupedRef == null || (deduped = dedupedRef.get()) == null) {
+            deduped = string.strDup(this);
+            deduped.setFrozen(true);
+            dedupMap.put(string, new WeakReference<RubyString>(deduped));
+        } else if (deduped.getEncoding() != string.getEncoding()) {
+            // if encodings don't match, new string loses; can't dedup
+            deduped = string.strDup(this);
+            deduped.setFrozen(true);
+        }
+        return deduped;
     }
 
     public int getRuntimeNumber() {
@@ -4659,6 +4970,49 @@ public final class Ruby {
         }
     }
 
+    /**
+     * @see org.jruby.compiler.Constantizable
+     */
+    @Override
+    public Object constant() {
+        return constant;
+    }
+
+    /**
+     * Set the base Class#new method.
+     *
+     * @param baseNewMethod
+     */
+    public void setBaseNewMethod(DynamicMethod baseNewMethod) {
+        this.baseNewMethod = baseNewMethod;
+    }
+
+    /**
+     * Get the base Class#new method.
+     *
+     * @return the base Class#new method
+     */
+    public DynamicMethod getBaseNewMethod() {
+        return baseNewMethod;
+    }
+
+    /**
+     * Get the "nullToNil" method handle filter for this runtime.
+     *
+     * @return a method handle suitable for filtering a single IRubyObject value from null to nil
+     */
+    public MethodHandle getNullToNilHandle() {
+        MethodHandle nullToNil = this.nullToNil;
+
+        if (nullToNil != null) return nullToNil;
+
+        nullToNil = InvokeDynamicSupport.findStatic(Helpers.class, "nullToNil", methodType(IRubyObject.class, IRubyObject.class, IRubyObject.class));
+        nullToNil = insertArguments(nullToNil, 1, nilObject);
+        nullToNil = explicitCastArguments(nullToNil, methodType(IRubyObject.class, Object.class));
+
+        return this.nullToNil = nullToNil;
+    }
+
     @Deprecated
     public int getSafeLevel() {
         return 0;
@@ -4677,9 +5031,51 @@ public final class Ruby {
     }
 
     @Deprecated
-    public CallbackFactory callbackFactory(Class<?> type) {
-        throw new RuntimeException("callback-style handles are no longer supported in JRuby");
+    public RaiseException newNameErrorObject(String message, IRubyObject name) {
+        RubyException error = new RubyNameError(this, getNameError(), message, name);
+
+        return new RaiseException(error, false);
     }
+
+    // Parser stats methods
+    private void addLoadParseToStats() {
+        if (parserStats != null) parserStats.addLoadParse();
+    }
+
+    private void addEvalParseToStats() {
+        if (parserStats != null) parserStats.addEvalParse();
+    }
+
+    @Deprecated
+    public boolean is1_8() {
+        return false;
+    }
+
+    @Deprecated
+    public boolean is1_9() {
+        return true;
+    }
+
+    public FilenoUtil getFilenoUtil() {
+        return filenoUtil;
+    }
+
+    @Deprecated
+    public IRubyObject safeRecurse(RecursiveFunction func, IRubyObject obj, String name, boolean outer) {
+        return safeRecurse(LEGACY_RECURSE, getCurrentContext(), func, obj, name, outer);
+    }
+
+    @Deprecated
+    public ProfiledMethods getProfiledMethods() {
+        return new ProfiledMethods(this);
+    }
+
+    private static final RecursiveFunctionEx<RecursiveFunction> LEGACY_RECURSE = new RecursiveFunctionEx<RecursiveFunction>() {
+        @Override
+        public IRubyObject call(ThreadContext context, RecursiveFunction func, IRubyObject obj, boolean recur) {
+            return func.call(obj, recur);
+        }
+    };
 
     private final ConcurrentHashMap<String, Invalidator> constantNameInvalidators =
         new ConcurrentHashMap<String, Invalidator>(
@@ -4697,14 +5093,12 @@ public final class Ruby {
     private final RubySymbol.SymbolTable symbolTable = new RubySymbol.SymbolTable(this);
 
     private static final EventHook[] EMPTY_HOOKS = new EventHook[0];
-    private volatile EventHook[] eventHooks = new EventHook[0];
+    private volatile EventHook[] eventHooks = EMPTY_HOOKS;
     private boolean hasEventHooks;
     private boolean globalAbortOnExceptionEnabled = false;
     private boolean doNotReverseLookupEnabled = false;
     private volatile boolean objectSpaceEnabled;
     private boolean siphashEnabled;
-
-    private final Set<Script> jittedMethods = Collections.synchronizedSet(new WeakHashSet<Script>());
 
     private long globalState = 1;
 
@@ -4715,7 +5109,8 @@ public final class Ruby {
     private IRubyObject[] singleNilArray;
     private RubyBoolean trueObject;
     private RubyBoolean falseObject;
-    public final RubyFixnum[] fixnumCache = new RubyFixnum[2 * RubyFixnum.CACHE_OFFSET];
+    final RubyFixnum[] fixnumCache = new RubyFixnum[2 * RubyFixnum.CACHE_OFFSET];
+    final Object[] fixnumConstants = new Object[fixnumCache.length];
 
     private boolean verbose, warningsEnabled, debug;
     private IRubyObject verboseValue;
@@ -4731,7 +5126,7 @@ public final class Ruby {
     private RubyClass
            basicObjectClass, objectClass, moduleClass, classClass, nilClass, trueClass,
             falseClass, numericClass, floatClass, integerClass, fixnumClass,
-            complexClass, rationalClass, enumeratorClass, yielderClass,
+            complexClass, rationalClass, enumeratorClass, yielderClass, fiberClass, generatorClass,
             arrayClass, hashClass, rangeClass, stringClass, encodingClass, converterClass, symbolClass,
             procClass, bindingClass, methodClass, unboundMethodClass,
             matchDataClass, regexpClass, timeClass, bignumClass, dirClass,
@@ -4740,7 +5135,7 @@ public final class Ruby {
             groupStruct, procStatusClass, exceptionClass, runtimeError, ioError,
             scriptError, nameError, nameErrorMessage, noMethodError, signalException,
             rangeError, dummyClass, systemExit, localJumpError, nativeException,
-            systemCallError, fatal, interrupt, typeError, argumentError, indexError, stopIteration,
+            systemCallError, fatal, interrupt, typeError, argumentError, uncaughtThrowError, indexError, stopIteration,
             syntaxError, standardError, loadError, notImplementedError, securityError, noMemoryError,
             regexpError, eofError, threadError, concurrencyError, systemStackError, zeroDivisionError, floatDomainError, mathDomainError,
             encodingError, encodingCompatibilityError, converterNotFoundError, undefinedConversionError,
@@ -4757,7 +5152,8 @@ public final class Ruby {
             procSysModule, precisionModule, errnoModule;
 
     private DynamicMethod privateMethodMissing, protectedMethodMissing, variableMethodMissing,
-            superMethodMissing, normalMethodMissing, defaultMethodMissing, respondTo, respondToMissing;
+            superMethodMissing, normalMethodMissing, defaultMethodMissing, defaultModuleMethodMissing,
+            respondTo, respondToMissing;
 
     // record separator var, to speed up io ops that use it
     private GlobalVariable recordSeparatorVar;
@@ -4773,8 +5169,6 @@ public final class Ruby {
     private final long startTime = System.currentTimeMillis();
 
     private final RubyInstanceConfig config;
-    private boolean is1_9;
-    private boolean is2_0;
 
     private InputStream in;
     private PrintStream out;
@@ -4792,6 +5186,9 @@ public final class Ruby {
 
     // Compilation
     private final JITCompiler jitCompiler;
+
+    private JRubyTruffleInterface truffleContext;
+    private final Object truffleContextMonitor = new Object();
 
     // Note: this field and the following static initializer
     // must be located be in this order!
@@ -4881,9 +5278,6 @@ public final class Ruby {
     // A global cache for Java-to-Ruby calls
     private final RuntimeCache runtimeCache;
 
-    // The method objects for serial numbers
-    private final ProfiledMethods profiledMethods;
-
     // Message for Errno exceptions that will not generate a backtrace
     public static final String ERRNO_BACKTRACE_MESSAGE = "errno backtraces disabled; run with -Xerrno.backtrace=true to enable";
 
@@ -4907,14 +5301,15 @@ public final class Ruby {
             floatInvalidator = OptoFactory.newGlobalInvalidator(0);
     private boolean fixnumReopened, floatReopened;
 
-    private volatile boolean booting = true;
+    private volatile boolean bootingCore = true;
+    private volatile boolean bootingRuntime = true;
 
     private RubyHash envObject;
 
     private final CoverageData coverageData = new CoverageData();
 
     /** The "global" runtime. Set to the first runtime created, normally. */
-    private static Ruby globalRuntime;
+    private static volatile Ruby globalRuntime;
 
     /** The "thread local" runtime. Set to the global runtime if unset. */
     private static ThreadLocal<Ruby> threadLocalRuntime = new ThreadLocal<Ruby>();
@@ -4923,8 +5318,8 @@ public final class Ruby {
     private final Random random;
 
     /** The runtime-local seed for hash randomization */
-    private long hashSeedK0;
-    private long hashSeedK1;
+    private final long hashSeedK0;
+    private final long hashSeedK1;
 
     private StaticScopeFactory staticScopeFactory;
 
@@ -4970,10 +5365,45 @@ public final class Ruby {
 
     private RubyArray emptyFrozenArray;
 
+    /**
+     * A map from Ruby string data to a pre-frozen global version of that string.
+     *
+     * Access must be synchronized.
+     */
+    private Map<RubyString, WeakReference<RubyString>> dedupMap = Collections.synchronizedMap(new WeakHashMap<RubyString, WeakReference<RubyString>>());
+
     private static final AtomicInteger RUNTIME_NUMBER = new AtomicInteger(0);
     private final int runtimeNumber = RUNTIME_NUMBER.getAndIncrement();
 
     private final Config configBean;
-    private final ClassCache classCacheBean;
     private final org.jruby.management.Runtime runtimeBean;
+
+    private final FilenoUtil filenoUtil = new FilenoUtil();
+
+    private Interpreter interpreter = new Interpreter();
+
+    /**
+     * A representation of this runtime as a JIT-optimizable constant. Used for e.g. invokedynamic binding of runtime
+     * accesses.
+     */
+    private final Object constant;
+
+    /**
+     * The built-in Class#new method, so we can bind more directly to allocate and initialize.
+     */
+    private DynamicMethod baseNewMethod;
+
+    /**
+     * The nullToNil filter for this runtime.
+     */
+    private MethodHandle nullToNil;
+
+    public final ClassValue<TypePopulator> POPULATORS = new ClassValue<TypePopulator>() {
+        @Override
+        protected TypePopulator computeValue(Class<?> type) {
+            return RubyModule.loadPopulatorFor(type);
+        }
+    };
+
+    public final JavaSites sites = new JavaSites();
 }

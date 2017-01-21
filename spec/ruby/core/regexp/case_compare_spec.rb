@@ -9,13 +9,17 @@ describe "Regexp#===" do
     (/abc/ === "xyz").should be_false
   end
 
-  ruby_version_is "1.9" do
-    it "returns true if it matches a Symbol" do
-      (/a/ === :a).should be_true
-    end
+  it "returns true if it matches a Symbol" do
+    (/a/ === :a).should be_true
+  end
 
-    it "returns false if it does not match a Symbol" do
-      (/a/ === :b).should be_false
-    end
+  it "returns false if it does not match a Symbol" do
+    (/a/ === :b).should be_false
+  end
+
+  # mirroring https://github.com/ruby/ruby/blob/trunk/test/ruby/test_regexp.rb
+  it "returns false if the other value cannot be coerced to a string" do
+    (/abc/ === nil).should be_false
+    (/abc/ === /abc/).should be_false
   end
 end

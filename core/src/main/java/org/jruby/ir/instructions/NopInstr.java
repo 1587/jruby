@@ -2,14 +2,13 @@ package org.jruby.ir.instructions;
 
 import org.jruby.ir.IRVisitor;
 import org.jruby.ir.Operation;
-import org.jruby.ir.operands.Operand;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
-import org.jruby.runtime.Block;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.parser.StaticScope;
 import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 
-public class NopInstr extends Instr {
+public class NopInstr extends NoOperandInstr implements FixedArityInstr {
     public static NopInstr NOP = new NopInstr();
 
     private NopInstr() {
@@ -17,22 +16,13 @@ public class NopInstr extends Instr {
         this.markDead();
     }
 
-    public Operand[] getOperands() {
-        return EMPTY_OPERANDS;
-    }
-
     @Override
-    public String toString() {
-        return "NOP";
-    }
-
-    @Override
-    public Instr cloneForInlining(InlinerInfo ii) {
+    public Instr clone(CloneInfo ii) {
         return this;
     }
 
     @Override
-    public Object interpret(ThreadContext context, DynamicScope currDynScope, IRubyObject self, Object[] temp, Block block) {
+    public Object interpret(ThreadContext context, StaticScope currScope, DynamicScope currDynScope, IRubyObject self, Object[] temp) {
         return null;
     }
 

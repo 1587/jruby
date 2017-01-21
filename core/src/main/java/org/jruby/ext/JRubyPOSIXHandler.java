@@ -1,3 +1,12 @@
+/*
+ * Copyright (c) 2015 Oracle and/or its affiliates. All rights reserved. This
+ * code is released under a tri EPL/GPL/LGPL license. You can use it,
+ * redistribute it and/or modify it under the terms of the:
+ *
+ * Eclipse Public License version 1.0
+ * GNU General Public License version 2
+ * GNU Lesser General Public License version 2.1
+ */
 package org.jruby.ext;
 
 import java.io.File;
@@ -39,7 +48,7 @@ public class JRubyPOSIXHandler implements POSIXHandler {
     }
 
     public void unimplementedError(String method) {
-        throw runtime.newNotImplementedError(method + " unsupported or native support failed to load");
+        throw runtime.newNotImplementedError(method + " unsupported or native support failed to load; see http://wiki.jruby.org/Native-Libraries");
     }
 
     public void warn(WARNING_ID id, String message, Object... data) {

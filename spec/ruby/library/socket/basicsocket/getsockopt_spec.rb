@@ -2,7 +2,7 @@ require File.expand_path('../../../../spec_helper', __FILE__)
 require File.expand_path('../../fixtures/classes', __FILE__)
 
 describe "BasicSocket#getsockopt" do
-  before(:each) do
+  before :each do
     @sock = Socket.new(Socket::AF_INET, Socket::SOCK_STREAM, 0)
   end
 
@@ -11,14 +11,19 @@ describe "BasicSocket#getsockopt" do
     @sock.close
   end
 
-  it "gets a socket option Socket::SO_TYPE" do
-    n = @sock.getsockopt(Socket::SOL_SOCKET, Socket::SO_TYPE).to_s
-    n.should == [Socket::SOCK_STREAM].pack("i")
-  end
+  platform_is_not :aix do
+    # A known bug in AIX.  getsockopt(2) does not properly set
+    # the fifth argument for SO_TYPE, SO_OOBINLINE, SO_BROADCAST, etc.
 
-  it "gets a socket option Socket::SO_OOBINLINE" do
-    n = @sock.getsockopt(Socket::SOL_SOCKET, Socket::SO_OOBINLINE).to_s
-    n.should == [0].pack("i")
+    it "gets a socket option Socket::SO_TYPE" do
+      n = @sock.getsockopt(Socket::SOL_SOCKET, Socket::SO_TYPE).to_s
+      n.should == [Socket::SOCK_STREAM].pack("i")
+    end
+
+    it "gets a socket option Socket::SO_OOBINLINE" do
+      n = @sock.getsockopt(Socket::SOL_SOCKET, Socket::SO_OOBINLINE).to_s
+      n.should == [0].pack("i")
+    end
   end
 
   it "gets a socket option Socket::SO_LINGER" do
@@ -37,19 +42,5 @@ describe "BasicSocket#getsockopt" do
 
   it "raises a SystemCallError with an invalid socket option" do
     lambda { @sock.getsockopt Socket::SOL_SOCKET, -1 }.should raise_error(Errno::ENOPROTOOPT)
-  end
-
-  ruby_version_is "1.9.2" do
-    it "gets a Socket::Option" do
-      so = @sock.getsockopt(Socket::SOL_SOCKET, Socket::SO_TYPE)
-      so.class.should == Socket::Option
-      so.level.should == Socket::SOL_SOCKET
-      so.optname.should == Socket::SO_TYPE
-      so.int.should == Socket::SOCK_STREAM
-
-      so = @sock.getsockopt(Socket::SOL_SOCKET, Socket::SO_LINGER)
-      so.optname.should == Socket::SO_LINGER
-      so.linger.should == [false, 0]
-    end
   end
 end

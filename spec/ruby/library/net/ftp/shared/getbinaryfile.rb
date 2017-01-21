@@ -1,5 +1,5 @@
-describe :net_ftp_getbinaryfile, :shared => true do
-  before(:each) do
+describe :net_ftp_getbinaryfile, shared: :true do
+  before :each do
     @fixture_file = File.dirname(__FILE__) + "/../fixtures/getbinaryfile"
     @tmp_file = tmp("getbinaryfile")
 
@@ -7,11 +7,11 @@ describe :net_ftp_getbinaryfile, :shared => true do
     @server.serve_once
 
     @ftp = Net::FTP.new
-    @ftp.connect("localhost", 9921)
+    @ftp.connect(@server.hostname, @server.server_port)
     @ftp.binary = @binary_mode
   end
 
-  after(:each) do
+  after :each do
     @ftp.quit rescue nil
     @ftp.close
     @server.stop
@@ -42,7 +42,7 @@ describe :net_ftp_getbinaryfile, :shared => true do
   end
 
   describe "when resuming an existing file" do
-    before(:each) do
+    before :each do
       @tmp_file = tmp("getbinaryfile_resume")
 
       File.open(@tmp_file, "wb") do |f|
@@ -119,35 +119,6 @@ describe :net_ftp_getbinaryfile, :shared => true do
     it "raises a Net::FTPPermError when the response code is 530" do
       @server.should_receive(:retr).and_respond("530 Not logged in.")
       lambda { @ftp.send(@method, "test", @tmp_file) }.should raise_error(Net::FTPPermError)
-    end
-  end
-
-  ruby_version_is "" ... "1.9" do
-    describe "when switching type fails" do
-      it "raises a Net::FTPPermError when the response code is 500" do
-	@server.should_receive(:type).and_respond("500 Syntax error, command unrecognized.")
-	lambda { @ftp.send(@method, "test", @tmp_file) }.should raise_error(Net::FTPPermError)
-      end
-
-      it "raises a Net::FTPPermError when the response code is 501" do
-	@server.should_receive(:type).and_respond("501 Syntax error in parameters or arguments.")
-	lambda { @ftp.send(@method, "test", @tmp_file) }.should raise_error(Net::FTPPermError)
-      end
-
-      it "raises a Net::FTPPermError when the response code is 504" do
-	@server.should_receive(:type).and_respond("504 Command not implemented for that parameter.")
-	lambda { @ftp.send(@method, "test", @tmp_file) }.should raise_error(Net::FTPPermError)
-      end
-
-      it "raises a Net::FTPTempError when the response code is 421" do
-	@server.should_receive(:type).and_respond("421 Service not available, closing control connection.")
-	lambda { @ftp.send(@method, "test", @tmp_file) }.should raise_error(Net::FTPTempError)
-      end
-
-      it "raises a Net::FTPPermError when the response code is 530" do
-	@server.should_receive(:type).and_respond("530 Not logged in.")
-	lambda { @ftp.send(@method, "test", @tmp_file) }.should raise_error(Net::FTPPermError)
-      end
     end
   end
 

@@ -1,49 +1,25 @@
 package org.jruby.ir;
 
-import org.jruby.ir.operands.LocalVariable;
-import org.jruby.parser.IRStaticScope;
 import org.jruby.parser.StaticScope;
 
 public class IRModuleBody extends IRScope {
-    private CodeVersion version;    // Current code version for this module
-
-    public IRModuleBody(IRManager manager, IRScope lexicalParent, String name, int lineNumber, StaticScope scope) {
-        this(manager, lexicalParent, name, lexicalParent.getFileName(), lineNumber, scope);
-    }
-
-    public IRModuleBody(IRManager manager, IRScope lexicalParent, String name,
-            String fileName, int lineNumber, StaticScope scope) {
-        super(manager, lexicalParent, name, fileName, lineNumber, scope);
+    public IRModuleBody(IRManager manager, IRScope lexicalParent, String name, int lineNumber, StaticScope staticScope) {
+        super(manager, lexicalParent, name, lineNumber, staticScope);
 
         if (!getManager().isDryRun()) {
-            if (scope != null) ((IRStaticScope)scope).setIRScope(this);
-            updateVersion();
+            if (staticScope != null) staticScope.setIRScope(this);
         }
     }
 
     @Override
-    public IRScope getNearestModuleReferencingScope() {
-        return this;
-    }
-
-    public void updateVersion() {
-        version = CodeVersion.getClassVersionToken();
-    }
-
-    public String getScopeName() {
-        return "ModuleBody";
-    }
-
-    public CodeVersion getVersion() {
-        return version;
+    public int getNearestModuleReferencingScopeDepth() {
+        return 0;
     }
 
     @Override
-    public LocalVariable getImplicitBlockArg() {
-        assert false: "A module/class/metaclass body never accepts block args";
-
-        return null;
-    }
+    public IRScopeType getScopeType() {
+        return IRScopeType.MODULE_BODY;
+     }
 
     @Override
     public boolean isModuleBody() {

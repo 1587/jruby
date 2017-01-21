@@ -101,12 +101,10 @@ describe "File.join" do
   end
 
   # TODO: See MRI svn r23306. Add patchlevel when there is a release.
-  ruby_bug "redmine #1418", "1.8.8" do
-    it "raises an ArgumentError if passed a recursive array" do
-      a = ["a"]
-      a << a
-      lambda { File.join a }.should raise_error(ArgumentError)
-    end
+  it "raises an ArgumentError if passed a recursive array" do
+    a = ["a"]
+    a << a
+    lambda { File.join a }.should raise_error(ArgumentError)
   end
 
   it "raises a TypeError exception when args are nil" do
@@ -130,14 +128,12 @@ describe "File.join" do
     str.should == "usr"
   end
 
-  ruby_version_is "1.9" do
-    it "calls #to_path" do
-      lambda { File.join(mock('x')) }.should raise_error(TypeError)
+  it "calls #to_path" do
+    lambda { File.join(mock('x')) }.should raise_error(TypeError)
 
-      bin = mock("bin")
-      bin.should_receive(:to_path).exactly(:twice).and_return("bin")
-      File.join(bin).should == "bin"
-      File.join("usr", bin).should == "usr/bin"
-    end
+    bin = mock("bin")
+    bin.should_receive(:to_path).exactly(:twice).and_return("bin")
+    File.join(bin).should == "bin"
+    File.join("usr", bin).should == "usr/bin"
   end
 end

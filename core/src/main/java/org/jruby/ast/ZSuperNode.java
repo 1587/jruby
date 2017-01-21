@@ -32,33 +32,17 @@
 package org.jruby.ast;
 
 import java.util.List;
-
-import org.jruby.Ruby;
-import org.jruby.RubyModule;
-import org.jruby.RubyString;
-import org.jruby.ast.types.IArityNode;
 import org.jruby.ast.visitor.NodeVisitor;
-import org.jruby.evaluator.ASTInterpreter;
-import org.jruby.runtime.Helpers;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Arity;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.CallSite;
-import org.jruby.runtime.MethodIndex;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.util.DefinedMessage;
 
 /**
  * a call to 'super' with no arguments in a method.
  */
-public class ZSuperNode extends Node implements IArityNode, BlockAcceptingNode {
+public class ZSuperNode extends Node implements BlockAcceptingNode {
     private Node iterNode;
-    private CallSite callSite;
 
     public ZSuperNode(ISourcePosition position) {
-        super(position);
-        this.callSite = MethodIndex.getSuperCallSite();
+        super(position, false);
     }
 
     public NodeType getNodeType() {
@@ -69,15 +53,8 @@ public class ZSuperNode extends Node implements IArityNode, BlockAcceptingNode {
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitZSuperNode(this);
-    }
-	
-    /**
-     * 'super' can take any number of arguments.
-     */
-    public Arity getArity() {
-        return Arity.optional();
     }
     
     public List<Node> childNodes() {
@@ -92,28 +69,5 @@ public class ZSuperNode extends Node implements IArityNode, BlockAcceptingNode {
         this.iterNode = iterNode;
         
         return this;
-    }
-    
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        Block block = ASTInterpreter.getBlock(runtime, context, self, aBlock, iterNode);
-        if (block == null || !block.isGiven()) block = context.getFrameBlock();
-
-        // dispatch as varargs, so incoming args are used to decide arity path
-        return callSite.callVarargs(context, self, self, context.getCurrentScope().getArgValues(), block);
-    }
-    
-    @Override
-    public RubyString definition(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        String name = context.getFrameName();
-        RubyModule klazz = context.getFrameKlazz();
-
-        if (name != null &&
-                klazz != null &&
-                Helpers.findImplementerIfNecessary(self.getMetaClass(), klazz).getSuperClass().isMethodBound(name, false)) {
-            return runtime.getDefinedMessage(DefinedMessage.SUPER);
-        }
-
-        return null;
     }
 }

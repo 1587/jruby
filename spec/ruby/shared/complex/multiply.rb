@@ -1,6 +1,6 @@
 require File.expand_path('../../../spec_helper', __FILE__)
 
-describe :complex_multiply, :shared => true do
+describe :complex_multiply, shared: true do
   describe "with Complex" do
     it "multiplies according to the usual rule for complex numbers: (a + bi) * (c + di) = ac - bd + (ad + bc)i" do
       (Complex(1, 2) * Complex(10, 20)).should == Complex((1 * 10) - (2 * 20), (1 * 20) + (2 * 10))
@@ -25,17 +25,15 @@ describe :complex_multiply, :shared => true do
     end
   end
 
-  ruby_version_is "1.9" do
-    describe "with a Numeric which responds to #real? with true" do
-      it "multiples both parts of self by other" do
-        other = mock_numeric('other')
-        real = mock_numeric('real')
-        imag = mock_numeric('imag')
-        other.should_receive(:real?).and_return(true)
-        real.should_receive(:*).with(other).and_return(1)
-        imag.should_receive(:*).with(other).and_return(2)
-        (Complex(real, imag) * other).should == Complex(1, 2)
-      end
+  describe "with a Numeric which responds to #real? with true" do
+    it "multiples both parts of self by other" do
+      other = mock_numeric('other')
+      real = mock_numeric('real')
+      imag = mock_numeric('imag')
+      other.should_receive(:real?).and_return(true)
+      real.should_receive(:*).with(other).and_return(1)
+      imag.should_receive(:*).with(other).and_return(2)
+      (Complex(real, imag) * other).should == Complex(1, 2)
     end
 
     describe "with a Numeric which responds to #real? with false" do

@@ -1,6 +1,5 @@
 package org.jruby.runtime;
 
-import org.jruby.RubyModule;
 import org.jruby.parser.StaticScope;
 
 /**
@@ -10,23 +9,24 @@ public abstract class ContextAwareBlockBody extends BlockBody {
     /** The static scope for the block body */
     protected StaticScope scope;
 
-    /** The 'Arity' of the block */
-    protected final Arity arity;
+    public ContextAwareBlockBody(StaticScope scope, Signature signature) {
+        super(signature);
 
-    public ContextAwareBlockBody(StaticScope scope, Arity arity, int argumentType) {
-        super(argumentType);
-        
         this.scope = scope;
-        this.arity = arity;
     }
 
-    protected Frame pre(ThreadContext context, RubyModule klass, Binding binding) {
-        return context.preYieldSpecificBlock(binding, scope, klass);
+    @Deprecated
+    public ContextAwareBlockBody(StaticScope scope, Arity arity, int argumentType) {
+        this(scope, Signature.from(arity));
     }
 
-    protected void post(ThreadContext context, Binding binding, Visibility vis, Frame lastFrame) {
-        binding.getFrame().setVisibility(vis);
-        context.postYield(binding, lastFrame);
+    protected Frame pre(ThreadContext context, Block block) {
+        return context.preYieldSpecificBlock(block.getBinding(), scope);
+    }
+
+    protected void post(ThreadContext context, Block block, Visibility vis, Frame lastFrame) {
+        block.getBinding().getFrame().setVisibility(vis);
+        context.postYield(block.getBinding(), lastFrame);
     }
 
     public StaticScope getStaticScope() {
@@ -35,9 +35,5 @@ public abstract class ContextAwareBlockBody extends BlockBody {
 
     public void setStaticScope(StaticScope newScope) {
         this.scope = newScope;
-    }
-
-    public Arity arity() {
-        return arity;
     }
 }

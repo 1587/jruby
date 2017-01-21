@@ -21,35 +21,38 @@ describe "C-API Thread function" do
   end
 
   describe "rb_thread_select" do
-    it "returns true if an fd is ready to read" do
-      read, write = IO.pipe
+    ruby_version_is ""..."2.2" do
+      it "returns true if an fd is ready to read" do
+        read, write = IO.pipe
 
-      @t.rb_thread_select_fd(read.to_i, 0).should == false
-      write << "1"
-      @t.rb_thread_select_fd(read.to_i, 0).should == true
-    end
-
-    it "does not block all threads" do
-      t = Thread.new do
-        sleep 0.25
-        ScratchPad.record :inner
+        @t.rb_thread_select_fd(read.to_i, 0).should == false
+        write << "1"
+        @t.rb_thread_select_fd(read.to_i, 0).should == true
       end
-      Thread.pass while t.status and t.status != "sleep"
 
-      @t.rb_thread_select(500_000)
+      it "does not block all threads" do
+        t = Thread.new do
+          sleep 0.25
+          ScratchPad.record :inner
+        end
+        Thread.pass while t.status and t.status != "sleep"
 
-      t.alive?.should be_false
-      ScratchPad.recorded.should == :inner
+        @t.rb_thread_select(500_000)
 
-      t.join
+        t.alive?.should be_false
+        ScratchPad.recorded.should == :inner
+
+        t.join
+      end
     end
+
   end
 
   describe "rb_thread_wait_for" do
     it "sleeps the current thread for the give ammount of time" do
       start = Time.now
       @t.rb_thread_wait_for(0, 100_000)
-      (Time.now - start).should be_close(0.1, 0.1)
+      (Time.now - start).should be_close(0.1, 0.2)
     end
   end
 
@@ -103,17 +106,29 @@ describe "C-API Thread function" do
     end
 
     it "handles throwing an exception in the thread" do
-      proc = lambda { |x| raise NotImplementedError }
+      proc = lambda { |x| raise "my error" }
       thr = @t.rb_thread_create(proc, nil)
       thr.should be_kind_of(Thread)
 
-      lambda { thr.join }.should raise_error(NotImplementedError)
+      lambda {
+        thr.join
+      }.should raise_error(RuntimeError, "my error")
+    end
+
+    it "sets the thread's group" do
+      thr = @t.rb_thread_create(lambda { |x| }, nil)
+      begin
+        thread_group = thr.group
+        thread_group.should be_an_instance_of(ThreadGroup)
+      ensure
+        thr.join
+      end
     end
   end
 
 end
 
-describe :rb_thread_blocking_region, :shared => true do
+describe :rb_thread_blocking_region, shared: true do
   before :each do
     @t = CApiThreadSpecs.new
     ScratchPad.clear
@@ -125,7 +140,7 @@ describe :rb_thread_blocking_region, :shared => true do
     end
 
     # Wait until it's blocking...
-    sleep 1
+    Thread.pass while thr.status and thr.status != "sleep"
 
     # Wake it up, causing the unblock function to be run.
     thr.wakeup
@@ -139,16 +154,17 @@ describe :rb_thread_blocking_region, :shared => true do
 end
 
 describe "C-API Thread function" do
-  describe "rb_thread_blocking_region" do
-    extended_on :rubinius do
+  ruby_version_is ""..."2.2" do
+    describe "rb_thread_blocking_region_with_ubf_io" do
       it_behaves_like :rb_thread_blocking_region, :rb_thread_blocking_region_with_ubf_io
-      it_behaves_like :rb_thread_blocking_region, :rb_thread_blocking_region
     end
 
-    ruby_version_is "1.9" do
-      it_behaves_like :rb_thread_blocking_region, :rb_thread_blocking_region_with_ubf_io
+    describe "rb_thread_blocking_region" do
       it_behaves_like :rb_thread_blocking_region, :rb_thread_blocking_region
     end
   end
-end
 
+  describe "rb_thread_call_without_gvl" do
+    it_behaves_like :rb_thread_blocking_region, :rb_thread_call_without_gvl
+  end
+end

@@ -2,6 +2,14 @@ require File.expand_path('../../../spec_helper', __FILE__)
 require File.expand_path('../fixtures/classes', __FILE__)
 
 describe "Class.new with a block given" do
+  it "yields the new class as self in the block" do
+    self_in_block = nil
+    klass = Class.new do
+      self_in_block = self
+    end
+    self_in_block.should equal klass
+  end
+
   it "uses the given block as the class' body" do
     klass = Class.new do
       def self.message
@@ -13,7 +21,7 @@ describe "Class.new with a block given" do
       end
     end
 
-    klass.message.should     == "text"
+    klass.message.should == "text"
     klass.new.hello.should == "hello again"
   end
 
@@ -40,32 +48,14 @@ describe "Class.new with a block given" do
     klass.new.message2.should == "hello"
   end
 
-  ruby_version_is ""..."1.9" do
-
-    it "runs the inherited hook before yielding the block" do
-      ScratchPad.record []
-      klass = Class.new(CoreClassSpecs::Inherited::D) do
-        ScratchPad << self
-      end
-
-      ScratchPad.recorded.should == [klass, CoreClassSpecs::Inherited::D]
+  it "runs the inherited hook after yielding the block" do
+    ScratchPad.record []
+    klass = Class.new(CoreClassSpecs::Inherited::D) do
+      ScratchPad << self
     end
 
+    ScratchPad.recorded.should == [CoreClassSpecs::Inherited::D, klass]
   end
-
-  ruby_version_is "1.9" do
-
-    it "runs the inherited hook after yielding the block" do
-      ScratchPad.record []
-      klass = Class.new(CoreClassSpecs::Inherited::D) do
-        ScratchPad << self
-      end
-
-      ScratchPad.recorded.should == [CoreClassSpecs::Inherited::D, klass]
-    end
-
-  end
-
 end
 
 describe "Class.new" do
@@ -83,16 +73,8 @@ describe "Class.new" do
     lambda { Class.new meta }.should raise_error(TypeError)
   end
 
-  ruby_version_is ""..."1.9" do
-    it "creates a class without a name" do
-      Class.new.name.should == ""
-    end
-  end
-
-  ruby_version_is "1.9" do
-    it "creates a class without a name" do
-      Class.new.name.should be_nil
-    end
+  it "creates a class without a name" do
+    Class.new.name.should be_nil
   end
 
   it "creates a class that can be given a name by assigning it to a constant" do
@@ -114,11 +96,11 @@ describe "Class.new" do
 
   it "raises a TypeError when given a non-Class" do
     error_msg = /superclass must be a Class/
-    lambda { Class.new("")         }.should raise_error(TypeError)
-    lambda { Class.new(1)          }.should raise_error(TypeError)
-    lambda { Class.new(:symbol)    }.should raise_error(TypeError)
-    lambda { Class.new(mock('o'))  }.should raise_error(TypeError)
-    lambda { Class.new(Module.new) }.should raise_error(TypeError)
+    lambda { Class.new("")         }.should raise_error(TypeError, error_msg)
+    lambda { Class.new(1)          }.should raise_error(TypeError, error_msg)
+    lambda { Class.new(:symbol)    }.should raise_error(TypeError, error_msg)
+    lambda { Class.new(mock('o'))  }.should raise_error(TypeError, error_msg)
+    lambda { Class.new(Module.new) }.should raise_error(TypeError, error_msg)
   end
 end
 

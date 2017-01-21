@@ -31,7 +31,9 @@ package org.jruby.util;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Properties;
+
 import jnr.posix.util.Platform;
 import org.jcodings.Encoding;
 import org.jruby.Ruby;
@@ -49,15 +51,24 @@ public class OSEnvironment {
         Map<String, String> env = runtime.getInstanceConfig().getEnvironment();
         if ( env != null ) return asMapOfRubyStrings(runtime, env);
 
-        // fall back on empty env when security disallows environment var access (like in an applet)
         if ( Ruby.isSecurityRestricted() ) return Collections.emptyMap();
 
         return asMapOfRubyStrings(runtime, System.getenv());
     }
 
-    public Map getEnvironmentVariableMap(Ruby runtime) {
+    public Map<RubyString, RubyString> getEnvironmentVariableMap(Ruby runtime) {
         Map envMap = OSEnvironment.environmentVariableMap(runtime);
         return envMap == Collections.EMPTY_MAP ? new HashMap(4) : envMap;
+    }
+
+    public static Map<String, String> propertiesToStringMap(Properties properties) {
+        Map<String, String> map = new HashMap<String, String>();
+        for (Entry<Object, Object> entry : properties.entrySet()) {
+            if (entry.getKey() instanceof String && entry.getValue() instanceof String) {
+                map.put((String) entry.getKey(), (String) entry.getValue());
+            }
+        }
+        return map;
     }
 
     /**
@@ -70,7 +81,7 @@ public class OSEnvironment {
         return asMapOfRubyStrings(runtime, (Properties) System.getProperties().clone());
     }
 
-    public Map getSystemPropertiesMap(Ruby runtime) {
+    public Map<RubyString, RubyString> getSystemPropertiesMap(Ruby runtime) {
         Map sysMap = OSEnvironment.systemPropertiesMap(runtime);
         return sysMap == Collections.EMPTY_MAP ? new HashMap(4) : sysMap;
     }
@@ -78,15 +89,15 @@ public class OSEnvironment {
     private static Map<RubyString, RubyString> asMapOfRubyStrings(final Ruby runtime, final Map<?, ?> map) {
         @SuppressWarnings("unchecked")
         final Map<RubyString, RubyString> rubyMap = new HashMap(map.size() + 2);
-        Encoding encoding = runtime.getEncodingService().getLocaleEncoding();
+        Encoding keyEncoding = runtime.getEncodingService().getLocaleEncoding();
 
-        // On Windows, entrySet doesn't have corresponding keys for these
+        // On Windows, map doesn't have corresponding keys for these
         if (Platform.IS_WINDOWS) {
             // these may be null when in a restricted environment (JRUBY-6514)
             String home = SafePropertyAccessor.getProperty("user.home");
             String user = SafePropertyAccessor.getProperty("user.name");
-            putRubyKeyValuePair(runtime, rubyMap, "HOME", home == null ? "/" : home, encoding);
-            putRubyKeyValuePair(runtime, rubyMap, "USER", user == null ? "" : user, encoding);
+            putRubyKeyValuePair(runtime, rubyMap, "HOME", keyEncoding, home == null ? "/" : home, keyEncoding);
+            putRubyKeyValuePair(runtime, rubyMap, "USER", keyEncoding, user == null ? "" : user, keyEncoding);
         }
 
         for (Map.Entry<?, ?> entry : map.entrySet()) {
@@ -100,7 +111,15 @@ public class OSEnvironment {
             val = entry.getValue();
             if ( ! (val instanceof String) ) continue; // Java devs can stuff non-string objects into env
 
-            putRubyKeyValuePair(runtime, rubyMap, key, (String) val, encoding);
+            // Ensure PATH is encoded like filesystem
+            Encoding valueEncoding = keyEncoding;
+            if ( org.jruby.platform.Platform.IS_WINDOWS ?
+                    key.toString().equalsIgnoreCase("PATH") :
+                    key.toString().equals("PATH") ) {
+                valueEncoding = runtime.getEncodingService().getFileSystemEncoding();
+            }
+
+            putRubyKeyValuePair(runtime, rubyMap, key, keyEncoding, (String) val, valueEncoding);
         }
 
         return rubyMap;
@@ -108,9 +127,9 @@ public class OSEnvironment {
 
     private static void putRubyKeyValuePair(Ruby runtime,
         final Map<RubyString, RubyString> map,
-        String key, String value, Encoding encoding) {
-        ByteList keyBytes = new ByteList(key.getBytes(), encoding);
-        ByteList valueBytes = new ByteList(value.getBytes(), encoding);
+        String key, Encoding keyEncoding, String value, Encoding valueEncoding) {
+        ByteList keyBytes = RubyString.encodeBytelist(key, keyEncoding);
+        ByteList valueBytes = RubyString.encodeBytelist(value, valueEncoding);
 
         RubyString keyString = runtime.newString(keyBytes);
         RubyString valueString = runtime.newString(valueBytes);
@@ -120,5 +139,5 @@ public class OSEnvironment {
 
         map.put(keyString, valueString);
     }
-    
+
 }

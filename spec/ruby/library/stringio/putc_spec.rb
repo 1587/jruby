@@ -1,10 +1,8 @@
-# -*- encoding: utf-8 -*-
-
 require File.expand_path('../../../spec_helper', __FILE__)
 require File.expand_path('../fixtures/classes', __FILE__)
 
 describe "StringIO#putc when passed [String]" do
-  before(:each) do
+  before :each do
     @io = StringIO.new('example')
   end
 
@@ -37,25 +35,10 @@ describe "StringIO#putc when passed [String]" do
     @io.putc("t")
     @io.pos.should == 3
   end
-
-
-  with_feature :encoding do
-
-    before :each do
-      @enc_io = StringIO.new("ëllø")
-    end
-
-    it "writes a byte into the io" do
-      @enc_io.putc("t")
-      @enc_io.string.should == "t\xABllø"
-    end
-
-  end
-
 end
 
 describe "StringIO#putc when passed [Object]" do
-  before(:each) do
+  before :each do
     @io = StringIO.new('example')
   end
 

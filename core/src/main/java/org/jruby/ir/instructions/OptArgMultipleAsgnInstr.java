@@ -4,10 +4,12 @@ import org.jruby.RubyArray;
 import org.jruby.ir.IRVisitor;
 import org.jruby.ir.Operation;
 import org.jruby.ir.operands.Operand;
-import org.jruby.ir.operands.UndefinedValue;
 import org.jruby.ir.operands.Variable;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
-import org.jruby.runtime.Block;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
+import org.jruby.ir.runtime.IRRuntimeHelpers;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.parser.StaticScope;
 import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
@@ -15,7 +17,7 @@ import org.jruby.runtime.builtin.IRubyObject;
 // This instruction shows only when a block is inlined.
 // Opt arg receive instructions get transformed to this.
 // This does not show up in regular Ruby code.
-public class OptArgMultipleAsgnInstr extends MultipleAsgnBase {
+public class OptArgMultipleAsgnInstr extends MultipleAsgnBase implements FixedArityInstr {
     /** This instruction gets to pick an argument off the arry only if
      *  the array has at least these many elements */
     private final int minArgsLength;
@@ -25,24 +27,37 @@ public class OptArgMultipleAsgnInstr extends MultipleAsgnBase {
         this.minArgsLength = minArgsLength;
     }
 
-    @Override
-    public String toString() {
-        return super.toString() + "(" + array + "," + index + "," + minArgsLength + ")";
+    public int getMinArgsLength() {
+        return minArgsLength;
     }
 
     @Override
-    public Instr cloneForInlining(InlinerInfo ii) {
-        return new OptArgMultipleAsgnInstr(ii.getRenamedVariable(result), array.cloneForInlining(ii), index, minArgsLength);
+    public String[] toStringNonOperandArgs() {
+        return new String[] { "index: " + index, "min_length: " + minArgsLength};
     }
 
     @Override
-    public Object interpret(ThreadContext context, DynamicScope currDynScope, IRubyObject self, Object[] temp, Block block) {
+    public Instr clone(CloneInfo ii) {
+        return new OptArgMultipleAsgnInstr(ii.getRenamedVariable(result), getArray().cloneForInlining(ii), index, minArgsLength);
+    }
+
+    @Override
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+        e.encode(getArray());
+        e.encode(getIndex());
+        e.encode(getMinArgsLength());
+    }
+
+    public static OptArgMultipleAsgnInstr decode(IRReaderDecoder d) {
+        return new OptArgMultipleAsgnInstr(d.decodeVariable(), d.decodeOperand(), d.decodeInt(), d.decodeInt());
+    }
+
+    @Override
+    public Object interpret(ThreadContext context, StaticScope currScope, DynamicScope currDynScope, IRubyObject self, Object[] temp) {
         // ENEBO: Can I assume since IR figured this is an internal array it will be RubyArray like this?
-        RubyArray rubyArray = (RubyArray) array.retrieve(context, self, currDynScope, temp);
-        Object val;
-
-        int n = rubyArray.getLength();
-		  return minArgsLength <= n ? rubyArray.entry(index) : UndefinedValue.UNDEFINED;
+        RubyArray rubyArray = (RubyArray) getArray().retrieve(context, self, currScope, currDynScope, temp);
+        return IRRuntimeHelpers.extractOptionalArgument(rubyArray, minArgsLength, index);
     }
 
     @Override

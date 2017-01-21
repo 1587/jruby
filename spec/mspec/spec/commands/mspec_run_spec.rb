@@ -2,6 +2,9 @@ require 'spec_helper'
 require 'mspec/runner/mspec'
 require 'mspec/commands/mspec-run'
 
+one_spec = File.expand_path(File.dirname(__FILE__)) + '/fixtures/one_spec.rb'
+two_spec = File.expand_path(File.dirname(__FILE__)) + '/fixtures/two_spec.rb'
+
 describe MSpecRun, ".new" do
   before :each do
     @script = MSpecRun.new
@@ -16,12 +19,12 @@ describe MSpecRun, "#options" do
   before :each do
     @stdout, $stdout = $stdout, IOStub.new
 
-    @argv = ["a", "b"]
+    @argv = [one_spec, two_spec]
     @options, @config = new_option
-    MSpecOptions.stub!(:new).and_return(@options)
+    MSpecOptions.stub(:new).and_return(@options)
 
     @script = MSpecRun.new
-    @script.stub!(:config).and_return(@config)
+    @script.stub(:config).and_return(@config)
   end
 
   after :each do
@@ -50,7 +53,7 @@ describe MSpecRun, "#options" do
 
   it "provides a custom action (block) to the config option" do
     @script.should_receive(:load).with("cfg.mspec")
-    @script.options ["-B", "cfg.mspec", "a"]
+    @script.options ["-B", "cfg.mspec", one_spec]
   end
 
   it "enables the name option" do
@@ -118,16 +121,19 @@ describe MSpecRun, "#options" do
     @script.options @argv
   end
 
-  it "enables the debug option" do
-    @options.should_receive(:debug)
-    @script.options @argv
-  end
-
-  it "exits if there are no files to process" do
+  it "exits if there are no files to process and './spec' is not a directory" do
+    File.should_receive(:directory?).with("./spec").and_return(false)
     @options.should_receive(:parse).and_return([])
     @script.should_receive(:exit)
     @script.options
-    $stdout.should =~ /No files specified/
+    $stdout.should include "No files specified"
+  end
+
+  it "process 'spec/' if it is a directory and no files were specified" do
+    File.should_receive(:directory?).with("./spec").and_return(true)
+    @options.should_receive(:parse).and_return([])
+    @script.should_receive(:files).with(["spec/"])
+    @script.options
   end
 
   it "calls #custom_options" do
@@ -139,7 +145,7 @@ end
 describe MSpecRun, "#run" do
   before :each do
     @script = MSpecRun.new
-    @script.stub!(:exit)
+    @script.stub(:exit)
     @spec_dir = File.expand_path(File.dirname(__FILE__)+"/fixtures")
     @file_patterns = [
       @spec_dir+"/level2",
@@ -176,7 +182,7 @@ describe MSpecRun, "#run" do
   end
 
   it "exits with the exit code registered with MSpec" do
-    MSpec.stub!(:exit_code).and_return(7)
+    MSpec.stub(:exit_code).and_return(7)
     @script.should_receive(:exit).with(7)
     @script.run
   end

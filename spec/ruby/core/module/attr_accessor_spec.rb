@@ -28,13 +28,25 @@ describe "Module#attr_accessor" do
     o.send(:b).should == "b"
   end
 
-  it "allows creating an attr_accessor on an immediate class" do
-    class TrueClass
-      attr_accessor :spec_attr_accessor
-    end
+  ruby_version_is ''...'2.2' do
+    it "allows creating an attr_accessor on an immediate class" do
+      class TrueClass
+        attr_accessor :spec_attr_accessor
+      end
 
-    true.spec_attr_accessor = "a"
-    true.spec_attr_accessor.should == "a"
+      true.spec_attr_accessor = "a"
+      true.spec_attr_accessor.should == "a"
+    end
+  end
+
+  ruby_version_is '2.2' do
+    it "not allows creating an attr_accessor on an immediate class" do
+      class TrueClass
+        attr_accessor :spec_attr_accessor
+      end
+
+      lambda { true.spec_attr_accessor = "a" }.should raise_error(RuntimeError)
+    end
   end
 
   it "converts non string/symbol/fixnum names to strings using to_str" do
@@ -87,14 +99,5 @@ describe "Module#attr_accessor" do
     it "can read through the accessor" do
       1.foobar.should be_nil
     end
-
-    # On Ruby 2.0 immediates are always frozen, so setting fails.
-    ruby_version_is ""..."2.0" do
-      it "can set a value through the accessor" do
-        1.foobar = 2
-        1.foobar.should == 2
-      end
-    end
   end
-
 end

@@ -1,35 +1,33 @@
 package org.jruby.ir.instructions.specialized;
 
+import org.jruby.ir.Operation;
 import org.jruby.ir.instructions.CallInstr;
+import org.jruby.ir.instructions.Instr;
 import org.jruby.ir.operands.Fixnum;
 import org.jruby.ir.operands.Operand;
-import org.jruby.ir.Operation;
-import org.jruby.runtime.Block;
+import org.jruby.ir.operands.Variable;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.parser.StaticScope;
+import org.jruby.runtime.CallType;
 import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 
-/**
- *
- */
 public class OneFixnumArgNoBlockCallInstr extends CallInstr {
     private final long fixNum;
 
-    public OneFixnumArgNoBlockCallInstr(CallInstr call) {
-        super(Operation.CALL_1F, call);
+    public OneFixnumArgNoBlockCallInstr(CallType callType, Variable result, String name, Operand receiver, Operand[] args, boolean potentiallyRefined) {
+        super(Operation.CALL_1F, callType, result, name, receiver, args, null, potentiallyRefined);
 
-        assert getCallArgs().length == 1;
+        assert args.length == 1;
 
-        this.fixNum = ((Fixnum) getCallArgs()[0]).value;
+        this.fixNum = ((Fixnum) args[0]).value;
     }
 
     @Override
-    public String toString() {
-        return super.toString() + "{1F}";
-    }
-
-    public Operand getReceiver() {
-        return receiver;
+    public Instr clone(CloneInfo ii) {
+        return new OneFixnumArgNoBlockCallInstr(getCallType(), ii.getRenamedVariable(result), getName(), getReceiver().cloneForInlining(ii),
+                cloneCallArgs(ii), isPotentiallyRefined());
     }
 
     public long getFixnumArg() {
@@ -37,8 +35,8 @@ public class OneFixnumArgNoBlockCallInstr extends CallInstr {
     }
 
     @Override
-    public Object interpret(ThreadContext context, DynamicScope dynamicScope, IRubyObject self, Object[] temp, Block block) {
-        IRubyObject object = (IRubyObject) receiver.retrieve(context, self, dynamicScope, temp);
+    public Object interpret(ThreadContext context, StaticScope currScope, DynamicScope dynamicScope, IRubyObject self, Object[] temp) {
+        IRubyObject object = (IRubyObject) getReceiver().retrieve(context, self, currScope, dynamicScope, temp);
         return getCallSite().call(context, self, object, fixNum);
     }
 }

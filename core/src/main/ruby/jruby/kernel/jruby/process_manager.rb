@@ -20,7 +20,7 @@ module JRuby
       config = LaunchConfig.new(JRuby.runtime, [command].to_java(IRubyObject), false)
 
       use_shell = Platform::IS_WINDOWS ? config.should_run_in_shell : false
-      use_shell ||= ShellLauncher.should_use_shell(command)
+      use_shell |= ShellLauncher.should_use_shell(command)
 
       if use_shell
         config.verify_executable_for_shell
@@ -41,7 +41,8 @@ module JRuby
       result = out.to_io.read
       exit_value = process.wait_for
 
-      status = RubyProcess::RubyStatus.newProcessStatus(JRuby.runtime, exit_value, pid)
+      # RubyStatus uses real native status now, so we unshift Java's shifted exit status
+      status = RubyProcess::RubyStatus.newProcessStatus(JRuby.runtime, exit_value << 8, pid)
       JRuby.runtime.current_context.last_exit_status = status
 
       result.gsub(/\r\n/, "\n")

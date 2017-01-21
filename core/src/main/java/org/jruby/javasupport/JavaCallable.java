@@ -48,6 +48,7 @@ import org.jruby.anno.JRubyMethod;
 import org.jruby.exceptions.JumpException;
 import org.jruby.exceptions.RaiseException;
 import org.jruby.runtime.Helpers;
+import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.util.cli.Options;
 import static org.jruby.javasupport.JavaClass.toRubyArray;
@@ -138,19 +139,14 @@ public abstract class JavaCallable extends JavaAccessibleObject implements Param
     }
 
     final Object[] convertArguments(final IRubyObject[] args) {
-        return convertArguments(args, 0);
+        return JavaUtil.convertArguments(args, parameterTypes, 0);
     }
 
     final Object[] convertArguments(final IRubyObject[] args, int offset) {
-        final Object[] arguments = new Object[ args.length - offset ];
-        final Class<?>[] types = parameterTypes;
-        for ( int i = arguments.length; --i >= 0; ) {
-            arguments[i] = args[ i + offset ].toJava( types[i] );
-        }
-        return arguments;
+        return JavaUtil.convertArguments(args, parameterTypes, offset);
     }
 
-    protected final IRubyObject handleThrowable(final Throwable ex, final Member target) {
+    protected final IRubyObject handleThrowable(ThreadContext context, final Throwable ex) {
         if ( ex instanceof JumpException ) {
             // RaiseException (from the Ruby side) is expected to already
             // have its stack-trace rewritten - no need to do it again ...
@@ -158,15 +154,15 @@ public abstract class JavaCallable extends JavaAccessibleObject implements Param
         }
 
         if (REWRITE_JAVA_TRACE) {
-            Helpers.rewriteStackTrace(getRuntime(), ex);
+            Helpers.rewriteStackTraceAndThrow(context, ex);
         }
 
         Helpers.throwException(ex);
         return null; // not reached
     }
 
-    protected final IRubyObject handleInvocationTargetEx(final InvocationTargetException ex, Member target) {
-        return handleThrowable(ex.getTargetException(), target);
+    protected final IRubyObject handleInvocationTargetEx(ThreadContext context, InvocationTargetException ex) {
+        return handleThrowable(context, ex.getTargetException());
     }
 
     final IRubyObject handleIllegalAccessEx(final IllegalAccessException ex, Member target) throws RaiseException {

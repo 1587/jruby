@@ -1,17 +1,17 @@
 package org.jruby.ir.passes;
 
-import java.util.HashMap;
-import java.util.Map;
+import org.jruby.ir.IRClosure;
 import org.jruby.ir.IRScope;
+import org.jruby.ir.IRScriptBody;
 import org.jruby.ir.representations.CFG;
 import org.jruby.util.log.Logger;
 import org.jruby.util.log.LoggerFactory;
 
-/**
- *
- */
+import java.util.HashMap;
+import java.util.Map;
+
 public class BasicCompilerPassListener implements CompilerPassListener {
-    private static final Logger LOG = LoggerFactory.getLogger("BasicCompilerPassListener");
+    private static final Logger LOG = LoggerFactory.getLogger(BasicCompilerPassListener.class);
 
     private Map<CompilerPass, Long> times = new HashMap<CompilerPass, Long>();
 
@@ -34,10 +34,10 @@ public class BasicCompilerPassListener implements CompilerPassListener {
 
         if (c != null) {
             LOG.info("\nGraph:\n" + c.toStringGraph());
-            LOG.info("\nInstructions:\n" + c.toStringInstrs());
+            LOG.info("\nInstructions[" + getScopeUUID(scope) + "," + scope.getClass().getSimpleName() + "," +
+                    pass.getClass().getSimpleName() + "]:\n" + c.toStringInstrs() + "\n:Instructions");
         } else {
             LOG.info("\n  instrs:\n" + scope.toStringInstrs());
-            LOG.info("\n  live variables:\n" + scope.toStringVariables());
         }
 
 
@@ -46,5 +46,13 @@ public class BasicCompilerPassListener implements CompilerPassListener {
         } else { // Not really sure we should allow same pass to be run twice in same pass order run...too defensive?
             LOG.info("Finished " + pass.getLabel() + " on scope " + scope);
         }
+    }
+
+    private String getScopeUUID(IRScope scope) {
+        if (scope instanceof IRScriptBody || scope instanceof IRClosure) {
+            return scope.getFileName() + '#' + scope.getLineNumber() + '#';
+        }
+
+        return scope.getFileName() + '#' + scope.getLineNumber() + '#' + scope.getName();
     }
 }

@@ -28,6 +28,13 @@ with_feature :encoding do
         str = "abc"
         str.encode.should_not equal(str)
       end
+
+      it "encodes an ascii substring of a binary string to UTF-8" do
+        x82 = [0x82].pack('C')
+        str =  "#{x82}foo".force_encoding("ascii-8bit")[1..-1].encode("utf-8")
+        str.should == "foo".force_encoding("utf-8")
+        str.encoding.should equal(Encoding::UTF_8)
+      end
     end
 
     describe "when passed to encoding" do
@@ -46,7 +53,13 @@ with_feature :encoding do
       it "returns a copy when Encoding.default_internal is nil" do
         Encoding.default_internal = nil
         str = "あ"
-        str.encode(:invalid => :replace).should_not equal(str)
+        str.encode(invalid: :replace).should_not equal(str)
+      end
+
+      it "normalizes newlines" do
+        "\r\nfoo".encode(universal_newline: true).should == "\nfoo"
+
+        "\rfoo".encode(universal_newline: true).should == "\nfoo"
       end
     end
 
@@ -55,19 +68,24 @@ with_feature :encoding do
         str = "あ"
         str.encode("utf-8", "utf-8").should_not equal(str)
       end
+
+      it "returns the transcoded string" do
+        str = "\x00\x00\x00\x1F"
+        str.encode(Encoding::UTF_8, Encoding::UTF_16BE).should == "\u0000\u001f"
+      end
     end
 
     describe "when passed to, options" do
       it "returns a copy when the destination encoding is the same as the String encoding" do
         str = "あ"
-        str.encode(Encoding::UTF_8, :undef => :replace).should_not equal(str)
+        str.encode(Encoding::UTF_8, undef: :replace).should_not equal(str)
       end
     end
 
     describe "when passed to, from, options" do
       it "returns a copy when both encodings are the same" do
         str = "あ"
-        str.encode("utf-8", "utf-8", :invalid => :replace).should_not equal(str)
+        str.encode("utf-8", "utf-8", invalid: :replace).should_not equal(str)
       end
     end
   end
@@ -105,6 +123,14 @@ with_feature :encoding do
         Encoding.default_internal = nil
         str = "abc"
         str.encode!.should equal(str)
+      end
+    end
+
+    describe "when passed options" do
+      it "returns self for ASCII-only String when Encoding.default_internal is nil" do
+        Encoding.default_internal = nil
+        str = "abc"
+        str.encode!(invalid: :replace).should equal(str)
       end
     end
 

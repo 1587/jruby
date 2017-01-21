@@ -33,17 +33,20 @@ package org.jruby.util.cli;
  * in printing descriptions.
  */
 public enum Category {
+    PARSER("parser"),
     COMPILER("compiler"),
     INVOKEDYNAMIC("invokedynamic"),
     JIT("jit"),
     IR("intermediate representation"),
+    TRUFFLE("truffle"),
     NATIVE("native"),
     THREADPOOL("thread pooling"),
     MISCELLANEOUS("miscellaneous"),
     DEBUG("debugging and logging"),
     JAVA_INTEGRATION("java integration"),
     PROFILING("profiling"),
-    CLI("command line options");
+    CLI("command line options"),
+    COMPLIANCE("compliance options");
 
     Category(String desc) {
         this.desc = desc;

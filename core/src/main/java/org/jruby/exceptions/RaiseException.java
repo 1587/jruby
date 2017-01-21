@@ -83,7 +83,7 @@ public class RaiseException extends JumpException {
      * @param backtrace
      */
     public RaiseException(RubyException exception, IRubyObject backtrace) {
-        super(exception.message.toString());
+        super(exception.getMessageAsJavaString());
         if (DEBUG) {
             Thread.dumpStack();
         }
@@ -131,31 +131,30 @@ public class RaiseException extends JumpException {
         preRaise(context, backtrace);
     }
 
-    public RaiseException(RubyException exception, boolean isNativeException) {
-        super(exception.message.toString());
+    public RaiseException(RubyException exception, boolean nativeException) {
+        super(exception.getMessageAsJavaString());
         if (DEBUG) {
             Thread.dumpStack();
         }
-        this.nativeException = isNativeException;
-        setException(exception, isNativeException);
+        this.nativeException = nativeException;
+        setException(exception, nativeException);
         preRaise(exception.getRuntime().getCurrentContext());
     }
 
     public RaiseException(Throwable cause, NativeException nativeException) {
-        super(buildMessage(cause), cause);
-        providedMessage = buildMessage(cause);
+        super(nativeException.getMessageAsJavaString(), cause);
+        providedMessage = super.getMessage(); // cause.getClass().getName() + ": " + message
         setException(nativeException, true);
         preRaise(nativeException.getRuntime().getCurrentContext(), nativeException.getCause().getStackTrace());
         setStackTrace(RaiseException.javaTraceFromRubyTrace(exception.getBacktraceElements()));
     }
 
-    /**
-     * Method still in use by jruby-openssl <= 0.5.2
-     */
+    @Deprecated
     public static RaiseException createNativeRaiseException(Ruby runtime, Throwable cause) {
         return createNativeRaiseException(runtime, cause, null);
     }
 
+    @Deprecated
     public static RaiseException createNativeRaiseException(Ruby runtime, Throwable cause, Member target) {
         NativeException nativeException = new NativeException(runtime, runtime.getNativeException(), cause);
 
@@ -164,22 +163,10 @@ public class RaiseException extends JumpException {
         return new RaiseException(cause, nativeException);
     }
 
-    private static String buildMessage(Throwable exception) {
-        StringBuilder sb = new StringBuilder();
-        StringWriter stackTrace = new StringWriter();
-        exception.printStackTrace(new PrintWriter(stackTrace));
-
-        sb.append("Native Exception: '").append(exception.getClass()).append("'; ");
-        sb.append("Message: ").append(exception.getMessage()).append("; ");
-        sb.append("StackTrace: ").append(stackTrace.getBuffer().toString());
-
-        return sb.toString();
-    }
-
     @Override
     public String getMessage() {
         if (providedMessage == null) {
-            providedMessage = "(" + exception.getMetaClass().getBaseName() + ") " + exception.message(exception.getRuntime().getCurrentContext()).asJavaString();
+            providedMessage = '(' + exception.getMetaClass().getBaseName() + ") " + exception.message(exception.getRuntime().getCurrentContext()).asJavaString();
         }
         return providedMessage;
     }
@@ -188,12 +175,12 @@ public class RaiseException extends JumpException {
      * Gets the exception
      * @return Returns a RubyException
      */
-    public RubyException getException() {
+    public final RubyException getException() {
         return exception;
     }
 
     private void preRaise(ThreadContext context) {
-        preRaise(context, (IRubyObject)null);
+        preRaise(context, (IRubyObject) null);
     }
 
     private void preRaise(ThreadContext context, StackTraceElement[] javaTrace) {
@@ -201,9 +188,19 @@ public class RaiseException extends JumpException {
         doSetLastError(context);
         doCallEventHook(context);
 
-        exception.prepareIntegratedBacktrace(context, javaTrace);
-
         if (RubyInstanceConfig.LOG_EXCEPTIONS) TraceType.logException(exception);
+
+        if (requiresBacktrace(context)) {
+            exception.prepareIntegratedBacktrace(context, javaTrace);
+        }
+    }
+
+    private boolean requiresBacktrace(ThreadContext context) {
+        IRubyObject debugMode;
+        // We can only omit backtraces of descendents of Standard error for 'foo rescue nil'
+        return context.exceptionRequiresBacktrace ||
+                ((debugMode = context.runtime.getGlobalVariables().get("$DEBUG")) != null && debugMode.isTrue()) ||
+                ! context.runtime.getStandardError().isInstance(exception);
     }
 
     private void preRaise(ThreadContext context, IRubyObject backtrace) {
@@ -211,23 +208,26 @@ public class RaiseException extends JumpException {
         doSetLastError(context);
         doCallEventHook(context);
 
-        if (backtrace == null) {
-            exception.prepareBacktrace(context, nativeException);
-        } else {
-            exception.forceBacktrace(backtrace);
-        }
-
-        // call Throwable.setStackTrace so that when RaiseException appears nested inside another exception,
-        // Ruby stack trace gets displayed
-
-        // JRUBY-2673: if wrapping a NativeException, use the actual Java exception's trace as our Java trace
-        if (exception instanceof NativeException) {
-            setStackTrace(((NativeException)exception).getCause().getStackTrace());
-        } else {
-            setStackTrace(RaiseException.javaTraceFromRubyTrace(exception.getBacktraceElements()));
-        }
-
         if (RubyInstanceConfig.LOG_EXCEPTIONS) TraceType.logException(exception);
+
+        // We can only omit backtraces of descendents of Standard error for 'foo rescue nil'
+        if (requiresBacktrace(context)) {
+            if (backtrace == null) {
+                exception.prepareBacktrace(context, nativeException);
+            } else {
+                exception.forceBacktrace(backtrace);
+                if ( backtrace.isNil() ) return;
+            }
+
+            // call Throwable.setStackTrace so that when RaiseException appears nested inside another exception,
+            // Ruby stack trace gets displayed
+            // JRUBY-2673: if wrapping a NativeException, use the actual Java exception's trace as our Java trace
+            if (exception instanceof NativeException) {
+                setStackTrace(((NativeException) exception).getCause().getStackTrace());
+            } else {
+                setStackTrace(RaiseException.javaTraceFromRubyTrace(exception.getBacktraceElements()));
+            }
+        }
     }
 
     private static void doCallEventHook(final ThreadContext context) {
@@ -244,7 +244,7 @@ public class RaiseException extends JumpException {
      * Sets the exception
      * @param newException The exception to set
      */
-    protected void setException(RubyException newException, boolean nativeException) {
+    protected final void setException(RubyException newException, boolean nativeException) {
         this.exception = newException;
         this.nativeException = nativeException;
     }
@@ -252,7 +252,7 @@ public class RaiseException extends JumpException {
     public static StackTraceElement[] javaTraceFromRubyTrace(RubyStackTraceElement[] trace) {
         StackTraceElement[] newTrace = new StackTraceElement[trace.length];
         for (int i = 0; i < newTrace.length; i++) {
-            newTrace[i] = trace[i].getElement();
+            newTrace[i] = trace[i].asStackTraceElement();
         }
         return newTrace;
     }

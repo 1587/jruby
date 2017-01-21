@@ -1,8 +1,8 @@
 # it is war-file
 packaging 'war'
 
-# get jruby dependencies
-properties( 'jruby.version' => '@project.version@',
+# default versions will be overwritten by pom.rb from root directory
+properties( 'jruby.plugins.version' => '1.0.10',
             'project.build.sourceEncoding' => 'utf-8' )
 
 pom( 'org.jruby:jruby', '${jruby.version}' )
@@ -13,17 +13,9 @@ gem 'flickraw', '0.9.7'
 repository( :url => 'https://otto.takari.io/content/repositories/rubygems/maven/releases',
             :id => 'rubygems-releases' )
 
-jruby_plugin :gem, :includeRubygemsInResources => true do
+jruby_plugin :gem, :includeRubygemsInResources => true, :jrubyVersion => '9.0.0.0' do
   execute_goal :initialize
-end 
-execute 'jrubydir', 'initialize' do |ctx|
-  require 'jruby/commands'
-  JRuby::Commands.generate_dir_info( ctx.project.build.directory.to_pathname + '/rubygems' )
 end
-
-# ruby-maven will dump an equivalent pom.xml
-properties( 'tesla.dump.pom' => 'pom.xml',
-            'jruby.home' => '../../../../../' )
 
 # start tomcat for the tests
 plugin( 'org.codehaus.mojo:tomcat-maven-plugin', '1.1',
@@ -31,6 +23,9 @@ plugin( 'org.codehaus.mojo:tomcat-maven-plugin', '1.1',
   execute_goals( 'run',
                  :id => 'run-tomcat',
                  :phase => 'pre-integration-test' )
+  execute_goals( 'shutdown',
+                 :id => 'shutdown-tomcat',
+                 :phase => 'post-integration-test' )
 end
 
 # download files during the tests
@@ -51,7 +46,7 @@ execute 'check download', :phase => :verify do
   unless result.match( /#{expected}/ )
     raise "missed expected string in download: #{expected}"
   end
-  expected = 'snakeyaml-1.13.0'
+  expected = 'snakeyaml-1.14.0'
   unless result.match( /#{expected}/ )
     raise "missed expected string in download: #{expected}"
   end

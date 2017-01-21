@@ -33,22 +33,22 @@ public final class IdUtil {
     /**
      * rb_is_const_id and is_const_id
      */    
-	public static boolean isConstant(String id) {
-	    return Character.isUpperCase(id.charAt(0));
+    public static boolean isConstant(String id) {
+        return Character.isUpperCase(id.charAt(0));
     }
 
     /**
      * rb_is_class_id and is_class_id
      */    
-	public static boolean isClassVariable(String id) {
-	    return id.length()>1 && id.charAt(0) == '@' && id.charAt(1) == '@';
+    public static boolean isClassVariable(String id) {
+        return id.length() > 1 && id.charAt(0) == '@' && id.charAt(1) == '@';
     }
 
     /**
      * rb_is_instance_id and is_instance_id
      */    
-	public static boolean isInstanceVariable(String id) {
-	    return id.length()>0 && id.charAt(0) == '@' && (id.length() < 2 || id.charAt(1) != '@');
+    public static boolean isInstanceVariable(String id) {
+        return id.length() > 0 && id.charAt(0) == '@' && (id.length() < 2 || id.charAt(1) != '@');
     }
     
     /**
@@ -65,13 +65,21 @@ public final class IdUtil {
     /**
      * rb_is_local_id and is_local_id
      */    
-	public static boolean isLocal(String id) {
-	    return !isGlobal(id) && !isClassVariable(id) && !isInstanceVariable(id) && !isConstant(id) && !isPredicate(id);
+    public static boolean isLocal(String id) {
+        return !isGlobal(id) && !isClassVariable(id) && !isInstanceVariable(id) && !isConstant(id) && !isPredicate(id) && !isSpecial(id);
     }
 
-	public static boolean isAttrSet(String id) {
-	    return id.endsWith("=");
-	}
+    /**
+     * We store IR special variables (e.g. %block) in scope and we want reflective Ruby methods to
+     * not see these since they are not real variables...they're special.
+     */
+    public static boolean isSpecial(String id) {
+        return id.startsWith("%");
+    }
+
+    public static boolean isAttrSet(String id) {
+        return id.endsWith("=");
+    }
 
     public static boolean isValidConstantName(String id) {
         char c;
@@ -91,40 +99,28 @@ public final class IdUtil {
         return false;
     }
     
-    // Pickaxe says @ must be followed by a name character, but MRI
-    // does not require this.
     public static boolean isValidInstanceVariableName(String id) {
         int len;
-        if ((len = id.length()) > 0 && '@' == id.charAt(0)) {
-            if (len > 1) {
-                if (isInitialCharacter(id.charAt(1))) {
-                    return isNameString(id, 2, len);
-                }
-                return false;
+        if ((len = id.length()) > 1 && '@' == id.charAt(0)) {
+            if (isInitialCharacter(id.charAt(1))) {
+                return isNameString19(id, 2, len);
             }
-            return true;
         }
         return false;
     }
     
-    // Pickaxe says @@ must be followed by a name character, but MRI
-    // does not require this.
     public static boolean isValidClassVariableName(String id) {
         int len;
-        if ((len = id.length()) > 1 && '@' == id.charAt(0) && '@' == id.charAt(1)) {
-            if (len > 2) {
-                if (isInitialCharacter(id.charAt(2))) {
-                    return isNameString(id, 3, len);
-                }
-                return false;
+        if ((len = id.length()) > 2 && '@' == id.charAt(0) && '@' == id.charAt(1)) {
+            if (isInitialCharacter(id.charAt(2))) {
+                return isNameString19(id, 3, len);
             }
-            return true;
         }
         return false;
     }
-    
+
     public static boolean isInitialCharacter(int c) {
-        return ((c &= ~0x20) <= 'Z' && c >= 'A') || c == '_';
+        return Character.isAlphabetic(c) || c == '_';
     }
     
     public static boolean isNameCharacter(char c) {
@@ -135,7 +131,6 @@ public final class IdUtil {
     }
 
     public static boolean isNameCharacter19(char c) {
-        int letter;
         return Character.isLetterOrDigit(c) || c == '_';
     }
     

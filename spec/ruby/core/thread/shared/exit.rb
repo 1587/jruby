@@ -1,5 +1,5 @@
-describe :thread_exit, :shared => true do
-  before(:each) do
+describe :thread_exit, shared: true do
+  before :each do
     ScratchPad.clear
   end
 
@@ -76,13 +76,18 @@ describe :thread_exit, :shared => true do
     ScratchPad.recorded.should == nil
   end
 
-  ruby_version_is "" ... "1.9" do
-    it "killing dying sleeping thread wakes up thread" do
-      t = ThreadSpecs.dying_thread_ensures { Thread.stop; ScratchPad.record :after_stop }
+  with_feature :fiber do
+    it "kills the entire thread when a fiber is active" do
+      t = Thread.new do
+        Fiber.new do
+          sleep
+        end.resume
+        ScratchPad.record :fiber_resumed
+      end
       Thread.pass while t.status and t.status != "sleep"
       t.send(@method)
       t.join
-      ScratchPad.recorded.should == :after_stop
+      ScratchPad.recorded.should == nil
     end
   end
 
@@ -113,12 +118,12 @@ describe :thread_exit, :shared => true do
     end
 
     it "runs all outer ensure clauses even if inner ensure clause raises exception" do
-      thread = ThreadSpecs.join_dying_thread_with_outer_ensure(@method) { ScratchPad.record :in_outer_ensure_clause }
+      ThreadSpecs.join_dying_thread_with_outer_ensure(@method) { ScratchPad.record :in_outer_ensure_clause }
       ScratchPad.recorded.should == :in_outer_ensure_clause
     end
 
     it "sets $! in outer ensure clause if inner ensure clause raises exception" do
-      thread = ThreadSpecs.join_dying_thread_with_outer_ensure(@method) { ScratchPad.record $! }
+      ThreadSpecs.join_dying_thread_with_outer_ensure(@method) { ScratchPad.record $! }
       ScratchPad.recorded.to_s.should == "In dying thread"
     end
   end
@@ -147,14 +152,11 @@ describe :thread_exit, :shared => true do
   end
 
   # Hangs on 1.8.6.114 OS X, possibly also on Linux
-  # FIX: There is no such thing as not_compliant_on(:ruby)!!!
   quarantine! do
-  not_compliant_on(:ruby) do # Doing a sleep in the ensure block hangs the process
     it "is deferred if ensure clause sleeps" do
       ThreadSpecs.wakeup_dying_sleeping_thread(@method) { sleep; ScratchPad.record :after_sleep }
       ScratchPad.recorded.should == :after_sleep
     end
-  end
   end
 
   # This case occurred in JRuby where native threads are used to provide

@@ -1,30 +1,22 @@
 package org.jruby.ir.dataflow;
 
-import java.util.ArrayList;
-import java.util.BitSet;
-import java.util.HashMap;
-import java.util.ListIterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-
 import org.jruby.ir.IRScope;
 import org.jruby.ir.representations.BasicBlock;
 
-public abstract class DataFlowProblem {
+import java.util.*;
+
+public abstract class DataFlowProblem<T extends DataFlowProblem<T, U>, U extends FlowGraphNode<T, U>> {
 /* -------------- Public fields and methods below ---------------- */
-    public enum DF_Direction { FORWARD, BACKWARD, BIDIRECTIONAL };
+    public enum DF_Direction { FORWARD, BACKWARD, BIDIRECTIONAL }
 
     public final DF_Direction direction;
 
-    public DataFlowProblem(DF_Direction d) {
-        direction = d;
-        variables = new ArrayList<DataFlowVar>();
-        nextVariableId = -1;
+    public DataFlowProblem(DF_Direction direction) {
+        this.direction = direction;
     }
 
 // ------- Abstract methods without a default implementation -------
-    abstract public FlowGraphNode buildFlowGraphNode(BasicBlock bb);
+    abstract public U buildFlowGraphNode(BasicBlock bb);
     abstract public String getName();
 
 // ------- Default implementation methods below -------
@@ -49,50 +41,40 @@ public abstract class DataFlowProblem {
     /* Compute Meet Over All Paths solution for this dataflow problem on the input CFG.
      * This implements a standard worklist algorithm. */
     public void compute_MOP_Solution() {
-        /** Are there are available data flow facts to run this problem? SSS FIXME: Silly optimization? */
-        if (!isEmpty()) {
-            // 2. Initialize work list based on flow direction to make processing efficient!
-            LinkedList<FlowGraphNode> workList = getInitialWorkList();
+        if (isEmpty()) return;  // Don't bother to compute soln if we have no facts available.
 
-            // 3. Initialize a bitset with a flag set for all basic blocks
-            int numNodes = scope.cfg().getMaxNodeID();
-            BitSet bbSet = new BitSet(1+numNodes);
-            bbSet.flip(0, numNodes);
+        // 1. Initialize work list based on flow direction to make processing efficient!
+        LinkedList<U> workList = generateWorkList();
 
-            // 4. Iteratively compute data flow info
-            while (!workList.isEmpty()) {
-                workList.removeFirst().computeDataFlowInfo(workList, bbSet);
-            }
+        // 2. Initialize a bitset with a flag set for all basic blocks
+        int numNodes = scope.getCFG().getMaxNodeID();
+        BitSet bbSet = new BitSet(1+numNodes);
+        bbSet.flip(0, numNodes); // set all bits from default of 0 to 1 (enebo: could we invert this in algo?)
+
+        // 3. Iteratively compute data flow info
+        while (!workList.isEmpty()) {
+            workList.removeFirst().computeDataFlowInfo(workList, bbSet);
         }
     }
 
-    private LinkedList<FlowGraphNode> getInitialWorkList() {
-        LinkedList<FlowGraphNode> wl = new LinkedList<FlowGraphNode>();
-        if (direction == DF_Direction.FORWARD) {
-           ListIterator<BasicBlock> it = scope.cfg().getReversePostOrderTraverser();
-           while (it.hasPrevious()) {
-              wl.add(getFlowGraphNode(it.previous()));
-           }
-        } else {
-           ListIterator<BasicBlock> it = scope.cfg().getPostOrderTraverser();
-           while (it.hasNext()) {
-              wl.add(getFlowGraphNode(it.next()));
-           }
+    /**
+     * Generate an ordered list of flow graph nodes in a forward or backward order depending
+     * on direction.
+     */
+    protected LinkedList<U> generateWorkList() {
+        LinkedList<U> wl = new LinkedList<>();
+        Iterator<BasicBlock> it = direction == DF_Direction.FORWARD ?
+                scope.getCFG().getReversePostOrderTraverser() : scope.getCFG().getPostOrderTraverser();
+
+        while (it.hasNext()) {
+            wl.add(getFlowGraphNode(it.next()));
         }
 
         return wl;
     }
 
     public int getDFVarsCount() {
-        return variables.size();
-    }
-
-    public Iterable<BasicBlock> getIncomingSourcesOf(BasicBlock bb) {
-        return scope.cfg().getIncomingSources(bb);
-    }
-
-    public Iterable<BasicBlock> getOutgoingDestinationsOf(BasicBlock bb) {
-        return scope.cfg().getOutgoingDestinations(bb);
+        return nextVariableId + 1;
     }
 
     /* Individual analyses should override this */
@@ -116,36 +98,43 @@ public abstract class DataFlowProblem {
         return buf.toString();
     }
 
-/* -------------- Packaged/protected fields and methods below ---------------- */
-    int addDataFlowVar(DataFlowVar v) {
-        // We want unique ids for dataflow variables
+    public U getFlowGraphNode(BasicBlock bb) {
+        return basicBlockToFlowGraph.get(bb);
+    }
+
+    public U getEntryNode() {
+        return getFlowGraphNode(scope.getCFG().getEntryBB());
+    }
+
+    public U getExitNode() {
+        return getFlowGraphNode(scope.getCFG().getExitBB());
+    }
+
+    public int addDataFlowVar() {
         nextVariableId++;
-        variables.add(nextVariableId, v);
         return nextVariableId;
     }
 
 /* -------------- Protected fields and methods below ---------------- */
-    protected List<FlowGraphNode>    flowGraphNodes;
+    protected List<U> flowGraphNodes;
     protected IRScope scope;
-    protected FlowGraphNode getFlowGraphNode(BasicBlock b) {
-        return basicBlockToFlowGraph.get(b.getID());
-    }
 
 /* -------------- Private fields and methods below ---------------- */
-    private int     nextVariableId;
-    private ArrayList<DataFlowVar> variables;
-    private Map<Integer, FlowGraphNode> basicBlockToFlowGraph;
+    private int nextVariableId = -1;
+
+    // Map for hash-speed retrieval of flowgraph nodes instead of walking flowGraphNodes.
+    private Map<BasicBlock, U> basicBlockToFlowGraph;
 
     private void buildFlowGraph() {
-        flowGraphNodes = new LinkedList<FlowGraphNode>();
-        basicBlockToFlowGraph = new HashMap<Integer, FlowGraphNode>();
+        flowGraphNodes = new LinkedList<>();
+        basicBlockToFlowGraph = new HashMap<>();
 
-        for (BasicBlock bb: scope.cfg().getBasicBlocks()) {
-            FlowGraphNode fgNode = buildFlowGraphNode(bb);
+        for (BasicBlock bb: scope.getCFG().getBasicBlocks()) {
+            U fgNode = buildFlowGraphNode(bb);
             fgNode.init();
             fgNode.buildDataFlowVars();
             flowGraphNodes.add(fgNode);
-            basicBlockToFlowGraph.put(bb.getID(), fgNode);
+            basicBlockToFlowGraph.put(bb, fgNode);
         }
     }
 }

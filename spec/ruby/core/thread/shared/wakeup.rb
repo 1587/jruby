@@ -1,4 +1,4 @@
-describe :thread_wakeup, :shared => true do
+describe :thread_wakeup, shared: true do
   it "can interrupt Kernel#sleep" do
     exit_loop = false
     after_sleep1 = false
@@ -36,10 +36,10 @@ describe :thread_wakeup, :shared => true do
 
   it "does not result in a deadlock" do
     t = Thread.new do
-      1000.times {Thread.stop }
+      100.times { Thread.stop }
     end
 
-    while(t.status != false) do
+    while t.status
       begin
         t.send(@method)
       rescue ThreadError
@@ -49,12 +49,13 @@ describe :thread_wakeup, :shared => true do
       Thread.pass
     end
 
-    1.should == 1 # test succeeds if we reach here
+    t.status.should == false
+    t.join
   end
 
   it "raises a ThreadError when trying to wake up a dead thread" do
     t = Thread.new { 1 }
     t.join
-    lambda { t.wakeup }.should raise_error(ThreadError)
+    lambda { t.send @method }.should raise_error(ThreadError)
   end
 end

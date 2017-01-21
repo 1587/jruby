@@ -1,57 +1,46 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 package org.jruby.ir.instructions.defined;
 
 import org.jruby.ir.IRVisitor;
 import org.jruby.ir.Operation;
+import org.jruby.ir.instructions.FixedArityInstr;
 import org.jruby.ir.instructions.Instr;
+import org.jruby.ir.instructions.OneOperandInstr;
 import org.jruby.ir.operands.Operand;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
-import org.jruby.runtime.Block;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.parser.StaticScope;
 import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 
-import java.util.Map;
-
-/**
- *
- * @author enebo
- */
-public class RestoreErrorInfoInstr extends Instr {
-    private Operand arg;
-
+public class RestoreErrorInfoInstr extends OneOperandInstr implements FixedArityInstr {
     public RestoreErrorInfoInstr(Operand arg) {
-        super(Operation.RESTORE_ERROR_INFO);
+        super(Operation.RESTORE_ERROR_INFO, arg);
+    }
 
-        this.arg = arg;
+    public Operand getArg() {
+        return getOperand1();
     }
 
     @Override
-    public Operand[] getOperands() {
-        return new Operand[] { arg };
+    public Instr clone(CloneInfo ii) {
+        return new RestoreErrorInfoInstr(getArg().cloneForInlining(ii));
     }
 
     @Override
-    public String toString() {
-        return super.toString() + "(" + arg + ")";
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+        e.encode(getArg());
+    }
+
+    public static RestoreErrorInfoInstr decode(IRReaderDecoder d) {
+        return new RestoreErrorInfoInstr(d.decodeOperand());
     }
 
     @Override
-    public void simplifyOperands(Map<Operand, Operand> valueMap, boolean force) {
-        arg = arg.getSimplifiedOperand(valueMap, force);
-    }
-
-    @Override
-    public Instr cloneForInlining(InlinerInfo ii) {
-        return new RestoreErrorInfoInstr(arg.cloneForInlining(ii));
-    }
-
-    @Override
-    public Object interpret(ThreadContext context, DynamicScope currDynScope, IRubyObject self, Object[] temp, Block block) {
-        context.setErrorInfo((IRubyObject) arg.retrieve(context, self, currDynScope, temp));
+    public Object interpret(ThreadContext context, StaticScope currScope, DynamicScope currDynScope, IRubyObject self, Object[] temp) {
+        context.setErrorInfo((IRubyObject) getArg().retrieve(context, self, currScope, currDynScope, temp));
 
         return null;
     }

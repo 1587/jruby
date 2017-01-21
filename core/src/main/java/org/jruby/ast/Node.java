@@ -34,33 +34,44 @@
 package org.jruby.ast;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
-import org.jruby.Ruby;
-import org.jruby.RubyString;
+import org.jruby.ParseResult;
 import org.jruby.ast.types.INameNode;
+import org.jruby.ast.visitor.AbstractNodeVisitor;
 import org.jruby.ast.visitor.NodeVisitor;
-import org.jruby.exceptions.JumpException;
 import org.jruby.lexer.yacc.ISourcePosition;
 import org.jruby.lexer.yacc.ISourcePositionHolder;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.util.ByteList;
-import org.jruby.util.DefinedMessage;
 
 /**
  * Base class for all Nodes in the AST
  */
-public abstract class Node implements ISourcePositionHolder {    
+public abstract class Node implements ISourcePositionHolder, ParseResult {    
     // We define an actual list to get around bug in java integration (1387115)
-    static final List<Node> EMPTY_LIST = new ArrayList<Node>();
+    static final List<Node> EMPTY_LIST = new ArrayList<>();
     
     private ISourcePosition position;
 
-    public Node(ISourcePosition position) {
-        assert position != null;
+    // Does this node contain a node which is an assignment.  We can use this knowledge when emitting IR
+    // instructions to do more or less depending on whether we have to cope with scenarios like:
+    //    a = 1; [a, a = 2];
+    // in IR, we can see that ArrayNode contains an assignment and emit its individual elements differently
+    // so that the two values of a end up being different.
+    protected boolean containsVariableAssignment;
+    protected boolean newline;
+
+    public Node(ISourcePosition position, boolean containsAssignment) {
         this.position = position;
+        this.containsVariableAssignment = containsAssignment;
+    }
+
+    public void setNewline() {
+        this.newline = true;
+    }
+
+    public boolean isNewline() {
+        return newline;
     }
 
     /**
@@ -70,23 +81,23 @@ public abstract class Node implements ISourcePositionHolder {
         return position;
     }
 
+    public int getLine() {
+        return position.getLine();
+    }
+
     public void setPosition(ISourcePosition position) {
         this.position = position;
     }
     
-    public abstract Object accept(NodeVisitor visitor);
+    public abstract <T> T accept(NodeVisitor<T> visitor);
     public abstract List<Node> childNodes();
 
     protected static List<Node> createList(Node node) {
-        ArrayList<Node> list = new ArrayList<Node>(1);
-
-        list.add(node);
-
-        return list;
+        return Collections.singletonList(node);
     }
 
     protected static List<Node> createList(Node node1, Node node2) {
-        ArrayList<Node> list = new ArrayList<Node>(2);
+        ArrayList<Node> list = new ArrayList<>(2);
 
         list.add(node1);
         list.add(node2);
@@ -95,7 +106,7 @@ public abstract class Node implements ISourcePositionHolder {
     }
 
     protected static List<Node> createList(Node node1, Node node2, Node node3) {
-        ArrayList<Node> list = new ArrayList<Node>(3);
+        ArrayList<Node> list = new ArrayList<>(3);
 
         list.add(node1);
         list.add(node2);
@@ -105,7 +116,7 @@ public abstract class Node implements ISourcePositionHolder {
     }
 
     protected static List<Node> createList(Node... nodes) {
-        ArrayList<Node> list = new ArrayList<Node>(nodes.length);
+        ArrayList<Node> list = new ArrayList<>(nodes.length);
         
         for (Node node: nodes) {
             if (node != null) list.add(node);
@@ -116,50 +127,92 @@ public abstract class Node implements ISourcePositionHolder {
 
     @Override
     public String toString() {
+        return toString(false, 0);
+    }
+
+    public String toString(boolean indent, int indentation) {
         if (this instanceof InvisibleNode) return "";
-        
+
         StringBuilder builder = new StringBuilder(60);
+
+        if (indent) indent(indentation, builder);
 
         builder.append("(").append(getNodeName());
 
-        if (this instanceof INameNode) {
-            builder.append(":").append(((INameNode) this).getName());
+        String moreState = toStringInternal();
+
+        if (moreState != null) builder.append("[").append(moreState).append("]");
+
+        if (this instanceof INameNode) builder.append(":").append(((INameNode) this).getName());
+
+        builder.append(" ").append(getPosition().getLine());
+
+        if (!childNodes().isEmpty() && indent) builder.append("\n");
+
+        for (Node child : childNodes()) {
+            if (!indent) builder.append(", ");
+
+            if (child == null) {
+                if (indent) indent(indentation + 1, builder);
+
+                builder.append("null");
+            } else {
+                if (indent && child instanceof NilImplicitNode) {
+                    indent(indentation + 1, builder);
+
+                    builder.append(child.getClass().getSimpleName());
+                } else {
+                    builder.append(child.toString(indent, indentation + 1));
+                }
+            }
+
+            if (indent) builder.append("\n");
         }
 
-        builder.append(" ").append(getPosition().getStartLine());
+        if (!childNodes().isEmpty() && indent) indent(indentation, builder);
 
-        List<Node> children = childNodes();
-        for (int i = 0; i < children.size(); i++) {
-            builder.append(", ").append(children.get(i));
-        }
         builder.append(")");
 
         return builder.toString();
     }
 
-    protected String getNodeName() {
-        String name = getClass().getName();
-        int i = name.lastIndexOf('.');
-        String nodeType = name.substring(i + 1);
-        return nodeType;
+    /**
+     * Overridden by nodes that have additional internal state to be displated in toString.
+     *
+     * For nodes that have it, name is handled separately, by implementing INameNode.
+     *
+     * Child nodes are handled via iterating #childNodes.
+     *
+     * @return A string representing internal node state, or null if none.
+     */
+    protected String toStringInternal() {
+        return null;
     }
 
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        throw new RuntimeException(this.getClass().getSimpleName() + " should not be directly interpreted");
-    }
-    
-    public IRubyObject assign(Ruby runtime, ThreadContext context, IRubyObject self, IRubyObject value, Block block, boolean checkArity) {
-        throw new RuntimeException("Invalid node encountered in interpreter: \"" + getClass().getName() + "\", please report this at www.jruby.org");
-    }
-    
-    public RubyString definition(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        try {
-            interpret(runtime, context, self, aBlock);
-            return runtime.getDefinedMessage(DefinedMessage.EXPRESSION);
-        } catch (JumpException jumpExcptn) {
+    private static void indent(int indentation, StringBuilder builder) {
+        for (int n = 0; n < indentation; n++) {
+            builder.append("  ");
         }
-        
-        return null;
+    }
+
+    protected String getNodeName() {
+        String name = getClass().getName();
+        return name.substring(name.lastIndexOf('.') + 1);
+    }
+
+    public <T extends org.jruby.ast.Node> T findFirstChild(final Class<T> nodeClass) {
+        return accept(new AbstractNodeVisitor<T>() {
+
+            @Override
+            protected T defaultVisit(Node node) {
+                if (nodeClass.isAssignableFrom(node.getClass())) {
+                    return (T) node;
+                } else {
+                    return visitFirstChild(node);
+                }
+            }
+
+        });
     }
 
     /**
@@ -174,5 +227,22 @@ public abstract class Node implements ISourcePositionHolder {
      */
     public boolean isNil() {
         return false;
+    }
+
+    /**
+     * Check whether the given node is considered always "defined" or whether it
+     * has some form of definition check.
+     *
+     * @return Whether the type of node represents a possibly undefined construct
+     */
+    public boolean needsDefinitionCheck() {
+        return true;
+    }
+
+    /**
+     * Does this node or one of its children contain an assignment?
+     */
+    public boolean containsVariableAssignment() {
+        return containsVariableAssignment;
     }
 }

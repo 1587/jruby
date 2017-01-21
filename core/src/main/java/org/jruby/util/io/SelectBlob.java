@@ -34,6 +34,7 @@ import org.jruby.RubyIO;
 import org.jruby.RubyThread;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
+import org.jruby.util.TypeConverter;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -57,7 +58,10 @@ import org.jruby.exceptions.RaiseException;
  * Finally, it tries to build a minimal number of data structures an reuse them
  * as much as possible.
  */
+@Deprecated
 public class SelectBlob {
+    public SelectBlob() {}
+
     public IRubyObject goForIt(ThreadContext context, Ruby runtime, IRubyObject[] args) {
         this.runtime = runtime;
         try {
@@ -76,15 +80,18 @@ public class SelectBlob {
 
             // If all streams are nil, just sleep the specified time (JRUBY-4699)
             if (args[0].isNil() && args[1].isNil() && args[2].isNil()) {
-                if (timeout > 0) {
-                    RubyThread thread = context.getThread();
-                    long now = System.currentTimeMillis();
-                    thread.sleep(timeout);
-                    // Guard against spurious wakeup
-                    while (System.currentTimeMillis() < now + timeout) {
-                        thread.sleep(1);
+                RubyThread thread = context.getThread();
+                if (has_timeout) {
+                    if (timeout > 0) {
+                        long now = System.currentTimeMillis();
+                        thread.sleep(timeout);
+                        // Guard against spurious wakeup
+                        while (System.currentTimeMillis() < now + timeout) {
+                            thread.sleep(1);
+                        }
                     }
-
+                } else {
+                    thread.sleep(0);
                 }
             } else {
                 doSelect(runtime, has_timeout, timeout);
@@ -133,7 +140,7 @@ public class SelectBlob {
                     saveBufferedRead(ioObj, i);
                     attachment.clear();
                     attachment.put('r', i);
-                    trySelectRead(context, attachment, ioObj);
+                    trySelectRead(context, attachment, ioObj.getOpenFileChecked());
                 }
             }
         }
@@ -155,20 +162,20 @@ public class SelectBlob {
 
     private void saveBufferedRead(RubyIO ioObj, int i) throws BadDescriptorException {
         // already buffered data? don't bother selecting
-        if (ioObj.getOpenFile().getMainStreamSafe().readDataBuffered()) {
+        if (ioObj.getOpenFile().READ_DATA_BUFFERED()) {
             getUnselectableReads()[i] = true;
         }
     }
 
-    private void trySelectRead(ThreadContext context, Map<Character,Integer> attachment, RubyIO ioObj) throws IOException {
-        if (ioObj.getChannel() instanceof SelectableChannel && registerSelect(context, getSelector(context, (SelectableChannel)ioObj.getChannel()), attachment, ioObj, SelectionKey.OP_READ | SelectionKey.OP_ACCEPT)) {
+    private void trySelectRead(ThreadContext context, Map<Character,Integer> attachment, OpenFile fptr) throws IOException {
+        if (fptr.selectChannel() != null && registerSelect(getSelector(context, fptr.selectChannel()), attachment, fptr.selectChannel(), READ_ACCEPT_OPS)) {
             selectedReads++;
-            if (ioObj.writeDataBuffered()) {
-                getPendingReads()[(Integer)attachment.get('r')] = true;
+            if (fptr.READ_CHAR_PENDING() || fptr.READ_DATA_PENDING()) {
+                getPendingReads()[attachment.get('r')] = true;
             }
         } else {
-            if ((ioObj.getOpenFile().getMode() & OpenFile.READABLE) != 0) {
-                getUnselectableReads()[(Integer)attachment.get('r')] = true;
+            if (fptr.isReadable()) {
+                getUnselectableReads()[attachment.get('r')] = true;
             }
         }
     }
@@ -190,7 +197,7 @@ public class SelectBlob {
                     saveWriteBlocking(ioObj, i);
                     attachment.clear();
                     attachment.put('w', i);
-                    trySelectWrite(context, attachment, ioObj);
+                    trySelectWrite(context, attachment, ioObj.getOpenFileChecked());
                 }
             }
         }
@@ -199,7 +206,7 @@ public class SelectBlob {
     private RubyIO saveWriteIO(int i, ThreadContext context) {
         IRubyObject obj = writeArray.eltOk(i);
         RubyIO ioObj = RubyIO.convertToIO(context, obj);
-        writeIOs[i] = ioObj;
+        writeIOs[i] = ioObj.GetWriteIO();
         return ioObj;
     }
 
@@ -220,11 +227,11 @@ public class SelectBlob {
         }
     }
 
-    private void trySelectWrite(ThreadContext context, Map<Character,Integer> attachment, RubyIO ioObj) throws IOException {
-        if (!(ioObj.getChannel() instanceof SelectableChannel)
-                || !registerSelect(context, getSelector(context, (SelectableChannel)ioObj.getChannel()), attachment, ioObj, SelectionKey.OP_WRITE | SelectionKey.OP_CONNECT)) {
+    private void trySelectWrite(ThreadContext context, Map<Character,Integer> attachment, OpenFile fptr) throws IOException {
+        if (fptr.selectChannel() == null
+                || false == registerSelect(getSelector(context, fptr.selectChannel()), attachment, fptr.selectChannel(), WRITE_CONNECT_OPS)) {
             selectedReads++;
-            if ((ioObj.getOpenFile().getMode() & OpenFile.WRITABLE) != 0) {
+            if (fptr.isWritable()) {
                 getUnselectableWrites()[attachment.get('w')] = true;
             }
         }
@@ -257,7 +264,7 @@ public class SelectBlob {
 
         if ( timeout < 0 ) throw context.runtime.newArgumentError("negative timeout given");
         return timeout;
-    }
+}
 
     private void doSelect(Ruby runtime, final boolean has_timeout, long timeout) throws IOException {
         if (mainSelector != null) {
@@ -299,8 +306,8 @@ public class SelectBlob {
         }
     }
 
-    private static final int READ_ACCEPT_OPS = SelectionKey.OP_READ | SelectionKey.OP_ACCEPT;
-    private static final int WRITE_CONNECT_OPS = SelectionKey.OP_WRITE | SelectionKey.OP_CONNECT;
+    public static final int READ_ACCEPT_OPS = SelectExecutor.READ_ACCEPT_OPS;
+    public static final int WRITE_CONNECT_OPS = SelectExecutor.WRITE_CONNECT_OPS;
     private static final int CANCELLED_OPS = SelectionKey.OP_READ | SelectionKey.OP_ACCEPT | SelectionKey.OP_CONNECT;
 
     private static boolean ready(int ops, int mask) {
@@ -517,20 +524,15 @@ public class SelectBlob {
     }
 
     @SuppressWarnings("unchecked")
-    private static boolean registerSelect(ThreadContext context, Selector selector, Map<Character,Integer> obj, RubyIO ioObj, int ops) throws IOException {
-        Channel channel = ioObj.getChannel();
-        if (channel == null || !(channel instanceof SelectableChannel)) {
-            return false;
-        }
-
-        ((SelectableChannel) channel).configureBlocking(false);
-        int real_ops = ((SelectableChannel) channel).validOps() & ops;
-        SelectionKey key = ((SelectableChannel) channel).keyFor(selector);
+    private static boolean registerSelect(Selector selector, Map<Character,Integer> obj, SelectableChannel channel, int ops) throws IOException {
+        channel.configureBlocking(false);
+        int real_ops = channel.validOps() & ops;
+        SelectionKey key = channel.keyFor(selector);
 
         if (key == null) {
             Map<Character,Integer>  attachment = new HashMap<Character,Integer> (1);
             attachment.putAll(obj);
-            ((SelectableChannel) channel).register(selector, real_ops, attachment );
+            channel.register(selector, real_ops, attachment );
         } else {
             key.interestOps(key.interestOps() | real_ops);
             Map<Character,Integer> att = (Map<Character,Integer>)key.attachment();

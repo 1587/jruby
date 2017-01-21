@@ -33,14 +33,8 @@ package org.jruby.ast;
 
 import java.util.List;
 
-import org.jruby.Ruby;
 import org.jruby.ast.visitor.NodeVisitor;
-import org.jruby.evaluator.ASTInterpreter;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.RubyEvent;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
 
 /**
  * A Case statement.  Represents a complete case statement, including the body with its
@@ -58,7 +52,7 @@ public class CaseNode extends Node {
     private Node elseNode = null;
     
     public CaseNode(ISourcePosition position, Node caseNode, ListNode cases) {
-        super(position);
+        super(position, caseNode != null && caseNode.containsVariableAssignment() || cases.containsVariableAssignment());
         
         assert cases != null : "caseBody is not null";
         // TODO: Rewriter and compiler assume case when empty expression.  In MRI this is just
@@ -81,7 +75,7 @@ public class CaseNode extends Node {
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitCaseNode(this);
     }
 
@@ -101,40 +95,9 @@ public class CaseNode extends Node {
     public Node getElseNode() {
         return elseNode;
     }
-
-    /**
-     * Gets the first whenNode.
-	 * the body of the case statement, the first of a list of WhenNodes
-     * @return whenNode
-     */
-    @Deprecated
-    public Node getFirstWhenNode() {
-        return cases;
-    }
     
     public List<Node> childNodes() {
         return Node.createList(caseNode, cases);
     }
 
-    @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        IRubyObject expression = caseNode == null ? null : caseNode.interpret(runtime, context, self, aBlock);
-
-        context.pollThreadEvents();
-
-        for (int i = 0; i < cases.size(); i++) {
-            Node child = cases.get(i);
-            WhenNode when = (WhenNode) child;
-            ISourcePosition position = child.getPosition();
-
-            context.setFileAndLine(position.getFile(), position.getStartLine());
-
-            if (runtime.hasEventHooks()) ASTInterpreter.callTraceFunction(runtime, context, RubyEvent.LINE);
-            IRubyObject result = when.when(expression, context, runtime, self, aBlock);
-            if (result != null) return result;
-            context.pollThreadEvents();
-        }
-
-        return elseNode != null ? elseNode.interpret(runtime, context, self, aBlock) : runtime.getNil();
-    }
 }

@@ -14,22 +14,40 @@ describe "C-API Symbol function" do
     end
   end
 
+  describe "rb_intern2" do
+    it "converts a string to a symbol, uniquely, for a string of given length" do
+      @s.rb_intern2("test_symbol", 4).should == :test
+      @s.rb_intern2_c_compare("test_symbol", 4, :test).should == true
+    end
+  end
+
+  describe "rb_intern_const" do
+    it "converts a string to a Symbol" do
+      @s.rb_intern_const("test").should == :test
+    end
+  end
+
   describe "rb_id2name" do
     it "converts a symbol to a C char array" do
       @s.rb_id2name(:test_symbol).should == "test_symbol"
     end
   end
 
-  ruby_version_is "1.9" do
-    describe "rb_id2str" do
-      it "converts a symbol to a Ruby string" do
-        @s.rb_id2str(:test_symbol).should == "test_symbol"
-      end
+  describe "rb_id2str" do
+    it "converts a symbol to a Ruby string" do
+      @s.rb_id2str(:test_symbol).should == "test_symbol"
+    end
 
-      it "creates a string with the same encoding as the symbol" do
-        str = "test_symbol".encode(Encoding::UTF_16LE)
-        @s.rb_id2str(str.to_sym).encoding.should == Encoding::UTF_16LE
-      end
+    it "creates a string with the same encoding as the symbol" do
+      str = "test_symbol".encode(Encoding::UTF_16LE)
+      @s.rb_id2str(str.to_sym).encoding.should == Encoding::UTF_16LE
+    end
+  end
+
+  describe "rb_intern_str" do
+    it "converts a Ruby String to a Symbol" do
+      str = "test_symbol"
+      @s.rb_intern_str(str).should == :test_symbol
     end
   end
 
@@ -84,6 +102,14 @@ describe "C-API Symbol function" do
 
     it "returns false given an undecorated symbol" do
       @s.rb_is_class_id(:foo).should == false
+    end
+  end
+
+  ruby_version_is "2.2" do
+    describe "rb_sym2str" do
+      it "converts a Symbol to a String" do
+        @s.rb_sym2str(:bacon).should == "bacon"
+      end
     end
   end
 end

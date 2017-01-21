@@ -41,20 +41,18 @@ import java.nio.channels.SocketChannel;
 import org.jruby.Ruby;
 import org.jruby.RubyClass;
 import org.jruby.RubyFixnum;
-import org.jruby.RubyInteger;
-import org.jruby.RubyNumeric;
 import org.jruby.RubyString;
 import org.jruby.RubyThread;
 import org.jruby.anno.JRubyClass;
 import org.jruby.anno.JRubyMethod;
+import org.jruby.ast.util.ArgsUtil;
 import org.jruby.runtime.Block;
 import org.jruby.runtime.ObjectAllocator;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.Visibility;
 import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.util.io.ChannelDescriptor;
-import org.jruby.util.io.ModeFlags;
 
+import org.jruby.util.io.FilenoUtil;
 import org.jruby.util.io.SelectorFactory;
 import java.nio.channels.spi.SelectorProvider;
 
@@ -85,18 +83,27 @@ public class RubyTCPServer extends RubyTCPSocket {
     @JRubyMethod(name = "initialize", required = 1, optional = 1, visibility = Visibility.PRIVATE)
     public IRubyObject initialize(ThreadContext context, IRubyObject[] args) {
         Ruby runtime = context.runtime;
-        IRubyObject _host = args[0];
-        IRubyObject _port = args.length > 1 ? args[1] : context.nil;
+        IRubyObject _host;
+        IRubyObject _port = null;
+        String host = "0.0.0.0";
 
-        String host;
-        if(_host.isNil()|| ((_host instanceof RubyString) && ((RubyString) _host).isEmpty())) {
-            host = "0.0.0.0";
-        } else if (_host instanceof RubyFixnum) {
-            // numeric host, use it for port
-            _port = _host;
-            host = "0.0.0.0";
-        } else {
-            host = _host.convertToString().toString();
+        switch (args.length) {
+            case 2:
+                _host = args[0];
+                _port = args[1];
+
+                if (_host.isNil()) {
+                    break;
+                } else if (_host instanceof RubyFixnum) {
+                    throw runtime.newTypeError(_host, runtime.getString());
+                }
+
+                RubyString hostString = _host.convertToString();
+                if (hostString.size() > 0) host = hostString.toString();
+
+                break;
+            case 1:
+                _port = args[0];
         }
 
         int port = SocketUtils.getPortFrom(context, _port);
@@ -105,11 +112,13 @@ public class RubyTCPServer extends RubyTCPSocket {
             InetAddress addr = InetAddress.getByName(host);
 
             ServerSocketChannel ssc = ServerSocketChannel.open();
+            ssc.socket().setReuseAddress(true);
+
             InetSocketAddress socket_address = new InetSocketAddress(addr, port);
 
             ssc.socket().bind(socket_address);
 
-            initSocket(runtime, new ChannelDescriptor(ssc, newModeFlags(runtime, ModeFlags.RDWR)));
+            initSocket(newChannelFD(runtime, ssc));
 
         } catch(UnknownHostException e) {
             throw SocketUtils.sockerr(runtime, "initialize: name or service not known");
@@ -127,7 +136,7 @@ public class RubyTCPServer extends RubyTCPSocket {
             }
 
         } catch(IOException e) {
-            throw SocketUtils.sockerr(runtime, "initialize: name or service not known");
+            throw runtime.newIOErrorFromException(e);
 
         } catch (IllegalArgumentException iae) {
             throw SocketUtils.sockerr(runtime, iae.getMessage());
@@ -164,20 +173,32 @@ public class RubyTCPServer extends RubyTCPSocket {
                     }
 
                     // otherwise one key has been selected (ours) so we get the channel and hand it off
-                    socket.initSocket(runtime, new ChannelDescriptor(connected, newModeFlags(runtime, ModeFlags.RDWR)));
+                    socket.initSocket(newChannelFD(runtime, connected));
 
                     return socket;
                 }
             }
 
         } catch(IOException e) {
-            throw SocketUtils.sockerr(runtime, "problem when accepting");
+            throw runtime.newIOErrorFromException(e);
         }
     }
 
     @JRubyMethod(name = "accept_nonblock")
     public IRubyObject accept_nonblock(ThreadContext context) {
+        return accept_nonblock(context, context.runtime, true);
+    }
+
+    @JRubyMethod(name = "accept_nonblock")
+    public IRubyObject accept_nonblock(ThreadContext context, IRubyObject _opts) {
         Ruby runtime = context.runtime;
+
+        boolean exception = ArgsUtil.extractKeywordArg(context, "exception", _opts) != runtime.getFalse();
+
+        return accept_nonblock(context, runtime, exception);
+    }
+
+    public IRubyObject accept_nonblock(ThreadContext context, Ruby runtime, boolean ex) {
         RubyTCPSocket socket = new RubyTCPSocket(runtime, runtime.getClass("TCPSocket"));
         Selector selector = null;
         ServerSocketChannel ssc = getServerSocketChannel();
@@ -193,17 +214,22 @@ public class RubyTCPServer extends RubyTCPSocket {
 
                 if (!ready) {
                     // no connection immediately accepted, let them try again
-                    throw runtime.newErrnoEAGAINError("Resource temporarily unavailable");
+
+                    if (ex) {
+                        throw runtime.newErrnoEAGAINReadableError("Resource temporarily unavailable");
+                    }
+
+                    return runtime.newSymbol("wait_readable");
 
                 } else {
                     // otherwise one key has been selected (ours) so we get the channel and hand it off
-                    socket.initSocket(context.runtime, new ChannelDescriptor(ssc.accept(), newModeFlags(runtime, ModeFlags.RDWR)));
+                    socket.initSocket(newChannelFD(runtime, ssc.accept()));
 
                     return socket;
                 }
 
             } catch(IOException e) {
-                throw SocketUtils.sockerr(context.runtime, "problem when accepting");
+                throw runtime.newIOErrorFromException(e);
 
             } finally {
                 try {
@@ -213,6 +239,35 @@ public class RubyTCPServer extends RubyTCPSocket {
                 try {ssc.configureBlocking(oldBlocking);} catch (IOException ioe) {}
 
             }
+        }
+    }
+
+    @JRubyMethod(name = "sysaccept")
+    public IRubyObject sysaccept(ThreadContext context) {
+        Ruby runtime = context.runtime;
+
+        try {
+            RubyThread thread = context.getThread();
+
+            while (true) {
+                boolean ready = thread.select(this, SelectionKey.OP_ACCEPT);
+
+                if (!ready) {
+                    // we were woken up without being selected...poll for thread events and go back to sleep
+                    context.pollThreadEvents();
+
+                } else {
+                    SocketChannel connected = getServerSocketChannel().accept();
+                    if (connected == null) continue;
+
+                    connected.finishConnect();
+
+                    return runtime.newFixnum(FilenoUtil.filenoFrom(connected));
+                }
+            }
+
+        } catch(IOException e) {
+            throw runtime.newIOErrorFromException(e);
         }
     }
 
@@ -265,17 +320,7 @@ public class RubyTCPServer extends RubyTCPSocket {
     }
 
     @Override
-    public IRubyObject gets19(ThreadContext context) {
-        throw context.runtime.newErrnoENOTCONNError();
-    }
-
-    @Override
-    public IRubyObject gets19(ThreadContext context, IRubyObject sep) {
-        throw context.runtime.newErrnoENOTCONNError();
-    }
-
-    @Override
-    public IRubyObject gets19(ThreadContext context, IRubyObject sep, IRubyObject limit) {
+    public IRubyObject gets(ThreadContext context, IRubyObject sep, IRubyObject limit) {
         throw context.runtime.newErrnoENOTCONNError();
     }
 

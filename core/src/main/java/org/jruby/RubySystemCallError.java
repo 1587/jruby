@@ -127,6 +127,7 @@ public class RubySystemCallError extends RubyException {
     }
 
     private static ObjectAllocator SYSTEM_CALL_ERROR_ALLOCATOR = new ObjectAllocator() {
+        @Override
         public IRubyObject allocate(Ruby runtime, RubyClass klass) {
             RubyException instance = new RubySystemCallError(runtime, klass);
             
@@ -137,6 +138,8 @@ public class RubySystemCallError extends RubyException {
     };
     
     private static final ObjectMarshal SYSTEM_CALL_ERROR_MARSHAL = new ObjectMarshal() {
+        @Override
+        @SuppressWarnings("deprecation")
         public void marshalTo(Ruby runtime, Object obj, RubyClass type,
                               MarshalStream marshalStream) throws IOException {
             RubySystemCallError exc = (RubySystemCallError) obj;
@@ -150,6 +153,7 @@ public class RubySystemCallError extends RubyException {
             marshalStream.dumpVariables(attrs);
         }
 
+        @Override
         public Object unmarshalFrom(Ruby runtime, RubyClass type,
             UnmarshalStream unmarshalStream) throws IOException {
             RubySystemCallError exc = (RubySystemCallError) type.allocate();
@@ -159,7 +163,7 @@ public class RubySystemCallError extends RubyException {
             // just use real vars all the time for these?
             unmarshalStream.defaultVariablesUnmarshal(exc);
             
-            exc.message = (IRubyObject)exc.removeInternalVariable("mesg");
+            exc.setMessage((IRubyObject)exc.removeInternalVariable("mesg"));
             exc.errno = (IRubyObject)exc.removeInternalVariable("errno");
             exc.set_backtrace((IRubyObject)exc.removeInternalVariable("bt"));
             
@@ -178,6 +182,7 @@ public class RubySystemCallError extends RubyException {
     }
     
     @JRubyMethod(optional = 2, required=0, visibility = PRIVATE)
+    @Override
     public IRubyObject initialize(IRubyObject[] args, Block block) {
         Ruby runtime = getRuntime();
         RubyClass sCallErorrClass = runtime.getSystemCallError();
@@ -250,7 +255,7 @@ public class RubySystemCallError extends RubyException {
             val += " - " + msg.convertToString();
         }
 
-        message = runtime.newString(val);
+        setMessage(runtime.newString(val));
         return this;
     }
 

@@ -36,10 +36,8 @@ import org.jruby.anno.JRubyMethod;
 import org.jruby.anno.JRubyModule;
 import org.jruby.common.IRubyWarnings.ID;
 import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
-
-import static org.jruby.CompatVersion.*;
 import static org.jruby.runtime.Visibility.*;
+import org.jruby.runtime.builtin.IRubyObject;
 
 /**
  * GC (Garbage Collection) Module
@@ -107,13 +105,10 @@ public class RubyGC {
         return runtime.newBoolean(stress);
     }
     
-    @JRubyMethod(module = true, visibility = PRIVATE, compat = RUBY1_9)
+    @JRubyMethod(module = true, visibility = PRIVATE)
     public static IRubyObject count(ThreadContext context, IRubyObject recv) {
         try {
-            int count = 0;
-            for (GarbageCollectorMXBean bean : ManagementFactory.getGarbageCollectorMXBeans()) {
-                count += bean.getCollectionCount();
-            }
+            int count = getCollectionCount();
             return context.runtime.newFixnum(count);
         } catch (Throwable t) {
             return RubyFixnum.minus_one(context.runtime);
@@ -121,6 +116,24 @@ public class RubyGC {
     }
 
     private static void emptyImplementationWarning(Ruby runtime, ID id, String name) {
-        runtime.getWarnings().warnOnce(id, name + " does nothing on JRuby");
+        runtime.getWarnings().warnOnce(id,
+                name + " does nothing on JRuby");
     }
+
+    public static int getCollectionCount() {
+        int count = 0;
+        for (GarbageCollectorMXBean bean : ManagementFactory.getGarbageCollectorMXBeans()) {
+            count += bean.getCollectionCount();
+        }
+        return count;
+    }
+
+    public static long getCollectionTime() {
+        long time = 0;
+        for (GarbageCollectorMXBean bean : ManagementFactory.getGarbageCollectorMXBeans()) {
+            time += bean.getCollectionTime();
+        }
+        return time;
+    }
+
 }

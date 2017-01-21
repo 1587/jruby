@@ -10,6 +10,7 @@ import org.jruby.javasupport.JavaMethod;
 import org.jruby.runtime.Block;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
+import org.jruby.util.ArraySupport;
 
 public final class StaticMethodInvoker extends MethodInvoker {
 
@@ -28,7 +29,7 @@ public final class StaticMethodInvoker extends MethodInvoker {
     @Override
     public IRubyObject call(ThreadContext context, IRubyObject self, RubyModule clazz, String name, IRubyObject[] args) {
         JavaMethod method = (JavaMethod) findCallable(self, name, args, args.length);
-        return method.invokeStaticDirect( convertArguments(method, args) );
+        return method.invokeStaticDirect( context, convertArguments(method, args) );
     }
 
     @Override
@@ -36,7 +37,7 @@ public final class StaticMethodInvoker extends MethodInvoker {
         if (javaVarargsCallables != null) return call(context, self, clazz, name, IRubyObject.NULL_ARRAY);
         JavaMethod method = (JavaMethod) findCallableArityZero(self, name);
 
-        return method.invokeStaticDirect();
+        return method.invokeStaticDirect(context);
     }
 
     @Override
@@ -47,7 +48,7 @@ public final class StaticMethodInvoker extends MethodInvoker {
         final Class<?>[] paramTypes = method.getParameterTypes();
         Object cArg0 = arg0.toJava(paramTypes[0]);
 
-        return method.invokeStaticDirect(cArg0);
+        return method.invokeStaticDirect(context, cArg0);
     }
 
     @Override
@@ -58,7 +59,7 @@ public final class StaticMethodInvoker extends MethodInvoker {
         Object cArg0 = arg0.toJava(paramTypes[0]);
         Object cArg1 = arg1.toJava(paramTypes[1]);
 
-        return method.invokeStaticDirect(cArg0, cArg1);
+        return method.invokeStaticDirect(context, cArg0, cArg1);
     }
 
     @Override
@@ -70,26 +71,25 @@ public final class StaticMethodInvoker extends MethodInvoker {
         Object cArg1 = arg1.toJava(paramTypes[1]);
         Object cArg2 = arg2.toJava(paramTypes[2]);
 
-        return method.invokeStaticDirect(cArg0, cArg1, cArg2);
+        return method.invokeStaticDirect(context, cArg0, cArg1, cArg2);
     }
 
     @Override
     public IRubyObject call(ThreadContext context, IRubyObject self, RubyModule clazz, String name, IRubyObject[] args, Block block) {
         if (block.isGiven()) {
-            int len = args.length;
+            final int len = args.length;
             // too much array creation!
-            Object[] convertedArgs = new Object[len + 1];
-            IRubyObject[] intermediate = new IRubyObject[len + 1];
-            System.arraycopy(args, 0, intermediate, 0, len);
-            intermediate[len] = RubyProc.newProc(context.runtime, block, block.type);
+            IRubyObject[] newArgs = ArraySupport.newCopy(args, RubyProc.newProc(context.runtime, block, block.type));
 
-            JavaMethod method = (JavaMethod) findCallable(self, name, intermediate, len + 1);
+            JavaMethod method = (JavaMethod) findCallable(self, name, newArgs, len + 1);
             final Class<?>[] paramTypes = method.getParameterTypes();
+
+            Object[] convertedArgs = new Object[len + 1];
             for (int i = 0; i < len + 1; i++) {
-                convertedArgs[i] = intermediate[i].toJava(paramTypes[i]);
+                convertedArgs[i] = newArgs[i].toJava(paramTypes[i]);
             }
 
-            return method.invokeStaticDirect(convertedArgs);
+            return method.invokeStaticDirect(context, convertedArgs);
         }
         return call(context, self, clazz, name, args);
     }
@@ -102,7 +102,7 @@ public final class StaticMethodInvoker extends MethodInvoker {
             final Class<?>[] paramTypes = method.getParameterTypes();
             Object cArg0 = proc.toJava(paramTypes[0]);
 
-            return method.invokeStaticDirect(cArg0);
+            return method.invokeStaticDirect(context, cArg0);
         }
         return call(context, self, clazz, name);
     }
@@ -116,7 +116,7 @@ public final class StaticMethodInvoker extends MethodInvoker {
             Object cArg0 = arg0.toJava(paramTypes[0]);
             Object cArg1 = proc.toJava(paramTypes[1]);
 
-            return method.invokeStaticDirect(cArg0, cArg1);
+            return method.invokeStaticDirect(context, cArg0, cArg1);
         }
         return call(context, self, clazz, name, arg0);
     }
@@ -131,7 +131,8 @@ public final class StaticMethodInvoker extends MethodInvoker {
             Object cArg1 = arg1.toJava(paramTypes[1]);
             Object cArg2 = proc.toJava(paramTypes[2]);
 
-            return method.invokeStaticDirect(cArg0, cArg1, cArg2);
+            return method.invokeStaticDirect(context, cArg0, cArg1, cArg2);
+
         }
         return call(context, self, clazz, name, arg0, arg1);
     }
@@ -147,7 +148,7 @@ public final class StaticMethodInvoker extends MethodInvoker {
             Object cArg2 = arg2.toJava(paramTypes[2]);
             Object cArg3 = proc.toJava(paramTypes[3]);
 
-            return method.invokeStaticDirect(cArg0, cArg1, cArg2, cArg3);
+            return method.invokeStaticDirect(context, cArg0, cArg1, cArg2, cArg3);
         }
         return call(context, self, clazz, name, arg0, arg1, arg2);
     }

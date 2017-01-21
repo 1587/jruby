@@ -1,21 +1,26 @@
 require File.expand_path('../../../spec_helper', __FILE__)
+$extmk = false
 
 require 'rbconfig'
+require 'fileutils'
 
-# Generate a version.h file for specs to use
-File.open File.expand_path("../ext/rubyspec_version.h", __FILE__), "w" do |f|
-  # Yes, I know CONFIG variables exist for these, but
-  # who knows when those could be removed without warning.
-  major, minor, teeny = RUBY_VERSION.split(".")
-  f.puts "#define RUBY_VERSION_MAJOR  #{major}"
-  f.puts "#define RUBY_VERSION_MINOR  #{minor}"
-  f.puts "#define RUBY_VERSION_TEENY  #{teeny}"
+OBJDIR ||= File.expand_path("../../../ext/#{RUBY_NAME}/#{RUBY_VERSION}", __FILE__)
+FileUtils.makedirs(OBJDIR)
+
+def extension_path
+  File.expand_path("../ext", __FILE__)
 end
 
-CAPI_RUBY_SIGNATURE = "#{RUBY_NAME}-#{RUBY_VERSION}"
+def object_path
+  OBJDIR
+end
 
 def compile_extension(name)
+  preloadenv = RbConfig::CONFIG["PRELOADENV"] || "LD_PRELOAD"
+  preload, ENV[preloadenv] = ENV[preloadenv], nil if preloadenv
+
   path = extension_path
+  objdir = object_path
 
   # TODO use rakelib/ext_helper.rb?
   arch_hdrdir = nil
@@ -25,7 +30,8 @@ def compile_extension(name)
     hdrdir = RbConfig::CONFIG["rubyhdrdir"]
   elsif RUBY_NAME =~ /^ruby/
     if hdrdir = RbConfig::CONFIG["rubyhdrdir"]
-      arch_hdrdir = File.join hdrdir, RbConfig::CONFIG["arch"]
+      arch_hdrdir = RbConfig::CONFIG["rubyarchhdrdir"] ||
+                    File.join(hdrdir, RbConfig::CONFIG["arch"])
       ruby_hdrdir = File.join hdrdir, "ruby"
     else
       hdrdir = RbConfig::CONFIG["archdir"]
@@ -36,42 +42,42 @@ def compile_extension(name)
   elsif RUBY_NAME == "maglev"
     require 'mkmf'
     hdrdir = $hdrdir
+  elsif RUBY_NAME == 'jruby+truffle'
+    return compile_extension_jruby_truffle(name)
   else
     raise "Don't know how to build C extensions with #{RUBY_NAME}"
   end
 
-  ext       = File.join(path, "#{name}_spec")
-  source    = "#{ext}.c"
-  obj       = "#{ext}.o"
-  lib       = "#{ext}.#{RbConfig::CONFIG['DLEXT']}"
-  signature = "#{ext}.sig"
+  ext       = "#{name}_spec"
+  source    = File.join(path, "#{ext}.c")
+  obj       = File.join(objdir, "#{ext}.#{RbConfig::CONFIG['OBJEXT']}")
+  lib       = File.join(objdir, "#{ext}.#{RbConfig::CONFIG['DLEXT']}")
 
   ruby_header     = File.join(hdrdir, "ruby.h")
   rubyspec_header = File.join(path, "rubyspec.h")
-  mri_header      = File.join(path, "mri.h")
 
-  return lib if File.exists?(signature) and
-                IO.read(signature).chomp == CAPI_RUBY_SIGNATURE and
-                File.exists?(lib) and File.mtime(lib) > File.mtime(source) and
+  return lib if File.exist?(lib) and File.mtime(lib) > File.mtime(source) and
                 File.mtime(lib) > File.mtime(ruby_header) and
                 File.mtime(lib) > File.mtime(rubyspec_header) and
-                File.mtime(lib) > File.mtime(mri_header)
+                true            # sentinel
 
   # avoid problems where compilation failed but previous shlib exists
-  File.delete lib if File.exists? lib
+  File.delete lib if File.exist? lib
 
   cc        = RbConfig::CONFIG["CC"]
   cflags    = (ENV["CFLAGS"] || RbConfig::CONFIG["CFLAGS"]).dup
   cflags   += " #{RbConfig::CONFIG["ARCH_FLAG"]}" if RbConfig::CONFIG["ARCH_FLAG"]
-  cflags   += " -fPIC" unless cflags.include?("-fPIC")
+  cflags   += " #{RbConfig::CONFIG["CCDLFLAGS"]}" if RbConfig::CONFIG["CCDLFLAGS"]
   incflags  = "-I#{path} -I#{hdrdir}"
   incflags << " -I#{arch_hdrdir}" if arch_hdrdir
   incflags << " -I#{ruby_hdrdir}" if ruby_hdrdir
 
   output = `#{cc} #{incflags} #{cflags} -c #{source} -o #{obj}`
 
-  if $?.exitstatus != 0 or !File.exists?(obj)
+  unless $?.success? and File.exist?(obj)
     puts "ERROR:\n#{output}"
+    puts "incflags=#{incflags}"
+    puts "cflags=#{cflags}"
     raise "Unable to compile \"#{source}\""
   end
 
@@ -82,20 +88,34 @@ def compile_extension(name)
   dldflags  = "#{RbConfig::CONFIG["LDFLAGS"]} #{RbConfig::CONFIG["DLDFLAGS"]}"
   dldflags.sub!(/-Wl,-soname,\S+/, '')
 
-  output = `#{ldshared} #{obj} #{libpath} #{dldflags} #{libs} -o #{lib}`
+  link_cmd = "#{ldshared} #{obj} #{libpath} #{dldflags} #{libs} -o #{lib}"
+  output = `#{link_cmd}`
 
-  if $?.exitstatus != 0
-    puts "ERROR:\n#{output}"
+  unless $?.success?
+    puts "ERROR:\n#{link_cmd}\n#{output}"
     raise "Unable to link \"#{source}\""
   end
 
-  File.open(signature, "w") { |f| f.puts CAPI_RUBY_SIGNATURE }
-
   lib
+ensure
+  ENV[preloadenv] = preload if preloadenv
 end
 
-def extension_path
-  File.expand_path("../ext", __FILE__)
+def compile_extension_jruby_truffle(name)
+  sulong_config_file = File.join(extension_path, '.jruby-cext-build.yml')
+  output_file = File.join(object_path, "#{name}_spec.#{RbConfig::CONFIG['DLEXT']}")
+
+  File.open(sulong_config_file, 'w') do |f|
+    f.puts "src: #{name}_spec.c"
+    f.puts "out: #{output_file}"
+  end
+
+  system "#{RbConfig::CONFIG['bindir']}/../tool/jt.rb", 'cextc', extension_path
+  raise "Compilation of #{extension_path} failed: #{$?}" unless $?.success?
+
+  output_file
+ensure
+  File.delete(sulong_config_file) if File.exist?(sulong_config_file)
 end
 
 def load_extension(name)

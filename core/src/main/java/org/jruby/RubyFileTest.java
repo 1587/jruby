@@ -276,9 +276,24 @@ public class RubyFileTest {
 
     @JRubyMethod(name = "symlink?", required = 1, module = true)
     public static RubyBoolean symlink_p(IRubyObject recv, IRubyObject filename) {
-        FileStat stat = fileResource(filename).lstat();
+        Ruby runtime = recv.getRuntime();
+        IRubyObject oldExc = runtime.getGlobalVariables().get("$!"); // Save $!
+        
+        try {
+            // Note: We can't use file.exists() to check whether the symlink
+            // exists or not, because that method returns false for existing
+            // but broken symlink. So, we try without the existence check,
+            // but in the try-catch block.
+            // MRI behavior: symlink? on broken symlink should return true.
+            FileStat stat = fileResource(filename).lstat();
 
-        return recv.getRuntime().newBoolean(stat != null && stat.isSymlink());
+            return runtime.newBoolean(stat != null && stat.isSymlink());
+        } catch (SecurityException re) {
+            return runtime.getFalse();
+        } catch (RaiseException re) {
+            runtime.getGlobalVariables().set("$!", oldExc); // Restore $!
+            return runtime.getFalse();
+        }
     }
 
     // We do both writable and writable_real through the same method because
@@ -305,14 +320,14 @@ public class RubyFileTest {
         return runtime.newBoolean(stat.st_size() == 0L);
     }
 
-    @JRubyMethod(name = "world_readable?", required = 1, module = true, compat = CompatVersion.RUBY1_9)
+    @JRubyMethod(name = "world_readable?", required = 1, module = true)
     public static IRubyObject worldReadable(ThreadContext context, IRubyObject recv, IRubyObject filename) {
         RubyFileStat stat = getRubyFileStat(context, filename);
 
         return stat == null ? context.runtime.getNil() : stat.worldReadable(context);
     }
 
-    @JRubyMethod(name = "world_writable?", required = 1, module = true, compat = CompatVersion.RUBY1_9)
+    @JRubyMethod(name = "world_writable?", required = 1, module = true)
     public static IRubyObject worldWritable(ThreadContext context, IRubyObject recv, IRubyObject filename) {
         RubyFileStat stat = getRubyFileStat(context, filename);
 
@@ -434,12 +449,12 @@ public class RubyFileTest {
             return RubyFileTest.zero_p(context, recv, filename);
         }
 
-        @JRubyMethod(name = "world_readable?", required = 1, compat = CompatVersion.RUBY1_9)
+        @JRubyMethod(name = "world_readable?", required = 1)
         public static IRubyObject worldReadable(ThreadContext context, IRubyObject recv, IRubyObject filename) {
             return RubyFileTest.worldReadable(context, recv, filename);
         }
 
-        @JRubyMethod(name = "world_writable?", required = 1, compat = CompatVersion.RUBY1_9)
+        @JRubyMethod(name = "world_writable?", required = 1)
         public static IRubyObject worldWritable(ThreadContext context, IRubyObject recv, IRubyObject filename) {
             return RubyFileTest.worldWritable(context, recv, filename);
         }
@@ -451,7 +466,7 @@ public class RubyFileTest {
         RubyFileStat stat = null;
         if (!(filename instanceof RubyFile)) {
             RubyString path = get_path(context, filename);
-            FileResource file = JRubyFile.createResource(runtime.getPosix(), runtime.getCurrentDirectory(), path.getUnicodeValue());
+            FileResource file = JRubyFile.createResource(runtime, path.getUnicodeValue());
             if (file.exists()) {
                 stat = runtime.newFileStat(file.absolutePath(), false);
             }

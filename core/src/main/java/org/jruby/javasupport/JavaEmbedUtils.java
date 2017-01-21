@@ -43,7 +43,6 @@ import org.jruby.ast.Node;
 import org.jruby.runtime.Block;
 import org.jruby.runtime.Helpers;
 import org.jruby.runtime.builtin.IRubyObject;
-import org.jruby.util.ClassCache;
 import org.jruby.util.UriLikePathHelper;
 
 /**
@@ -71,21 +70,6 @@ public class JavaEmbedUtils {
     }
 
     /**
-     * Get an instance of a JRuby runtime.  Provide any loadpaths you want used at startup.
-     *
-     * @param loadPaths to specify where to look for Ruby modules.
-     * @param classCache to use as a common repository for cached classes
-     * @return an instance
-     */
-    public static Ruby initialize(List<String> loadPaths, ClassCache classCache) {
-        RubyInstanceConfig config = new RubyInstanceConfig();
-        if (classCache != null) {
-            config.setClassCache(classCache);
-        }
-        return initialize(loadPaths, config);
-    }
-
-    /**
      * Get an instance of a JRuby runtime.
      * @param loadPaths additional load paths you wish to add
      * @param config a runtime configuration instance
@@ -94,19 +78,9 @@ public class JavaEmbedUtils {
     public static Ruby initialize(List<String> loadPaths, RubyInstanceConfig config) {
         Ruby runtime = Ruby.newInstance(config);
         runtime.getLoadService().addPaths(loadPaths);
+        runtime.getLoadService().require("java");
 
         return runtime;
-    }
-
-    /**
-     * Generate a class cache.  This will end up setting max cache size per JRuby preferences
-     * (e.g. jruby.jit.max).
-     *
-     * @param loader use the provided classloader to create the cache
-     * @return
-     */
-    public static ClassCache createClassCache(ClassLoader loader) {
-        return new ClassCache(loader, new RubyInstanceConfig().getJitMax());
     }
 
     public static RubyObjectAdapter newObjectAdapter() {
@@ -227,15 +201,6 @@ public class JavaEmbedUtils {
         public IRubyObject run() {
             return runtime.runInterpreter(node);
         }
-    }
-
-    public static void addLoadPath(Ruby runtime, ClassLoader cl) {
-        runtime.getLoadService().addPaths(new UriLikePathHelper(cl).getUriLikePath());
-    }
-
-    public static void addGemPath(Ruby runtime, ClassLoader cl) {
-        String uri = new UriLikePathHelper(cl).getUriLikePath();
-        runtime.evalScriptlet("Gem::Specification.add_dir '" + uri + "' unless Gem::Specification.dirs.member?( '" + uri + "' )" );
     }
 
     /**

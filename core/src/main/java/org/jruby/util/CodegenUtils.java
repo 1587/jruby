@@ -63,7 +63,7 @@ public class CodegenUtils {
                     throw new RuntimeException("Unrecognized type in compiler: " + n.getName());
                 }
             } else {
-                return "[" + ci(n);
+                return '[' + ci(n);
             }
         } else {
             if (n.isPrimitive()) {
@@ -89,7 +89,7 @@ public class CodegenUtils {
                     throw new RuntimeException("Unrecognized type in compiler: " + n.getName());
                 }
             } else {
-                return "L" + p(n) + ";";
+                return 'L' + p(n) + ';';
             }
         }
     }
@@ -191,24 +191,85 @@ public class CodegenUtils {
 
     public static Class[] params(Class cls1, Class clsFill, int times) {
         Class[] classes = new Class[times + 1];
-        Arrays.fill(classes, clsFill);
+        Arrays.fill(classes, 1, 1 + times, clsFill);
         classes[0] = cls1;
         return classes;
     }
 
     public static Class[] params(Class cls1, Class cls2, Class clsFill, int times) {
         Class[] classes = new Class[times + 2];
-        Arrays.fill(classes, clsFill);
+        Arrays.fill(classes, 2, 2 + times, clsFill);
         classes[0] = cls1;
         classes[1] = cls2;
         return classes;
     }
 
+    public static Class[] params(Class cls1, Class cls2, Class cls3, Class clsFill, int times) {
+        Class[] classes = new Class[times + 3];
+        Arrays.fill(classes, 3, 3 + times, clsFill);
+        classes[0] = cls1;
+        classes[1] = cls2;
+        classes[2] = cls3;
+        return classes;
+    }
+
+    public static Class[] params(Class cls1, Class cls2, Class cls3, Class cls4, Class clsFill, int times) {
+        Class[] classes = new Class[times + 4];
+        Arrays.fill(classes, 4, 4 + times, clsFill);
+        classes[0] = cls1;
+        classes[1] = cls2;
+        classes[2] = cls3;
+        classes[3] = cls4;
+        return classes;
+    }
+
     public static Class[] params(Class cls1, Class clsFill, int times, Class clsTail) {
         Class[] classes = new Class[times + 2];
-        Arrays.fill(classes, clsFill);
+        Arrays.fill(classes, 1, 1 + times, clsFill);
         classes[0] = cls1;
         classes[times + 1] = clsTail;
+        return classes;
+    }
+
+    public static Class[] params(Class cls1, Class cls2, Class clsFill, int times, Class clsTail) {
+        Class[] classes = new Class[times + 3];
+        Arrays.fill(classes, 2, 2 + times, clsFill);
+        classes[0] = cls1;
+        classes[1] = cls2;
+        classes[times + 2] = clsTail;
+        return classes;
+    }
+
+    public static Class[] params(Class cls1, Class cls2, Class cls3, Class clsFill, int times, Class clsTail) {
+        Class[] classes = new Class[times + 4];
+        Arrays.fill(classes, 3, 3 + times, clsFill);
+        classes[0] = cls1;
+        classes[1] = cls2;
+        classes[2] = cls3;
+        classes[times + 3] = clsTail;
+        return classes;
+    }
+
+    public static Class[] params(Class cls1, Class cls2, Class cls3, Class cls4, Class clsFill, int times, Class clsTail) {
+        Class[] classes = new Class[times + 5];
+        Arrays.fill(classes, 4, 4 + times, clsFill);
+        classes[0] = cls1;
+        classes[1] = cls2;
+        classes[2] = cls3;
+        classes[3] = cls4;
+        classes[times + 4] = clsTail;
+        return classes;
+    }
+
+    public static Class[] params(Class cls1, Class[] clsFills, int times) {
+        Class[] classes = new Class[clsFills.length * times + 1];
+        classes[0] = cls1;
+        for (int i = 0; i < times; i++) {
+            int base = i * clsFills.length + 1;
+            for (int j = 0; j < clsFills.length; j++) {
+                classes[base + j] = clsFills[j];
+            }
+        }
         return classes;
     }
 
@@ -217,13 +278,19 @@ public class CodegenUtils {
     }
 
     public static String getAnnotatedBindingClassName(String javaMethodName, CharSequence typeName, boolean isStatic, int required, int optional, boolean multi, boolean framed) {
-        String commonClassSuffix = "$INVOKER" + (isStatic ? "$s$" : "$i$" );
         if (multi) {
-            commonClassSuffix += javaMethodName;
-        } else {
-            commonClassSuffix += required + "$" + optional + "$" + javaMethodName;
+            return new StringBuilder(typeName.length() + 8 + 3 + javaMethodName.length())
+                    .append(typeName)
+                    .append("$INVOKER").append(isStatic ? "$s$" : "$i$")
+                    .append(javaMethodName)
+                    .toString();
         }
-        return typeName + commonClassSuffix;
+        return new StringBuilder(typeName.length() + 8 + 3 + 4 + javaMethodName.length())
+                .append(typeName)
+                .append("$INVOKER").append(isStatic ? "$s$" : "$i$")
+                .append(required).append('$').append(optional).append('$')
+                .append(javaMethodName)
+                .toString();
     }
 
     public static void visitAnnotationFields(AnnotationVisitor visitor, Map<String, Object> fields) {

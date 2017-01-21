@@ -5,13 +5,16 @@ import org.jruby.ir.IRVisitor;
 import org.jruby.ir.Operation;
 import org.jruby.ir.operands.Operand;
 import org.jruby.ir.operands.Variable;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
-import org.jruby.runtime.Block;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.parser.StaticScope;
 import org.jruby.runtime.DynamicScope;
+import org.jruby.runtime.Helpers;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 
-public class RestArgMultipleAsgnInstr extends MultipleAsgnBase {
+public class RestArgMultipleAsgnInstr extends MultipleAsgnBase implements FixedArityInstr {
     private final int preArgsCount;       // # of reqd args before rest-arg
     private final int postArgsCount;      // # of reqd args after rest-arg
 
@@ -25,29 +28,43 @@ public class RestArgMultipleAsgnInstr extends MultipleAsgnBase {
         this(result, array, -1, -1, index);
     }
 
-    @Override
-    public String toString() {
-        return super.toString() + "(" + array + ", " + index + ", " + preArgsCount + ", " + postArgsCount + ")";
+    public int getPreArgsCount() {
+        return preArgsCount;
+    }
+
+    public int getPostArgsCount() {
+        return postArgsCount;
     }
 
     @Override
-    public Instr cloneForInlining(InlinerInfo ii) {
-        return new RestArgMultipleAsgnInstr(ii.getRenamedVariable(result), array.cloneForInlining(ii), preArgsCount, postArgsCount, index);
+    public String[] toStringNonOperandArgs() {
+        return new String[] { "index: " + index, "pre: " + preArgsCount, "post: " + postArgsCount};
     }
 
     @Override
-    public Object interpret(ThreadContext context, DynamicScope currDynScope, IRubyObject self, Object[] temp, Block block) {
+    public Instr clone(CloneInfo ii) {
+        return new RestArgMultipleAsgnInstr(ii.getRenamedVariable(result), getArray().cloneForInlining(ii), preArgsCount, postArgsCount, index);
+    }
+
+    @Override
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+        e.encode(getArray());
+        e.encode(getPreArgsCount());
+        e.encode(getPostArgsCount());
+        e.encode(getIndex());
+    }
+
+    public static RestArgMultipleAsgnInstr decode(IRReaderDecoder d) {
+        return new RestArgMultipleAsgnInstr(d.decodeVariable(), d.decodeOperand(), d.decodeInt(), d.decodeInt(), d.decodeInt());
+    }
+
+    @Override
+    public Object interpret(ThreadContext context, StaticScope currScope, DynamicScope currDynScope, IRubyObject self, Object[] temp) {
         // ENEBO: Can I assume since IR figured this is an internal array it will be RubyArray like this?
-        RubyArray rubyArray = (RubyArray) array.retrieve(context, self, currDynScope, temp);
-        Object val;
+        RubyArray rubyArray = (RubyArray) getArray().retrieve(context, self, currScope, currDynScope, temp);
 
-        int n = rubyArray.getLength();
-        if ((preArgsCount >= n) || (preArgsCount + postArgsCount >= n)) {
-            return RubyArray.newEmptyArray(context.runtime);
-        } else {
-            // FIXME: Perf win to use COW between source Array and this new one (remove toJavaArray)
-            return RubyArray.newArrayNoCopy(context.runtime, rubyArray.toJavaArray(), preArgsCount, (n - preArgsCount - postArgsCount));
-        }
+        return Helpers.viewArgsArray(context, rubyArray, preArgsCount, postArgsCount);
     }
 
     @Override

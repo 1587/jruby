@@ -6,75 +6,47 @@ task :spec => "spec:ci"
 desc "Alias for test:short"
 task :test => "test:short"
 
-desc "Alias for test:short19"
-task :test19 => "test:short19"
+if ENV['CI']
+  # MRI tests have a different flag for color
+  ADDITIONAL_TEST_OPTIONS = "-v --color=never --tty=no"
 
-desc "Alias for test:short18"
-task :test18 => "test:short18"
+  # for normal test/unit tests
+  ENV['TESTOPT'] = "-v --no-use-color"
+else
+  ADDITIONAL_TEST_OPTIONS = ""
+end
 
 namespace :test do
   desc "Compile test code"
   task :compile do
-    sh "javac -cp lib/jruby.jar:test/target/junit.jar -d test/target/test-classes #{Dir['spec/java_integration/fixtures/**/*.java'].to_a.join(' ')}"
+    mkdir_p "test/target/test-classes"
+    classpath = %w[lib/jruby.jar test/target/junit.jar].join(File::PATH_SEPARATOR)
+    # try detecting javac - so we use the same Java versions as we're running (JAVA_HOME) with :
+    java_home = [ ENV_JAVA['java.home'], File.join(ENV_JAVA['java.home'], '..') ] # in case of jdk/jre
+    javac = java_home.map { |home| File.expand_path('bin/javac', home) }.find { |javac| File.exist?(javac) } || 'javac'
+    sh "#{javac} -cp #{classpath} -d test/target/test-classes #{Dir['spec/java_integration/fixtures/**/*.java'].to_a.join(' ')}"
   end
 
-  short_tests_18 = ['jruby', 'mri', 'rubicon']
-  short_tests_19 = short_tests_18.map {|test| test + "19"}
-  short_tests = short_tests_18 + short_tests_19
-  long_tests_18 = short_tests_18 + ['spec:ji', 'spec:compiler', 'spec:ffi', 'spec:regression']
-  long_tests_19 = long_tests_18.map {|test| test + "19"} + ['spec:profiler19']
+  short_tests = ['jruby', 'mri']
   slow_tests = ['test:slow', 'test:objectspace']
-  long_tests = ['test:tracing'] + long_tests_18 + long_tests_19 + slow_tests
-  all_tests_18 = long_tests_18.map {|test| test + ':all'}
-  all_tests_19 = long_tests_19.map {|test| test + ':all'}
-  all_tests = all_tests_18 + all_tests_19 + slow_tests
+  specs = ['spec:ji', 'spec:compiler', 'spec:ffi', 'spec:regression'];
+  long_tests = ["test:tracing"] + short_tests + slow_tests + specs
+  all_tests = long_tests.map {|test| test + ':all'}
 
   desc "Run the short suite: #{short_tests.inspect}"
   task :short => [:compile, *short_tests]
 
-  desc "Run the short 1.9 suite: #{short_tests_19.inspect}"
-  task :short19 => [:compile, *short_tests_19]
-
-  desc "Run the short 1.8 suite: #{short_tests_18.inspect}"
-  task :short18 => [:compile, *short_tests_18]
-
   desc "Run the long suite: #{long_tests.inspect}"
   task :long => [:compile, *long_tests]
-
-  desc "Run the long 1.9 suite: #{long_tests_19.inspect}"
-  task :long19 => [:compile, *long_tests_19]
-
-  desc "Run the long 1.8 suite: #{long_tests_18.inspect}"
-  task :long18 => [:compile, *long_tests_18]
 
   desc "Run the comprehensive suite: #{all_tests}"
   task :all => [:compile, *all_tests]
 
-  desc "Run the comprehensive 1.9 suite: #{all_tests_19}"
-  task :all19 => [:compile, *all_tests_19]
-
-  desc "Run the comprehensive 1.8 suite: #{all_tests_18}"
-  task :all18 => [:compile, *all_tests_18]
+  desc "Run tests that are too slow for the main suite"
+  task :slow_suites => [:compile, *slow_tests]
 
   task :rake_targets => long_tests
-  
-  task :extended do
-    # cause unit tests to run
-    sh 'mvn -q -Ptest test'
-    
-    # run Ruby integration tests
-    Rake::Task["test:rake_targets"].invoke
-  end
-
-  task :dist do
-    # run builds and test for dist artifacts
-    sh 'mvn -Pdist clean install' or fail 'mvn -Pdist failed'
-    sh 'mvn -Pcomplete clean install' or fail 'mvn -Pcomplete failed'
-    sh 'mvn -Pmain clean install' or fail 'mvn -Pmain failed'
-    sh 'mvn -Pjruby-jars clean install' or fail 'mvn -Pjruby-jars failed'
-    sh 'mvn -Pgems clean install' or fail 'mvn -Pgems failed'
-    sh 'mvn -Pall clean install' or fail 'mvn -Pall failed'
-  end
+  task :extended => long_tests
 
   desc "Run tracing tests"
   task :tracing do
@@ -83,16 +55,17 @@ namespace :test do
       t.verbose = true
       t.ruby_opts << '-J-ea'
       t.ruby_opts << '--debug'
-      t.ruby_opts << '--1.8'
+      t.ruby_opts << '--disable-gems'
     end
   end
   
   compile_flags = {
     :default => :int,
     :int => ["-X-C"],
-    :jit => ["-Xjit.threshold=0", "-J-XX:MaxPermSize=256M"],
-    :aot => ["-X+C", "-J-XX:MaxPermSize=256M"],
-    :ir_int => ["-X-CIR"],
+    # Note: jit.background=false is implied by jit.threshold=0, but we add it here to be sure
+    :fullint => ["-X-C", "-Xjit.threshold=0", "-Xjit.background=false"],
+    :jit => ["-Xjit.threshold=0", "-Xjit.background=false", "-J-XX:MaxPermSize=512M"],
+    :aot => ["-X+C", "-J-XX:MaxPermSize=512M"],
     :all => [:int, :jit, :aot]
   }
 
@@ -104,62 +77,81 @@ namespace :test do
     end
     files
   end
-  
-  permute_tests(:mri19, compile_flags) do |t|
-    t.verbose = true
-    t.test_files = files_in_file 'test/mri.1.9.index'
-    ENV['EXCLUDE_DIR'] = 'test/externals/ruby1.9/excludes'
-    t.ruby_opts << '-J-Dfile.encoding=UTF-8' if RbConfig::CONFIG['host_os'] =~ /mswin|mingw/
-    t.ruby_opts << '-J-ea' << '--1.9' 
-    t.ruby_opts << '-I test/externals/ruby1.9'
-    t.ruby_opts << '-I test/externals/ruby1.9/ruby'
-    t.ruby_opts << '-r ./test/ruby19_env.rb'
-    t.ruby_opts << '-r minitest/excludes'
-  end
-  
-  permute_tests(:mri, compile_flags) do |t|
-    t.verbose = true
-    t.test_files = files_in_file 'test/mri.1.8.index'
-    t.ruby_opts << '-J-ea' << '--1.8'
-  end
 
-  permute_tests(:jruby19, compile_flags, 'test:compile') do |t|
-    t.verbose = true
-    t.test_files = files_in_file 'test/jruby.1.9.index'
-    t.ruby_opts << '-J-ea' << '--1.9'
-    t.ruby_opts << '-J-cp test:test/target/test-classes:core/target/test-classes'
+  namespace :mri do
+    mri_test_files = File.readlines('test/mri.index').grep(/^[^#]\w+/).map(&:chomp).join(' ')
+    task :int do
+      ENV['JRUBY_OPTS'] = ENV['JRUBY_OPTS'].to_s + ' -Xbacktrace.style=mri -Xdebug.fullTrace -X-C'
+      ruby "-r ./test/mri_test_env.rb test/mri/runner.rb #{ADDITIONAL_TEST_OPTIONS} -q -- #{mri_test_files}"
+    end
+
+    task :fullint do
+      ENV['JRUBY_OPTS'] = ENV['JRUBY_OPTS'].to_s + ' -Xbacktrace.style=mri -Xdebug.fullTrace -X-C -Xjit.threshold=0 -Xjit.background=false'
+      ruby "-r ./test/mri_test_env.rb test/mri/runner.rb #{ADDITIONAL_TEST_OPTIONS} -q -- #{mri_test_files}"
+    end
+
+    task :jit do
+      ENV['JRUBY_OPTS'] = ENV['JRUBY_OPTS'].to_s + ' -Xbacktrace.style=mri -Xdebug.fullTrace -J-XX:MaxPermSize=512M -Xjit.threshold=0 -Xjit.background=false'
+      ruby "-r ./test/mri_test_env.rb test/mri/runner.rb #{ADDITIONAL_TEST_OPTIONS} -q -- #{mri_test_files}"
+    end
+
+    task :aot do
+      ENV['JRUBY_OPTS'] = ENV['JRUBY_OPTS'].to_s + ' -Xbacktrace.style=mri -Xdebug.fullTrace -J-XX:MaxPermSize=512M -X+C -Xjit.background=false'
+      ruby "-r ./test/mri_test_env.rb test/mri/runner.rb #{ADDITIONAL_TEST_OPTIONS} -q -- #{mri_test_files}"
+    end
+
+    task all: %s[int jit aot]
   end
+  task mri: 'test:mri:int'
 
   permute_tests(:jruby, compile_flags, 'test:compile') do |t|
+    files = []
+    File.open('test/jruby.index') do |f|
+      f.each_line.each do |line|
+        filename = "test/#{line.chomp}.rb"
+        next unless File.exist? filename
+        files << filename
+      end
+    end
+    t.test_files = files
     t.verbose = true
-    t.test_files = files_in_file 'test/jruby.1.8.index'
-    t.ruby_opts << '-J-ea' << '--1.8'
-    t.ruby_opts << '-J-cp test:test/target/test-classes:core/target/test-classes'
-  end
-
-  permute_tests(:rubicon19, compile_flags) do |t|
-    t.verbose = true
-    t.test_files = files_in_file 'test/rubicon.1.9.index'
-    t.ruby_opts << '-J-ea' << '--1.9' << '-X+O'
-  end
-
-  permute_tests(:rubicon, compile_flags) do |t|
-    t.verbose = true
-    t.test_files = files_in_file 'test/rubicon.1.8.index'
-    t.ruby_opts << '-J-ea' << '--1.8' << '-X+O'
+    t.ruby_opts << '-Xaot.loadClasses=true' # disabled by default now
+    t.ruby_opts << '-I.'
+    t.ruby_opts << '-J-ea'
+    t.ruby_opts << '--headless'
+    classpath = %w[test test/target/test-classes core/target/test-classes].join(File::PATH_SEPARATOR)
+    t.ruby_opts << "-J-cp #{classpath}"
   end
 
   permute_tests(:slow, compile_flags) do |t|
+    files = []
+    File.open('test/slow.index') do |f|
+      f.each_line.each do |line|
+        filename = "test/#{line.chomp}.rb"
+        next unless File.exist? filename
+        files << filename
+      end
+    end
+    t.test_files = files
     t.verbose = true
     t.test_files = files_in_file 'test/slow.index'
-    t.ruby_opts << '-J-ea' << '--1.8'
+    t.ruby_opts << '-J-ea' << '-I.'
     t.ruby_opts << '-J-cp target/test-classes'
   end
 
   permute_tests(:objectspace, compile_flags) do |t|
+    files = []
+    File.open('test/objectspace.index') do |f|
+      f.each_line.each do |line|
+        filename = "test/#{line.chomp}.rb"
+        next unless File.exist? filename
+        files << filename
+      end
+    end
+    t.test_files = files
     t.verbose = true
-    t.test_files = files_in_file 'test/objectspace.index'
-    t.ruby_opts << '-J-ea' << '--1.8' << '-X+O'
+    t.ruby_opts << '-J-ea'
+    t.ruby_opts << '-X+O'
   end
   
   def junit(options)
@@ -180,15 +172,13 @@ namespace :test do
       "target/commons-logging.jar",
       "lib/jruby.jar",
       "target/test-classes",
-      "test/requireTest.jar",
+      "test/jruby/requireTest.jar",
       "test"
     ]
     
     desc "Run the main JUnit test suite"
     task :main => 'test:compile' do
       junit :classpath => test_class_path, :test => "org.jruby.test.MainTestSuite", :maxmemory => '512M' do
-        env :key => "JRUBY_OPTS", :value => "--1.8"
-        sysproperty :key => 'jruby.compat.version', :value => '1.8'
         jvmarg :line => '-ea'
       end
     end

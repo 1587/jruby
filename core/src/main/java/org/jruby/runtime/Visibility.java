@@ -27,12 +27,26 @@ package org.jruby.runtime;
 
 public enum Visibility {
     PUBLIC, PROTECTED, PRIVATE, MODULE_FUNCTION;
-    
-    public boolean isPrivate() {
-        return this == PRIVATE;
+
+    private static final Visibility[] VALUES = values();
+
+    public boolean isPublic() {
+        return this == PUBLIC;
     }
     
     public boolean isProtected() {
         return this == PROTECTED;
+    }
+
+    public boolean isPrivate() {
+        return this == PRIVATE;
+    }
+
+    public boolean isModuleFunction() {
+        return this == MODULE_FUNCTION;
+    }
+
+    public static Visibility[] getValues() {
+        return VALUES;
     }
 }

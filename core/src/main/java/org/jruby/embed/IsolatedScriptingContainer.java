@@ -1,47 +1,42 @@
 package org.jruby.embed;
 
 import java.net.URL;
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
 import java.util.Map;
+import java.util.List;
+import java.util.LinkedList;
 
+import org.jruby.util.ClassesLoader;
 import org.jruby.util.UriLikePathHelper;
 
 /**
- * the IsolatedScriptingContainer detects the whether it is used with
- * a Thread.currentThread.contextClassLoader (J2EE) or with the classloader
- * which loaded IsolatedScriptingContainer.class (OSGi case)
- * 
- * the setup of LOAD_PATH and GEM_PATH and JRUBY_HOME uses ONLY uri: or uri:classloader:
- * protocol paths. i.e. everything lives within one or more classloaders - no jars added from
- * jave.class.path or similar "magics"
+ * The IsolatedScriptingContainer does set GEM_HOME and GEM_PATH and JARS_HOME
+ * in such a way that it uses only resources which can be reached with classloader.
  *
- * the root of the "main" classloader is add to LOAD_PATH and GEM_PATH.
+ * GEM_HOME is uri:classloader://META-INF/jruby.home/lib/ruby/gems/shared
+ * GEM_PATH is uri:classloader://
+ * JARS_HOME is uri:classloader://jars
  *
- * in the OSGi case see the OSGiIsolatedScriptingContainer
- * 
- * a typical setup for the ContextClassLoader case and OSGi case looks likes this:
- * <li>LOAD_PATH == [ "uri:classloader:/META-INF/jruby.home/lib/ruby/1.9/site_ruby", 
- *                    "uri:classloader:/META-INF/jruby.home/lib/ruby/shared",
- *                    "uri:classloader:/META-INF/jruby.home/lib/ruby/1.9",
- *                    "uri:classloader:" ]</li>
- * <li>Gem::Specification.dirs ==  [ "uri:classloader:/specifications", "uri:classloader:/META-INF/jruby.home/lib/ruby/gems/shared/specifications" ]
- * here very resource is loaded via <code>Thread.currentTHread.getContextClassLoader().getResourceAsStream(...)</code>
- * 
- * <code>new URL( uri ).openStream()</code>, i.e. <code>new URL(classloader.getResource().toString()).openStream()</code> has to work for
- * those classloaders. felix, knoplerfish and equinox OSGi framework do work.
- * 
- * NOTE: <code>Gem.path</code> is base for determine the <code>Gem::Specification.dirs</code> and <code>Gem::Specification.dirs</code> is
- * used to find gemspec files of the installed gems.
+ * But whenever you want to set them via {@link #setEnvironment(Map)} this will be honored.
+ *
+ * It also allows to add a classloaders to LOAD_PATH or GEM_PATH.
+ *
+ * This container also sets option classloader.delegate to false, i.e. the JRubyClassloader 
+ * for each runtime will lookup classes first on itself before looking into the parent 
+ * classloader.
+ *
+ * WARNING: this can give problems when joda-time is used inside the 
+ *   JRubyClassloader or with current version of nokogiri (1.6.7.2) as it uses 
+ *   (sun-)jdk classes which conflicts with classes nokogiri loaded into the 
+ *   JRubyClassloader.
+ *
+ * With any classloader related problem the first thing is to try
+ * <code>container.getProvider().getRubyInstanceConfig().setClassloaderDelegate(true);</code> to solve it.
  */
 public class IsolatedScriptingContainer extends ScriptingContainer {
 
     private static final String URI_CLASSLOADER = "uri:classloader:/";
-    private static final String JRUBYDIR = "/.jrubydir";
-    private static final String JRUBY_HOME = "/META-INF/jruby.home";
-    
+
     public IsolatedScriptingContainer()
     {
         this(LocalContextScope.SINGLETON);
@@ -69,29 +64,22 @@ public class IsolatedScriptingContainer extends ScriptingContainer {
     {
         super(scope, behavior, lazy);
 
-        // get the right classloader
-        ClassLoader cl = this.getClass().getClassLoader();
-        if (cl == null) cl = Thread.currentThread().getContextClassLoader();
-        setClassLoader( cl );
-
         List<String> loadPaths = new LinkedList<String>();
         loadPaths.add(URI_CLASSLOADER);
         setLoadPaths(loadPaths);
 
         // set the right jruby home
-        UriLikePathHelper uriPath = new UriLikePathHelper(cl);
-        URL url = uriPath.getResource(JRUBY_HOME + JRUBYDIR);
-        if (url != null){
-            setHomeDirectory( URI_CLASSLOADER + JRUBY_HOME );
-        }
-
-        url = uriPath.getResource(JRUBYDIR);
+        UriLikePathHelper uriPath = new UriLikePathHelper(new ClassesLoader(getClassLoader()));
+        URL url = uriPath.getResource("/.jrubydir");
         if (url != null){
             setCurrentDirectory( URI_CLASSLOADER );
         }
 
         // setup the isolated GEM_PATH, i.e. without $HOME/.gem/**
         setEnvironment(null);
+
+	// give preference to jrubyClassloader over parent-classloader
+	getProvider().getRubyInstanceConfig().setClassloaderDelegate(false);
     }
 
     @Override
@@ -107,31 +95,5 @@ public class IsolatedScriptingContainer extends ScriptingContainer {
         else {
             super.setEnvironment(environment);
         }
-    }
-
-    public void addLoadPath(ClassLoader cl) {
-        addLoadPath(new UriLikePathHelper(cl).getUriLikePath());
-    }
-
-    public void addLoadPath( ClassLoader cl, String ref ) {
-        addLoadPath(new UriLikePathHelper(cl).getUriLikePath(ref));
-    }
-
-    protected void addLoadPath(String uri) {
-        if (!getLoadPaths().contains(uri)) {
-            getLoadPaths().add(uri);
-        }
-    }
-
-    public void addGemPath( ClassLoader cl ) {
-        addGemPath(new UriLikePathHelper(cl).getUriLikePath("/specifications" + JRUBYDIR));
-    }
-
-    public void addGemPath( ClassLoader cl, String ref ) {
-        addGemPath(new UriLikePathHelper(cl).getUriLikePath(ref));
-    }
-
-    protected void addGemPath(String uri) {
-        runScriptlet( "Gem::Specification.add_dir '" + uri + "' unless Gem::Specification.dirs.member?( '" + uri + "' )" );
     }
 }

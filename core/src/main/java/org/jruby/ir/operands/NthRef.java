@@ -1,7 +1,10 @@
 package org.jruby.ir.operands;
 
-import org.jruby.RubyRegexp;
 import org.jruby.ir.IRVisitor;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
+import org.jruby.ir.runtime.IRRuntimeHelpers;
+import org.jruby.parser.StaticScope;
 import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
@@ -19,8 +22,24 @@ public class NthRef extends Reference {
     }
 
     @Override
-    public Object retrieve(ThreadContext context, IRubyObject self, DynamicScope currDynScope, Object[] temp) {
-        return RubyRegexp.nth_match(matchNumber, context.getBackRef());
+    public OperandType getOperandType() {
+        return OperandType.NTH_REF;
+    }
+
+    @Override
+    public Object retrieve(ThreadContext context, IRubyObject self, StaticScope currScope, DynamicScope currDynScope, Object[] temp) {
+        return IRRuntimeHelpers.nthMatch(context, matchNumber);
+    }
+
+    @Override
+    public void encode(IRWriterEncoder e) {
+        // We do not super since name is derived from number.
+        e.encode(getOperandType().getCoded());
+        e.encode(matchNumber);
+    }
+
+    public static NthRef decode(IRReaderDecoder d) {
+        return new NthRef(d.decodeInt());
     }
 
     @Override

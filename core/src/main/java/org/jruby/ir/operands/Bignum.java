@@ -2,6 +2,8 @@ package org.jruby.ir.operands;
 
 import org.jruby.RubyBignum;
 import org.jruby.ir.IRVisitor;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
 import org.jruby.runtime.ThreadContext;
 
 import java.math.BigInteger;
@@ -30,7 +32,13 @@ public class Bignum extends ImmutableLiteral {
     final public BigInteger value;
 
     public Bignum(BigInteger value) {
+        super();
         this.value = value;
+    }
+
+    @Override
+    public OperandType getOperandType() {
+        return OperandType.BIGNUM;
     }
 
     @Override
@@ -39,12 +47,22 @@ public class Bignum extends ImmutableLiteral {
     }
 
     @Override
-    public String toString() {
-        return "Bignum:" + value;
+    public void visit(IRVisitor visitor) {
+        visitor.Bignum(this);
     }
 
     @Override
-    public void visit(IRVisitor visitor) {
-        visitor.Bignum(this);
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+        e.encode(value.toString());
+    }
+
+    public static Bignum decode(IRReaderDecoder d) {
+        return new Bignum(new BigInteger(d.decodeString()));
+    }
+
+    @Override
+    public String toString() {
+        return "Bignum:" + value;
     }
 }

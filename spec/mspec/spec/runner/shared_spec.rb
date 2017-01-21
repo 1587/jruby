@@ -7,11 +7,13 @@ describe Object, "#it_behaves_like" do
   before :each do
     ScratchPad.clear
 
+    MSpec.setup_env
+
     @state = ContextState.new "Top level"
     @state.instance_variable_set :@parsed, true
 
     @shared = ContextState.new :shared_spec, :shared => true
-    MSpec.stub!(:retrieve_shared).and_return(@shared)
+    MSpec.stub(:retrieve_shared).and_return(@shared)
   end
 
   it "creates @method set to the name of the aliased method" do

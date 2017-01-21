@@ -1,5 +1,6 @@
 package org.jruby.util;
 
+import org.jruby.runtime.CallSite;
 import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.RubyHash;
@@ -12,20 +13,18 @@ import static org.jruby.runtime.Helpers.invokedynamic;
 import java.util.Set;
 import java.util.HashSet;
 
-public class RecursiveComparator
-{
-    public static IRubyObject compare(ThreadContext context, final MethodNames method, IRubyObject a, IRubyObject b) {
-        Ruby runtime = context.runtime;
+public class RecursiveComparator {
+    public static <T> IRubyObject compare(ThreadContext context, T invokable, IRubyObject a, IRubyObject b) {
 
         if (a == b) {
-            return runtime.getTrue();
+            return context.runtime.getTrue();
         }
         
         boolean clear = false; // whether to clear thread-local set (at top comparison)
 
         try {
-            Set<Pair> seen = null;
-            
+            Set<Pair> seen;
+
             if (a instanceof RubyHash && b instanceof RubyHash ||
                 a instanceof RubyArray && b instanceof RubyArray) {
 
@@ -36,7 +35,7 @@ public class RecursiveComparator
                     clear = true;
                 }
                 else if (seen.contains(pair)) { // are we recursing?
-                    return runtime.getTrue();
+                    return context.runtime.getTrue();
                 }
 
                 seen.add(pair);
@@ -44,14 +43,12 @@ public class RecursiveComparator
 
             if (a instanceof RubyHash) {
                 RubyHash hash = (RubyHash) a;
-                return hash.compare(context, method, b);
-            }
-            else if (a instanceof RubyArray) {
+                return hash.compare(context, (RubyHash.VisitorWithState<RubyHash>) invokable, b);
+            } else if (a instanceof RubyArray) {
                 RubyArray array = (RubyArray) a;
-                return array.compare(context, method, b);
-            }
-            else {
-                return invokedynamic(context, a, method, b);
+                return array.compare(context, (CallSite) invokable, b);
+            } else {
+                return ((CallSite) invokable).call(context, a, a, b);
             }
         } finally {
             if (clear) context.setRecursiveSet(null);

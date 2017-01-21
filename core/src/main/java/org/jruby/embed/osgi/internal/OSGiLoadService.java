@@ -50,10 +50,7 @@ public class OSGiLoadService extends LoadService {
     
     public static LoadServiceCreator OSGI_DEFAULT = new LoadServiceCreator() {
         public LoadService create(Ruby runtime) {
-            if (runtime.is1_9()) {
-                return new OSGiLoadService19(runtime);
-            }
-            return new OSGiLoadService(runtime);
+            return new OSGiLoadService19(runtime);
         }
     };
 
@@ -64,9 +61,19 @@ public class OSGiLoadService extends LoadService {
      */
     public OSGiLoadService(Ruby runtime) {
         super(runtime);
-//        super.searchers.add(new OSGiBundlesSearcher());
     }
-
+    
+    protected Library findLibraryBySearchState(SearchState state) {
+        Library library = super.findLibraryBySearchState(state);
+        if (library == null){
+            library = findLibraryWithClassloaders(state, state.searchFile, state.suffixType);
+            if (library != null) {
+                state.library = library;
+            }
+        }
+        return library;
+    }
+    
     /**
      * Support for 'bundle:/' to look for libraries in osgi bundles
      * or classes or ruby files.
@@ -107,6 +114,7 @@ public class OSGiLoadService extends LoadService {
      * Support for 'bundle:/' to look for libraries in osgi bundles.
      */
     @Override
+    @Deprecated
     protected Library createLibrary(SearchState state, LoadServiceResource resource) {
         if (resource == null) {
             return null;

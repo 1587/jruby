@@ -33,15 +33,8 @@ package org.jruby.ast;
 
 import java.util.List;
 
-import org.jruby.Ruby;
 import org.jruby.ast.visitor.NodeVisitor;
-import org.jruby.evaluator.ASTInterpreter;
 import org.jruby.lexer.yacc.ISourcePosition;
-import org.jruby.runtime.Block;
-import org.jruby.runtime.CallSite;
-import org.jruby.runtime.MethodIndex;
-import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.builtin.IRubyObject;
 
 /**
  *
@@ -49,21 +42,23 @@ import org.jruby.runtime.builtin.IRubyObject;
 public class OpAsgnNode extends Node {
     private final Node receiverNode;
     private final Node valueNode;
-    public final CallSite variableCallAdapter;
-    public final CallSite operatorCallAdapter;
-    public final CallSite variableAsgnCallAdapter;
+    private final String variableName;
+    private final String operatorName;
+    private final String variableNameAsgn;
+    private final boolean isLazy;
 
-    public OpAsgnNode(ISourcePosition position, Node receiverNode, Node valueNode, String variableName, String operatorName) {
-        super(position);
+    public OpAsgnNode(ISourcePosition position, Node receiverNode, Node valueNode, String variableName, String operatorName, boolean isLazy) {
+        super(position, receiverNode.containsVariableAssignment());
         
         assert receiverNode != null : "receiverNode is not null";
         assert valueNode != null : "valueNode is not null";
         
         this.receiverNode = receiverNode;
         this.valueNode = valueNode;
-        this.variableCallAdapter = MethodIndex.getCallSite(variableName);
-        this.operatorCallAdapter = MethodIndex.getCallSite(operatorName);
-        this.variableAsgnCallAdapter = MethodIndex.getCallSite((variableName + "=").intern());
+        this.variableName = variableName;
+        this.operatorName = operatorName;
+        this.variableNameAsgn = (variableName + "=").intern();
+        this.isLazy = isLazy;
     }
 
     public NodeType getNodeType() {
@@ -74,7 +69,7 @@ public class OpAsgnNode extends Node {
      * Accept for the visitor pattern.
      * @param iVisitor the visitor
      **/
-    public Object accept(NodeVisitor iVisitor) {
+    public <T> T accept(NodeVisitor<T> iVisitor) {
         return iVisitor.visitOpAsgnNode(this);
     }
 
@@ -83,7 +78,7 @@ public class OpAsgnNode extends Node {
      * @return Returns a String
      */
     public String getOperatorName() {
-        return operatorCallAdapter.methodName;
+        return operatorName;
     }
 
     /**
@@ -107,38 +102,23 @@ public class OpAsgnNode extends Node {
      * @return Returns a String
      */
     public String getVariableName() {
-        return variableCallAdapter.methodName;
+        return variableName;
     }
     
     public String getVariableNameAsgn() {
-        return variableAsgnCallAdapter.methodName;
+        return variableNameAsgn;
     }
     
     public List<Node> childNodes() {
         return Node.createList(receiverNode, valueNode);
     }
-    
+
+    public boolean isLazy() {
+        return isLazy;
+    }
+
     @Override
-    public IRubyObject interpret(Ruby runtime, ThreadContext context, IRubyObject self, Block aBlock) {
-        IRubyObject receiver = receiverNode.interpret(runtime, context, self, aBlock);
-        IRubyObject value = variableCallAdapter.call(context, self, receiver);
-   
-        if (getOperatorName() == "||") {
-            if (value.isTrue()) {
-                return ASTInterpreter.pollAndReturn(context, value);
-            }
-            value = valueNode.interpret(runtime, context, self, aBlock);
-        } else if (getOperatorName() == "&&") {
-            if (!value.isTrue()) {
-                return ASTInterpreter.pollAndReturn(context, value);
-            }
-            value = valueNode.interpret(runtime,context, self, aBlock);
-        } else {
-            value = operatorCallAdapter.call(context, self, value, valueNode.interpret(runtime, context, self, aBlock));
-        }
-   
-        variableAsgnCallAdapter.call(context, self, receiver, value);
-   
-        return ASTInterpreter.pollAndReturn(context, value);
+    public boolean needsDefinitionCheck() {
+        return false;
     }
 }

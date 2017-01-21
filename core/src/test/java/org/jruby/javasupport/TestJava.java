@@ -1,15 +1,18 @@
 package org.jruby.javasupport;
 
 import java.lang.reflect.Method;
+
+import org.jruby.*;
+import org.jruby.exceptions.RaiseException;
+import org.jruby.runtime.builtin.IRubyObject;
 import org.junit.Test;
 
-import org.jruby.Ruby;
+import org.jruby.test.ThrowingConstructor;
 
 class A {
     public static class C extends B {}
 }
-
-class B extends A {}
+class B extends A { }
 
 public class TestJava extends junit.framework.TestCase {
 
@@ -72,5 +75,67 @@ public class TestJava extends junit.framework.TestCase {
     private static interface FxRunnable2 extends Runnable { /* inherited run() */ }
 
     private static interface NonFxRunnable extends Runnable { public void doRun() ; }
+
+    @Test
+    public void test_get_java_class() {
+        final Ruby runtime = Ruby.newInstance();
+        final RubyModule self = runtime.getJavaSupport().getJavaModule();
+        RubyString name;
+
+        name = runtime.newString("java.lang.Integer");
+        assert Java.get_java_class(self, name) != null;
+
+        try {
+            name = runtime.newString("java.lang.BOGUS22");
+            Java.get_java_class(self, name);
+            assert false;
+        }
+        catch (RaiseException ex) {
+            assertEquals("(NameError) cannot load Java class java.lang.BOGUS22", ex.getMessage());
+            assertNotNull(ex.getCause());
+            assertEquals(ClassNotFoundException.class, ex.getCause().getClass());
+        }
+    }
+
+    @Test
+    public void testJavaConstructorExceptionHandling() throws Exception {
+        final Ruby runtime = Ruby.newInstance();
+        JavaConstructor constructor = JavaConstructor.create(runtime,
+                ThrowingConstructor.class.getDeclaredConstructor(Integer.class)
+        );
+        assert constructor.new_instance(new IRubyObject[] { runtime.newFixnum(0) }) != null;
+
+        assert constructor.new_instance(new Object[] { 1 }) != null;
+
+        try {
+            constructor.new_instance(new Object[0]);
+            assert false;
+        }
+        catch (RaiseException ex) {
+            assertEquals("(ArgumentError) wrong number of arguments (0 for 1)", ex.getMessage());
+            assertNull(ex.getCause());
+            assertNotNull(ex.getException());
+            assertEquals("wrong number of arguments (0 for 1)", ex.getException().getMessage().toString());
+        }
+
+        try {
+            constructor.new_instance(new Object[] { -1 });
+            assert false;
+        }
+        catch (IllegalStateException ex) {
+            assertEquals("param == -1", ex.getMessage());
+            StackTraceElement e0 = ex.getStackTrace()[0];
+            assertEquals("org.jruby.test.ThrowingConstructor", e0.getClassName());
+            assertEquals("<init>", e0.getMethodName());
+        }
+
+        try {
+            constructor.new_instance(new Object[] { null }); // new IllegalStateException() null cause message
+            assert false;
+        }
+        catch (IllegalStateException ex) {
+            assertEquals(null, ex.getMessage());
+        }
+    }
 
 }

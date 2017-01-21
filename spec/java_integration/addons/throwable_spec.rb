@@ -5,12 +5,12 @@ describe "A Java Throwable" do
   it "implements backtrace" do
     ex = java.lang.Exception.new
     trace = nil
-    lambda {trace = ex.backtrace}.should_not raise_error
+    expect {trace = ex.backtrace}.not_to raise_error
     expect(trace).to eq(ex.stack_trace.map(&:to_s))
   end
   
   it "implements backtrace= as a no-op" do
-    ex = java.lang.Exception.new
+    ex = java.lang.IllegalStateException.new
     backtrace = ex.backtrace
     ex.set_backtrace ['blah']
     expect(ex.backtrace).to eq backtrace
@@ -18,21 +18,12 @@ describe "A Java Throwable" do
   
   it "implements to_s as message" do
     ex = java.lang.Exception.new
-    expect(ex.to_s).to eq ""
+    expect(ex.to_s).to eq ''
     expect(ex.to_s).to eq ex.message
     
-    ex = java.lang.Exception.new('hello')
+    ex = java.lang.RuntimeException.new('hello')
     expect(ex.to_s).to eq 'hello'
     expect(ex.to_s).to eq ex.message
-  end
-  
-  it "implements to_str to call to_s" do
-    ex = java.lang.Exception.new
-    def ex.to_s
-      'hello'
-    end
-    
-    expect(ex.to_str).to eq 'hello'
   end
   
   it "implements inspect as toString" do
@@ -130,4 +121,25 @@ describe "Rescuing a Java exception using Exception" do
     end
     expect(i).to eq 2
   end
+
+  describe 'Ruby sub-class' do
+
+    class RubyThrowable < java.lang.Exception
+
+      def initialize(msg) super(); @msg = msg end
+
+      def getMessage; @msg end
+    end
+
+    it 'has Throwable extensions' do
+      throwable = RubyThrowable.new 'foo'
+      expect( throwable.backtrace ).to_not be nil
+      expect( throwable.backtrace ).to_not be_empty
+
+      expect( throwable.message ).to eql 'foo'
+      expect( throwable.to_s ).to eql 'foo'
+    end
+
+  end
+
 end

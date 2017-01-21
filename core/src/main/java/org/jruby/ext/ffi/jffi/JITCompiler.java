@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.WeakHashMap;
 
+import org.jruby.RubyInstanceConfig;
 import org.jruby.ext.ffi.CallbackInfo;
 import org.jruby.ext.ffi.MappedType;
 import org.jruby.ext.ffi.NativeType;
@@ -90,15 +91,14 @@ class JITCompiler {
                 return failedHandle;
             }
 
-            hasParameterConverter[i] = !(parameterType instanceof Type.Builtin)
-                    || DataConverters.isEnumConversionRequired(parameterType, signature.getEnums());
+            setParameterConverterWithTypeAndSignature(signature, hasParameterConverter, i, parameterType);
         }
         
         JITSignature jitSignature = new JITSignature(nativeResultType, nativeParameterTypes, 
                 hasResultConverter, hasParameterConverter, signature.getCallingConvention(), signature.isIgnoreError());
         
         if (unique) {
-            return new JITHandle(this, jitSignature, "OFF".equalsIgnoreCase(Options.COMPILE_MODE.load()));
+            return new JITHandle(this, jitSignature, Options.COMPILE_MODE.load() == RubyInstanceConfig.CompileMode.OFF);
         }
 
         synchronized (this) {
@@ -106,12 +106,18 @@ class JITCompiler {
             HandleRef ref = handles.get(jitSignature);
             JITHandle handle = ref != null ? ref.get() : null;
             if (handle == null) {
-                handle = new JITHandle(this, jitSignature, "OFF".equalsIgnoreCase(Options.COMPILE_MODE.load()));
+                handle = new JITHandle(this, jitSignature, Options.COMPILE_MODE.load() == RubyInstanceConfig.CompileMode.OFF);
                 handles.put(jitSignature, new HandleRef(handle, jitSignature, referenceQueue));
             }
             
             return handle;
         }
+    }
+
+    @SuppressWarnings("deprecation")
+    private void setParameterConverterWithTypeAndSignature(Signature signature, boolean[] hasParameterConverter, int i, Type parameterType) {
+        hasParameterConverter[i] = !(parameterType instanceof Type.Builtin)
+                || DataConverters.isEnumConversionRequired(parameterType, signature.getEnums());
     }
 
     void registerClass(JITHandle handle, Class<? extends NativeInvoker> klass) {

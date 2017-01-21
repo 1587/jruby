@@ -45,8 +45,8 @@ public class AttrReaderMethod extends JavaMethodZero {
     private MethodData methodData;
     private VariableAccessor accessor = VariableAccessor.DUMMY_ACCESSOR;
 
-    public AttrReaderMethod(RubyModule implementationClass, Visibility visibility, CallConfiguration callConfig, String variableName) {
-        super(implementationClass, visibility, callConfig, variableName);
+    public AttrReaderMethod(RubyModule implementationClass, Visibility visibility, String variableName) {
+        super(implementationClass, visibility, variableName);
     }
 
     public IRubyObject call(ThreadContext context, IRubyObject self, RubyModule clazz, String name) {
@@ -73,5 +73,11 @@ public class AttrReaderMethod extends JavaMethodZero {
             methodData = new MethodData(name, "dummyfile", Arrays.asList(name));
         }
         return methodData;
+    }
+
+    // Used by racc extension, needed for backward-compat with 1.7.
+    @Deprecated
+    public AttrReaderMethod(RubyModule implementationClass, Visibility visibility, CallConfiguration callConfiguration, String variableName) {
+        this(implementationClass, visibility, variableName);
     }
 }

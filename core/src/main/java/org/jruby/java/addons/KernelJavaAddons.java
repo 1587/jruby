@@ -1,49 +1,13 @@
 package org.jruby.java.addons;
 
-import org.jruby.Ruby;
 import org.jruby.RubyArray;
-import org.jruby.javasupport.*;
-import org.jruby.RubyKernel;
-import org.jruby.RubyModule;
-import org.jruby.RubyString;
-import org.jruby.RubySymbol;
 import org.jruby.anno.JRubyMethod;
-import org.jruby.java.proxies.ConcreteJavaProxy;
-import org.jruby.java.proxies.JavaProxy;
-import org.jruby.runtime.Helpers;
-import org.jruby.runtime.Block;
+import org.jruby.javasupport.Java;
+import org.jruby.javasupport.JavaClass;
 import org.jruby.runtime.ThreadContext;
-import org.jruby.runtime.Visibility;
 import org.jruby.runtime.builtin.IRubyObject;
 
 public class KernelJavaAddons {
-    @JRubyMethod(name = {"raise", "fail"}, optional = 3, module = true, visibility = Visibility.PRIVATE, omit = true)
-    public static IRubyObject rbRaise(ThreadContext context, IRubyObject recv, IRubyObject[] args, Block block) {
-        Ruby runtime = context.runtime;
-
-        // Check for a Java exception
-        ConcreteJavaProxy exception = null;
-        if (args.length == 0 && runtime.getGlobalVariables().get("$!") instanceof ConcreteJavaProxy) {
-            exception = (ConcreteJavaProxy)runtime.getGlobalVariables().get("$!");
-        } else if (args.length == 1 && args[0] instanceof ConcreteJavaProxy) {
-            exception = (ConcreteJavaProxy)args[0];
-        }
-
-        if (exception != null) {
-            // looks like someone's trying to raise a Java exception. Let them.
-            Object maybeThrowable = exception.getObject();
-
-            if (maybeThrowable instanceof Throwable) {
-                // yes, we're cheating here.
-                Helpers.throwException((Throwable)maybeThrowable);
-                return recv; // not reached
-            } else {
-                throw runtime.newTypeError("can't raise a non-Throwable Java object");
-            }
-        } else {
-            return RubyKernel.raise(context, recv, args, block);
-        }
-    }
 
     @JRubyMethod
     public static IRubyObject to_java(ThreadContext context, final IRubyObject fromObject) {
@@ -58,13 +22,11 @@ public class KernelJavaAddons {
     public static IRubyObject to_java(ThreadContext context, final IRubyObject fromObject, final IRubyObject type) {
         if ( type.isNil() ) return to_java(context, fromObject);
 
-        final Ruby runtime = context.runtime;
-        final JavaClass targetType = getTargetType(context, runtime, type);
-
+        final JavaClass targetType = resolveTargetType(context, type);
         if ( fromObject instanceof RubyArray ) {
             return targetType.javaArrayFromRubyArray(context, (RubyArray) fromObject);
         }
-        return Java.getInstance(runtime, fromObject.toJava(targetType.javaClass()));
+        return Java.getInstance(context.runtime, fromObject.toJava(targetType.javaClass()));
     }
 
     @JRubyMethod(rest = true)
@@ -109,27 +71,10 @@ public class KernelJavaAddons {
         return recv.getRuntime().getNil();
     }
 
-    private static JavaClass getTargetType(ThreadContext context, Ruby runtime, IRubyObject type) {
-        JavaClass targetType;
-
-        if (type instanceof RubyString || type instanceof RubySymbol) {
-            targetType = runtime.getJavaSupport().getNameClassMap().get(type.asJavaString());
-            if (targetType == null) targetType = JavaClass.forNameVerbose(runtime, type.asJavaString());
-        }
-        else if (type instanceof RubyModule && type.respondsTo("java_class")) {
-            targetType = (JavaClass) Helpers.invoke(context, type, "java_class");
-        }
-        else if (type instanceof JavaProxy) {
-            final Object wrapped = ((JavaProxy) type).getObject();
-            if ( wrapped instanceof Class ) {
-                targetType = JavaClass.get(runtime, (Class) wrapped);
-            } else {
-                throw runtime.newTypeError("not a valid target type: " + type);
-            }
-        } else {
-            throw runtime.newTypeError("unable to convert to type: " + type);
-        }
-
-        return targetType;
+    static JavaClass resolveTargetType(ThreadContext context, IRubyObject type) {
+        JavaClass javaType = JavaClass.resolveType(context, type);
+        if ( javaType == null ) throw context.runtime.newTypeError("unable to convert to type: " + type);
+        return javaType;
     }
+
 }

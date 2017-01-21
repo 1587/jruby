@@ -33,8 +33,9 @@
 # the terms of any one of the EPL, the GPL or the LGPL.
 ###### END LICENSE BLOCK ######
 
-require 'jruby/java/java_package_module_template'
-require 'jruby/java/java_utilities'
+# These are loads so they don't pollute LOADED_FEATURES
+load 'jruby/java/java_utilities.rb'
 
-require 'jruby/java/core_ext'
-require 'jruby/java/java_ext'
+load 'jruby/java/core_ext.rb'
+load 'jruby/java/java_ext.rb'
+load 'jruby/java/java_8.rb' if java.util.Spliterator rescue nil

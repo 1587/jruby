@@ -1,84 +1,68 @@
 package org.jruby.ir.instructions;
 
-import org.jruby.RubyArray;
-import org.jruby.ir.IRVisitor;
 import org.jruby.ir.IRScope;
+import org.jruby.ir.IRVisitor;
 import org.jruby.ir.Operation;
 import org.jruby.ir.operands.Array;
-import org.jruby.ir.operands.BooleanLiteral;
 import org.jruby.ir.operands.Operand;
 import org.jruby.ir.operands.Variable;
-import org.jruby.ir.transformations.inlining.InlinerInfo;
-import org.jruby.runtime.Helpers;
-import org.jruby.runtime.Block;
+import org.jruby.ir.persistence.IRReaderDecoder;
+import org.jruby.ir.persistence.IRWriterEncoder;
+import org.jruby.ir.runtime.IRRuntimeHelpers;
+import org.jruby.ir.transformations.inlining.CloneInfo;
+import org.jruby.parser.StaticScope;
 import org.jruby.runtime.DynamicScope;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 
 import java.util.Map;
 
-public class ToAryInstr extends Instr implements ResultInstr {
-    private Variable result;
-    private final BooleanLiteral dontToAryArrays;
-    private Operand array;
+public class ToAryInstr extends OneOperandResultBaseInstr implements FixedArityInstr {
+    public ToAryInstr(Variable result, Operand array) {
+        super(Operation.TO_ARY, result, array);
 
-    public ToAryInstr(Variable result, Operand array, BooleanLiteral dontToAryArrays) {
-        super(Operation.TO_ARY);
-
-        assert result != null: "ToArtInstr result is null";
-
-        this.result = result;
-        this.array = array;
-        this.dontToAryArrays = dontToAryArrays;
+        assert result != null: "ToAryInstr result is null";
     }
 
-    public Operand getArrayArg() {
-        return array;
-    }
-
-    public boolean dontToAryArrays() {
-        return dontToAryArrays.isTrue();
+    public Operand getArray() {
+        return getOperand1();
     }
 
     @Override
-    public Operand[] getOperands() {
-        return new Operand[] { array };
-    }
-
-    @Override
-    public void simplifyOperands(Map<Operand, Operand> valueMap, boolean force) {
-        array = array.getSimplifiedOperand(valueMap, force);
+    public boolean canBeDeletedFromScope(IRScope s) {
+        // This is an instruction that can be safely deleted
+        // since it is inserted by JRuby to facilitate other operations
+        // and has no real side effects. Currently, this has been marked
+        // as side-effecting in Operation.java. FIXME: Revisit that!
+        return true;
     }
 
     @Override
     public Operand simplifyAndGetResult(IRScope scope, Map<Operand, Operand> valueMap) {
         simplifyOperands(valueMap, false);
-        return dontToAryArrays.isTrue() && (array.getValue(valueMap) instanceof Array) ? array : null;
-    }
-
-    public Variable getResult() {
-        return result;
-    }
-
-    public void updateResult(Variable v) {
-        this.result = v;
+        Operand a = getArray().getValue(valueMap);
+        return a instanceof Array ? a : null;
     }
 
     @Override
-    public Instr cloneForInlining(InlinerInfo ii) {
-        return new ToAryInstr((Variable) result.cloneForInlining(ii), array.cloneForInlining(ii),
-                (BooleanLiteral) dontToAryArrays.cloneForInlining(ii));
+    public Instr clone(CloneInfo ii) {
+        return new ToAryInstr((Variable) result.cloneForInlining(ii), getArray().cloneForInlining(ii));
     }
 
     @Override
-    public String toString() {
-        return super.toString() + "(" + array + ", dont_to_ary_arrays: " + dontToAryArrays + ")";
+    public void encode(IRWriterEncoder e) {
+        super.encode(e);
+        e.encode(getArray());
+    }
+
+    public static ToAryInstr decode(IRReaderDecoder d) {
+        return new ToAryInstr(d.decodeVariable(), d.decodeOperand());
     }
 
     @Override
-    public Object interpret(ThreadContext context, DynamicScope currDynScope, IRubyObject self, Object[] temp, Block block) {
-        Object receiver = array.retrieve(context, self, currDynScope, temp);
-        return Helpers.irToAry(context, (IRubyObject)receiver, dontToAryArrays.isTrue());
+    public Object interpret(ThreadContext context, StaticScope currScope, DynamicScope currDynScope, IRubyObject self, Object[] temp) {
+        return IRRuntimeHelpers.irToAry(context,
+                (IRubyObject) getArray().retrieve(context, self, currScope, currDynScope, temp));
     }
 
     @Override

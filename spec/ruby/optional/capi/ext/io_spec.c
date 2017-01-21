@@ -1,19 +1,11 @@
 #include "ruby.h"
 #include "rubyspec.h"
-#ifdef RUBY_VERSION_IS_1_8_EX_1_9
-#include "rubyio.h"
-#else
 #include "ruby/io.h"
-#endif
 #include <fcntl.h>
 #include <unistd.h>
 
 #ifdef __cplusplus
 extern "C" {
-#endif
-
-#ifdef RUBY_VERSION_IS_1_8_EX_1_8_7
-#define rb_io_t OpenFile
 #endif
 
 static int set_non_blocking(int fd) {
@@ -32,11 +24,7 @@ static int set_non_blocking(int fd) {
 static int io_spec_get_fd(VALUE io) {
   rb_io_t* fp;
   GetOpenFile(io, fp);
-#ifdef RUBY_VERSION_IS_1_9
   return fp->fd;
-#else
-  return fileno(fp->f);
-#endif
 }
 
 VALUE io_spec_GetOpenFile_fd(VALUE self, VALUE io) {
@@ -98,6 +86,11 @@ VALUE io_spec_rb_io_write(VALUE self, VALUE io, VALUE str) {
 }
 #endif
 
+#ifdef HAVE_RB_IO_CHECK_IO
+VALUE io_spec_rb_io_check_io(VALUE self, VALUE io) {
+  return rb_io_check_io(io);
+}
+#endif
 
 #ifdef HAVE_RB_IO_CHECK_READABLE
 VALUE io_spec_rb_io_check_readable(VALUE self, VALUE io) {
@@ -126,13 +119,17 @@ VALUE io_spec_rb_io_check_closed(VALUE self, VALUE io) {
 }
 #endif
 
-#ifdef RUBY_VERSION_IS_1_9
+#ifdef HAVE_RB_IO_TAINT_CHECK
+VALUE io_spec_rb_io_taint_check(VALUE self, VALUE io) {
+  /*rb_io_t* fp;
+  GetOpenFile(io, fp);*/
+  rb_io_taint_check(io);
+  return io;
+}
+#endif
+
 typedef int wait_bool;
 #define wait_bool_to_ruby_bool(x) (x ? Qtrue : Qfalse)
-#else
-typedef VALUE wait_bool;
-#define wait_bool_to_ruby_bool(x) (x)
-#endif
 
 #ifdef HAVE_RB_IO_WAIT_READABLE
 #define RB_IO_WAIT_READABLE_BUF 13
@@ -193,13 +190,28 @@ VALUE io_spec_rb_io_binmode(VALUE self, VALUE io) {
 }
 #endif
 
+#ifdef HAVE_RB_FD_FIX_CLOEXEC
+VALUE io_spec_rb_fd_fix_cloexec(VALUE self, VALUE io) {
+  rb_fd_fix_cloexec(io_spec_get_fd(io));
+  return Qnil;
+}
+#endif
+
+#ifdef HAVE_RB_CLOEXEC_OPEN
+VALUE io_spec_rb_cloexec_open(VALUE self, VALUE path, VALUE flags, VALUE mode) {
+  const char *pathname = StringValuePtr(path);
+  int fd = rb_cloexec_open(pathname, FIX2INT(flags), FIX2INT(mode));
+  return rb_funcall(rb_cIO, rb_intern("for_fd"), 1, INT2FIX(fd));
+}
+#endif
+
 #ifdef HAVE_RB_IO_CLOSE
 VALUE io_spec_rb_io_close(VALUE self, VALUE io) {
   return rb_io_close(io);
 }
 #endif
 
-void Init_io_spec() {
+void Init_io_spec(void) {
   VALUE cls = rb_define_class("CApiIOSpecs", rb_cObject);
 
 #ifdef HAVE_GET_OPEN_FILE
@@ -230,6 +242,10 @@ void Init_io_spec() {
   rb_define_method(cls, "rb_io_close", io_spec_rb_io_close, 1);
 #endif
 
+#ifdef HAVE_RB_IO_CHECK_IO
+  rb_define_method(cls, "rb_io_check_io", io_spec_rb_io_check_io, 1);
+#endif
+
 #ifdef HAVE_RB_IO_CHECK_READABLE
   rb_define_method(cls, "rb_io_check_readable", io_spec_rb_io_check_readable, 1);
 #endif
@@ -240,6 +256,10 @@ void Init_io_spec() {
 
 #ifdef HAVE_RB_IO_CHECK_CLOSED
   rb_define_method(cls, "rb_io_check_closed", io_spec_rb_io_check_closed, 1);
+#endif
+
+#ifdef HAVE_RB_IO_TAINT_CHECK
+  rb_define_method(cls, "rb_io_taint_check", io_spec_rb_io_taint_check, 1);
 #endif
 
 #ifdef HAVE_RB_IO_WAIT_READABLE
@@ -262,6 +282,13 @@ void Init_io_spec() {
   rb_define_method(cls, "rb_io_binmode", io_spec_rb_io_binmode, 1);
 #endif
 
+#ifdef HAVE_RB_FD_FIX_CLOEXEC
+  rb_define_method(cls, "rb_fd_fix_cloexec", io_spec_rb_fd_fix_cloexec, 1);
+#endif
+
+#ifdef HAVE_RB_CLOEXEC_OPEN
+  rb_define_method(cls, "rb_cloexec_open", io_spec_rb_cloexec_open, 3);
+#endif
 }
 
 #ifdef __cplusplus

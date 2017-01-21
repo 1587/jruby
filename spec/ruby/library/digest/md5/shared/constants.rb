@@ -1,4 +1,4 @@
-# -*- encoding: US-ASCII -*-
+# -*- encoding: binary -*-
 require 'digest/md5'
 
 module MD5Constants
