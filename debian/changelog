@@ -49,6 +49,7 @@ jruby (9.1.6.0-1~exp1) UNRELEASED; urgency=medium
     to polyglot-maven, so new ones were introduced.
   * Update d/rules.
   * Update package description.
+  * Update lintian overrides.
   * Drop jruby-core-noasm Maven artifact, is not provided by upstream
     anymore.
 

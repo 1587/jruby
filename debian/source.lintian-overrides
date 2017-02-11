@@ -1,0 +1,2 @@
+# a false positive, coffeescript compiler source code just has long lines
+jruby source: source-is-missing debian/missing-sources/coffeescript.js *

@@ -2,3 +2,10 @@
 # (ruby stdlib copy used by jruby, bundled as jar)
 # to-do: maybe file a bug and/or send a patch to lintian
 jruby binary: codeless-jar usr/share/maven-repo/org/jruby/jruby-stdlib/*/jruby-stdlib-*.jar
+
+# this is a codeless jar, but its purpose is to be a dummy artifact that
+# depends on jruby-core and jruby-stdlib artifacts
+jruby binary: codeless-jar usr/share/maven-repo/org/jruby/jruby/*/jruby-*.jar
+
+# jruby+truffle is not built, so there should not be a problem with that script
+#jruby binary: script-not-executable usr/share/jruby/lib/ruby/truffle/jruby+truffle/bin/jruby+truffle
