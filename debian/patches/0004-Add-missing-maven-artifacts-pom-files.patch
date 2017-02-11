@@ -1,0 +1,1379 @@
+Description: Add missing POM files for maven artifacts
+ Nowadays upstream generates these files from pom.rb files
+ with polyglot-maven extension, this will be package in the
+ future and this patch can be dropped, in the meantime we
+ need to add them manually to the source
+Author: Miguel Landaeta <nomadium@debian.org>
+Forwarded: no
+Last-Update: 2017-02-07
+
+--- /dev/null
++++ jruby-9.1.6.0/maven/pom.xml
+@@ -0,0 +1,133 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++
++
++DO NOT MODIFIY - GENERATED CODE
++
++
++-->
++<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
++    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
++  <modelVersion>4.0.0</modelVersion>
++  <parent>
++    <groupId>org.jruby</groupId>
++    <artifactId>jruby-parent</artifactId>
++    <version>9.1.6.0</version>
++  </parent>
++  <artifactId>jruby-artifacts</artifactId>
++  <packaging>pom</packaging>
++  <name>JRuby Artifacts</name>
++  <properties>
++    <polyglot.dump.readonly>true</polyglot.dump.readonly>
++    <polyglot.dump.pom>pom.xml</polyglot.dump.pom>
++  </properties>
++  <build>
++    <pluginManagement>
++      <plugins>
++        <plugin>
++          <groupId>org.codehaus.mojo</groupId>
++          <artifactId>build-helper-maven-plugin</artifactId>
++          <executions>
++            <execution>
++              <id>attach-artifacts</id>
++              <phase>package</phase>
++              <goals>
++                <goal>attach-artifact</goal>
++              </goals>
++              <configuration>
++                <artifacts>
++                  <artifact>
++                    <file>${basedir}/src/empty.jar</file>
++                    <classifier>sources</classifier>
++                  </artifact>
++                  <artifact>
++                    <file>${basedir}/src/empty.jar</file>
++                    <classifier>javadoc</classifier>
++                  </artifact>
++                </artifacts>
++              </configuration>
++            </execution>
++          </executions>
++        </plugin>
++      </plugins>
++    </pluginManagement>
++  </build>
++  <profiles>
++    <profile>
++      <id>all</id>
++      <modules>
++        <module>jruby</module>
++        <module>jruby-complete</module>
++        <module>jruby-jars</module>
++        <module>jruby-dist</module>
++      </modules>
++    </profile>
++    <profile>
++      <id>apps</id>
++      <modules>
++        <module>jruby</module>
++      </modules>
++    </profile>
++    <profile>
++      <id>release</id>
++      <modules>
++        <module>jruby</module>
++        <module>jruby-complete</module>
++        <module>jruby-jars</module>
++        <module>jruby-dist</module>
++      </modules>
++    </profile>
++    <profile>
++      <id>main</id>
++      <modules>
++        <module>jruby</module>
++      </modules>
++    </profile>
++    <profile>
++      <id>osgi</id>
++      <modules>
++        <module>jruby</module>
++        <module>jruby-complete</module>
++      </modules>
++    </profile>
++    <profile>
++      <id>j2ee</id>
++      <modules>
++        <module>jruby</module>
++      </modules>
++    </profile>
++    <profile>
++      <id>snapshots</id>
++      <modules>
++        <module>jruby</module>
++        <module>jruby-complete</module>
++        <module>jruby-jars</module>
++        <module>jruby-dist</module>
++      </modules>
++    </profile>
++    <profile>
++      <id>complete</id>
++      <modules>
++        <module>jruby-complete</module>
++      </modules>
++    </profile>
++    <profile>
++      <id>jruby_complete_jar_extended</id>
++      <modules>
++        <module>jruby-complete</module>
++      </modules>
++    </profile>
++    <profile>
++      <id>jruby-jars</id>
++      <modules>
++        <module>jruby-jars</module>
++      </modules>
++    </profile>
++    <profile>
++      <id>dist</id>
++      <modules>
++        <module>jruby-dist</module>
++      </modules>
++    </profile>
++  </profiles>
++</project>
+
+--- /dev/null
++++ jruby-9.1.6.0/maven/jruby-dist/pom.xml
+@@ -0,0 +1,210 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++
++
++DO NOT MODIFIY - GENERATED CODE
++
++
++-->
++<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
++    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
++  <modelVersion>4.0.0</modelVersion>
++  <parent>
++    <groupId>org.jruby</groupId>
++    <artifactId>jruby-artifacts</artifactId>
++    <version>9.1.6.0</version>
++  </parent>
++  <artifactId>jruby-dist</artifactId>
++  <packaging>pom</packaging>
++  <name>JRuby Dist</name>
++  <properties>
++    <polyglot.dump.readonly>true</polyglot.dump.readonly>
++    <polyglot.dump.pom>pom.xml</polyglot.dump.pom>
++  </properties>
++  <build>
++    <plugins>
++      <plugin>
++        <artifactId>maven-dependency-plugin</artifactId>
++        <executions>
++          <execution>
++            <id>unpack jruby-stdlib</id>
++            <phase>prepare-package</phase>
++            <goals>
++              <goal>unpack</goal>
++            </goals>
++            <configuration>
++              <stripVersion>true</stripVersion>
++              <artifactItems>
++                <artifactItem>
++                  <groupId>org.jruby</groupId>
++                  <artifactId>jruby-stdlib</artifactId>
++                  <version>${project.version}</version>
++                  <type>jar</type>
++                  <overWrite>false</overWrite>
++                  <outputDirectory>${project.build.directory}</outputDirectory>
++                </artifactItem>
++              </artifactItems>
++            </configuration>
++          </execution>
++        </executions>
++      </plugin>
++      <plugin>
++        <artifactId>maven-assembly-plugin</artifactId>
++        <version>2.4.1</version>
++        <executions>
++          <execution>
++            <id>bin.tar.gz and bin.zip</id>
++            <phase>package</phase>
++            <goals>
++              <goal>single</goal>
++            </goals>
++            <configuration>
++              <descriptors>
++                <descriptor>src/main/assembly/bin.xml</descriptor>
++              </descriptors>
++            </configuration>
++          </execution>
++          <execution>
++            <id>bin200.tar.gz</id>
++            <phase>package</phase>
++            <goals>
++              <goal>single</goal>
++            </goals>
++            <configuration>
++              <attach>false</attach>
++              <descriptors>
++                <descriptor>src/main/assembly/bin200.xml</descriptor>
++              </descriptors>
++            </configuration>
++          </execution>
++        </executions>
++        <configuration>
++          <recompressZippedFiles>true</recompressZippedFiles>
++          <tarLongFileMode>gnu</tarLongFileMode>
++        </configuration>
++      </plugin>
++      <plugin>
++        <artifactId>maven-invoker-plugin</artifactId>
++      </plugin>
++      <!--
++      <plugin>
++        <groupId>io.takari.polyglot</groupId>
++        <artifactId>polyglot-maven-plugin</artifactId>
++        <version>0.1.15</version>
++        <executions>
++          <execution>
++            <id>pack200</id>
++            <phase>prepare-package</phase>
++            <goals>
++              <goal>execute</goal>
++            </goals>
++            <configuration>
++              <taskId>pack200</taskId>
++              <nativePom>pom.rb</nativePom>
++            </configuration>
++          </execution>
++          <execution>
++            <id>fix_executable_bits</id>
++            <phase>prepare-package</phase>
++            <goals>
++              <goal>execute</goal>
++            </goals>
++            <configuration>
++              <taskId>fix_executable_bits</taskId>
++              <nativePom>pom.rb</nativePom>
++            </configuration>
++          </execution>
++        </executions>
++        <dependencies>
++          <dependency>
++            <groupId>io.takari.polyglot</groupId>
++            <artifactId>polyglot-ruby</artifactId>
++            <version>0.1.15</version>
++          </dependency>
++        </dependencies>
++      </plugin>
++      -->
++    </plugins>
++  </build>
++  <profiles>
++    <!--
++    <profile>
++      <id>source dist</id>
++      <activation>
++        <file>
++          <exists>../../.git</exists>
++        </file>
++      </activation>
++      <build>
++        <plugins>
++          <plugin>
++            <groupId>org.codehaus.mojo</groupId>
++            <artifactId>build-helper-maven-plugin</artifactId>
++            <executions>
++              <execution>
++                <id>attach-artifacts</id>
++                <phase>package</phase>
++                <goals>
++                  <goal>attach-artifact</goal>
++                </goals>
++                <configuration>
++                  <artifacts>
++                    <artifact>
++                      <file>${project.build.directory}/${project.build.finalName}-src.zip</file>
++                      <type>zip</type>
++                      <classifier>src</classifier>
++                    </artifact>
++                  </artifacts>
++                </configuration>
++              </execution>
++            </executions>
++          </plugin>
++          <plugin>
++            <groupId>net.ju-n.maven.plugins</groupId>
++            <artifactId>checksum-maven-plugin</artifactId>
++            <version>1.2</version>
++            <executions>
++              <execution>
++                <phase>package</phase>
++                <goals>
++                  <goal>artifacts</goal>
++                </goals>
++                <configuration>
++                  <algorithms>
++                    <algorithm>SHA256</algorithm>
++                  </algorithms>
++                </configuration>
++              </execution>
++            </executions>
++          </plugin>
++          <plugin>
++            <groupId>io.takari.polyglot</groupId>
++            <artifactId>polyglot-maven-plugin</artifactId>
++            <version>0.1.15</version>
++            <executions>
++              <execution>
++                <id>pack_sources</id>
++                <phase>package</phase>
++                <goals>
++                  <goal>execute</goal>
++                </goals>
++                <configuration>
++                  <taskId>pack_sources</taskId>
++                  <nativePom>pom.rb</nativePom>
++                </configuration>
++              </execution>
++            </executions>
++            <dependencies>
++              <dependency>
++                <groupId>io.takari.polyglot</groupId>
++                <artifactId>polyglot-ruby</artifactId>
++                <version>0.1.15</version>
++              </dependency>
++            </dependencies>
++          </plugin>
++        </plugins>
++      </build>
++    </profile>
++    -->
++  </profiles>
++</project>
+
+--- /dev/null
++++ jruby-9.1.6.0/maven/jruby-complete/pom.xml
+@@ -0,0 +1,313 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++
++
++DO NOT MODIFIY - GENERATED CODE
++
++
++-->
++<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
++    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
++  <modelVersion>4.0.0</modelVersion>
++  <parent>
++    <groupId>org.jruby</groupId>
++    <artifactId>jruby-artifacts</artifactId>
++    <version>9.1.6.0</version>
++  </parent>
++  <artifactId>jruby-complete</artifactId>
++  <packaging>bundle</packaging>
++  <name>JRuby Complete</name>
++  <properties>
++    <jruby.home>${basedir}/../..</jruby.home>
++    <polyglot.dump.readonly>true</polyglot.dump.readonly>
++    <main.basedir>${project.parent.parent.basedir}</main.basedir>
++    <polyglot.dump.pom>pom.xml</polyglot.dump.pom>
++    <jruby.complete.home>${project.build.outputDirectory}/META-INF/jruby.home</jruby.complete.home>
++  </properties>
++  <dependencies>
++    <dependency>
++      <groupId>org.jruby</groupId>
++      <artifactId>jruby-core</artifactId>
++      <version>${project.version}</version>
++      <scope>provided</scope>
++      <exclusions>
++        <exclusion>
++          <artifactId>jnr-ffi</artifactId>
++          <groupId>com.github.jnr</groupId>
++        </exclusion>
++        <exclusion>
++          <artifactId>jitescript</artifactId>
++          <groupId>me.qmx.jitescript</groupId>
++        </exclusion>
++        <exclusion>
++          <artifactId>asm</artifactId>
++          <groupId>org.ow2.asm</groupId>
++        </exclusion>
++        <exclusion>
++          <artifactId>asm-commons</artifactId>
++          <groupId>org.ow2.asm</groupId>
++        </exclusion>
++        <exclusion>
++          <artifactId>asm-tree</artifactId>
++          <groupId>org.ow2.asm</groupId>
++        </exclusion>
++        <exclusion>
++          <artifactId>asm-analysis</artifactId>
++          <groupId>org.ow2.asm</groupId>
++        </exclusion>
++        <exclusion>
++          <artifactId>asm-util</artifactId>
++          <groupId>org.ow2.asm</groupId>
++        </exclusion>
++      </exclusions>
++    </dependency>
++    <dependency>
++      <groupId>org.jruby</groupId>
++      <artifactId>jruby-stdlib</artifactId>
++      <version>${project.version}</version>
++      <scope>provided</scope>
++    </dependency>
++  </dependencies>
++  <pluginRepositories>
++    <pluginRepository>
++      <id>rubygems-releases</id>
++      <url>https://otto.takari.io/content/repositories/rubygems/maven/releases</url>
++    </pluginRepository>
++  </pluginRepositories>
++  <build>
++    <plugins>
++      <plugin>
++        <groupId>org.apache.felix</groupId>
++        <artifactId>maven-bundle-plugin</artifactId>
++        <extensions>true</extensions>
++        <configuration>
++          <archive>
++            <manifest>
++              <mainClass>org.jruby.Main</mainClass>
++            </manifest>
++          </archive>
++          <instructions>
++            <Export-Package>org.jruby.*;version=${project.version}</Export-Package>
++            <Import-Package>!org.jruby.*, *;resolution:=optional</Import-Package>
++            <DynamicImport-Package>javax.*</DynamicImport-Package>
++            <Private-Package>*,.</Private-Package>
++            <Bundle-Name>JRuby ${project.version}</Bundle-Name>
++            <Bundle-Description>JRuby ${project.version} OSGi bundle</Bundle-Description>
++            <Bundle-SymbolicName>org.jruby.jruby</Bundle-SymbolicName>
++            <Embed-Dependency>*;type=jar;scope=provided;inline=true;artifactId=!jnr-ffi</Embed-Dependency>
++            <Embed-Transitive>true</Embed-Transitive>
++          </instructions>
++        </configuration>
++      </plugin>
++      <plugin>
++        <artifactId>maven-invoker-plugin</artifactId>
++      </plugin>
++      <plugin>
++        <artifactId>maven-source-plugin</artifactId>
++        <configuration>
++          <skipSource>true</skipSource>
++        </configuration>
++      </plugin>
++      <plugin>
++        <artifactId>maven-clean-plugin</artifactId>
++        <executions>
++          <execution>
++            <id>clean-extra-osgi-ITs</id>
++            <phase>clean</phase>
++            <goals>
++              <goal>clean</goal>
++            </goals>
++            <configuration>
++              <filesets>
++                <fileset>
++                  <directory>${basedir}/src/it</directory>
++                  <includes>
++                    <include>osgi*/**</include>
++                  </includes>
++                </fileset>
++              </filesets>
++              <failOnError>false</failOnError>
++            </configuration>
++          </execution>
++        </executions>
++      </plugin>
++      <!--
++      <plugin>
++        <groupId>io.takari.polyglot</groupId>
++        <artifactId>polyglot-maven-plugin</artifactId>
++        <version>0.1.15</version>
++        <executions>
++          <execution>
++            <id>setup other osgi frameworks</id>
++            <phase>pre-integration-test</phase>
++            <goals>
++              <goal>execute</goal>
++            </goals>
++            <configuration>
++              <taskId>setup other osgi frameworks</taskId>
++              <nativePom>pom.rb</nativePom>
++            </configuration>
++          </execution>
++        </executions>
++        <dependencies>
++          <dependency>
++            <groupId>io.takari.polyglot</groupId>
++            <artifactId>polyglot-ruby</artifactId>
++            <version>0.1.15</version>
++          </dependency>
++        </dependencies>
++      </plugin>
++      -->
++    </plugins>
++  </build>
++  <profiles>
++    <profile>
++      <id>sonatype-oss-release</id>
++      <build>
++        <plugins>
++          <plugin>
++            <artifactId>maven-dependency-plugin</artifactId>
++            <executions>
++              <execution>
++                <id>copy javadocs and sources from jruby-core</id>
++                <phase>package</phase>
++                <goals>
++                  <goal>copy</goal>
++                </goals>
++                <configuration>
++                  <artifactItems>
++                    <artifactItem>
++                      <groupId>${project.groupId}</groupId>
++                      <artifactId>jruby-core</artifactId>
++                      <version>${project.version}</version>
++                      <classifier>sources</classifier>
++                      <overWrite>false</overWrite>
++                      <outputDirectory>${project.build.directory}</outputDirectory>
++                    </artifactItem>
++                    <artifactItem>
++                      <groupId>${project.groupId}</groupId>
++                      <artifactId>jruby-core</artifactId>
++                      <version>${project.version}</version>
++                      <classifier>javadoc</classifier>
++                      <overWrite>false</overWrite>
++                      <outputDirectory>${project.build.directory}</outputDirectory>
++                    </artifactItem>
++                  </artifactItems>
++                </configuration>
++              </execution>
++            </executions>
++          </plugin>
++          <plugin>
++            <groupId>org.codehaus.mojo</groupId>
++            <artifactId>build-helper-maven-plugin</artifactId>
++            <executions>
++              <execution>
++                <id>attach-artifacts</id>
++                <phase>package</phase>
++                <goals>
++                  <goal>attach-artifact</goal>
++                </goals>
++                <configuration>
++                  <artifacts>
++                    <artifact>
++                      <file>${project.build.directory}/jruby-core-${project.version}-sources.jar</file>
++                      <classifier>sources</classifier>
++                    </artifact>
++                    <artifact>
++                      <file>${project.build.directory}/jruby-core-${project.version}-javadoc.jar</file>
++                      <classifier>javadoc</classifier>
++                    </artifact>
++                  </artifacts>
++                </configuration>
++              </execution>
++            </executions>
++          </plugin>
++        </plugins>
++      </build>
++    </profile>
++    <profile>
++      <id>snapshots</id>
++      <build>
++        <plugins>
++          <plugin>
++            <artifactId>maven-dependency-plugin</artifactId>
++            <executions>
++              <execution>
++                <id>copy javadocs and sources from jruby-core</id>
++                <phase>package</phase>
++                <goals>
++                  <goal>copy</goal>
++                </goals>
++                <configuration>
++                  <artifactItems>
++                    <artifactItem>
++                      <groupId>${project.groupId}</groupId>
++                      <artifactId>jruby-core</artifactId>
++                      <version>${project.version}</version>
++                      <classifier>sources</classifier>
++                      <overWrite>false</overWrite>
++                      <outputDirectory>${project.build.directory}</outputDirectory>
++                    </artifactItem>
++                    <artifactItem>
++                      <groupId>${project.groupId}</groupId>
++                      <artifactId>jruby-core</artifactId>
++                      <version>${project.version}</version>
++                      <classifier>javadoc</classifier>
++                      <overWrite>false</overWrite>
++                      <outputDirectory>${project.build.directory}</outputDirectory>
++                    </artifactItem>
++                  </artifactItems>
++                </configuration>
++              </execution>
++            </executions>
++          </plugin>
++          <plugin>
++            <groupId>org.codehaus.mojo</groupId>
++            <artifactId>build-helper-maven-plugin</artifactId>
++            <executions>
++              <execution>
++                <id>attach-artifacts</id>
++                <phase>package</phase>
++                <goals>
++                  <goal>attach-artifact</goal>
++                </goals>
++                <configuration>
++                  <artifacts>
++                    <artifact>
++                      <file>${project.build.directory}/jruby-core-${project.version}-sources.jar</file>
++                      <classifier>sources</classifier>
++                    </artifact>
++                    <artifact>
++                      <file>${project.build.directory}/jruby-core-${project.version}-javadoc.jar</file>
++                      <classifier>javadoc</classifier>
++                    </artifact>
++                  </artifacts>
++                </configuration>
++              </execution>
++            </executions>
++          </plugin>
++        </plugins>
++      </build>
++    </profile>
++    <profile>
++      <id>jdk8</id>
++      <activation>
++        <jdk>1.8</jdk>
++      </activation>
++      <build>
++        <plugins>
++          <plugin>
++            <artifactId>maven-invoker-plugin</artifactId>
++            <configuration>
++              <pomExcludes>
++                <pomExclude>osgi_many_bundles_with_embedded_gems_felix-3.2/pom.xml</pomExclude>
++                <pomExclude>${its.j2ee}</pomExclude>
++                <pomExclude>${its.osgi}</pomExclude>
++              </pomExcludes>
++            </configuration>
++          </plugin>
++        </plugins>
++      </build>
++    </profile>
++  </profiles>
++</project>
+
+--- /dev/null
++++ jruby-9.1.6.0/maven/jruby/pom.xml
+@@ -0,0 +1,226 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++
++
++DO NOT MODIFIY - GENERATED CODE
++
++
++-->
++<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
++    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
++  <modelVersion>4.0.0</modelVersion>
++  <parent>
++    <groupId>org.jruby</groupId>
++    <artifactId>jruby-artifacts</artifactId>
++    <version>9.1.6.0</version>
++  </parent>
++  <artifactId>jruby</artifactId>
++  <name>JRuby Main Maven Artifact</name>
++  <dependencies>
++    <dependency>
++      <groupId>org.jruby</groupId>
++      <artifactId>jruby-core</artifactId>
++      <version>${project.version}</version>
++    </dependency>
++    <dependency>
++      <groupId>org.jruby</groupId>
++      <artifactId>jruby-stdlib</artifactId>
++      <version>${project.version}</version>
++    </dependency>
++  </dependencies>
++  <build>
++    <resources>
++      <resource>
++        <targetPath>${project.build.outputDirectory}/META-INF/</targetPath>
++        <directory>${project.basedir}/../..</directory>
++        <includes>
++          <include>BSDL</include>
++          <include>COPYING</include>
++          <include>LEGAL</include>
++          <include>LICENSE.RUBY</include>
++        </includes>
++      </resource>
++    </resources>
++    <plugins>
++      <plugin>
++        <artifactId>maven-source-plugin</artifactId>
++        <configuration>
++          <skipSource>true</skipSource>
++        </configuration>
++      </plugin>
++      <plugin>
++        <groupId>org.codehaus.mojo</groupId>
++        <artifactId>build-helper-maven-plugin</artifactId>
++      </plugin>
++      <plugin>
++        <artifactId>maven-invoker-plugin</artifactId>
++        <configuration>
++          <properties>
++            <localRepository>${settings.localRepository}</localRepository>
++          </properties>
++        </configuration>
++      </plugin>
++      <plugin>
++        <artifactId>maven-clean-plugin</artifactId>
++        <executions>
++          <execution>
++            <id>clean-extra-osgi-ITs</id>
++            <phase>clean</phase>
++            <goals>
++              <goal>clean</goal>
++            </goals>
++            <configuration>
++              <filesets>
++                <fileset>
++                  <directory>${basedir}/src/it</directory>
++                  <includes>
++                    <include>osgi*/**</include>
++                  </includes>
++                </fileset>
++              </filesets>
++              <failOnError>false</failOnError>
++            </configuration>
++          </execution>
++        </executions>
++      </plugin>
++    </plugins>
++  </build>
++  <profiles>
++    <profile>
++      <id>apps</id>
++      <activation>
++        <property>
++          <name>invoker.test</name>
++        </property>
++      </activation>
++      <build>
++        <plugins>
++          <plugin>
++            <groupId>io.takari.polyglot</groupId>
++            <artifactId>polyglot-maven-plugin</artifactId>
++            <version>0.1.15</version>
++            <executions>
++              <execution>
++                <id>setup web applications</id>
++                <phase>pre-integration-test</phase>
++                <goals>
++                  <goal>execute</goal>
++                </goals>
++                <configuration>
++                  <taskId>setup web applications</taskId>
++                  <nativePom>pom.rb</nativePom>
++                </configuration>
++              </execution>
++            </executions>
++            <dependencies>
++              <dependency>
++                <groupId>io.takari.polyglot</groupId>
++                <artifactId>polyglot-ruby</artifactId>
++                <version>0.1.15</version>
++              </dependency>
++            </dependencies>
++          </plugin>
++        </plugins>
++      </build>
++      <properties>
++        <invoker.skip>false</invoker.skip>
++        <invoker.test>hellowarld_*</invoker.test>
++      </properties>
++    </profile>
++    <profile>
++      <id>osgi</id>
++      <activation>
++        <property>
++          <name>invoker.test</name>
++        </property>
++      </activation>
++      <build>
++        <plugins>
++          <plugin>
++            <groupId>io.takari.polyglot</groupId>
++            <artifactId>polyglot-maven-plugin</artifactId>
++            <version>0.1.15</version>
++            <executions>
++              <execution>
++                <id>setup osgi integration tests</id>
++                <phase>pre-integration-test</phase>
++                <goals>
++                  <goal>execute</goal>
++                </goals>
++                <configuration>
++                  <taskId>setup osgi integration tests</taskId>
++                  <nativePom>pom.rb</nativePom>
++                </configuration>
++              </execution>
++            </executions>
++            <dependencies>
++              <dependency>
++                <groupId>io.takari.polyglot</groupId>
++                <artifactId>polyglot-ruby</artifactId>
++                <version>0.1.15</version>
++              </dependency>
++            </dependencies>
++          </plugin>
++        </plugins>
++      </build>
++    </profile>
++    <profile>
++      <id>jdk8</id>
++      <activation>
++        <jdk>1.8</jdk>
++      </activation>
++      <build>
++        <plugins>
++          <plugin>
++            <artifactId>maven-invoker-plugin</artifactId>
++            <configuration>
++              <pomExcludes>
++                <pomExclude>extended/pom.xml</pomExclude>
++                <pomExclude>osgi_all_inclusive_felix-3.2/pom.xml</pomExclude>
++                <pomExclude>${its.j2ee}</pomExclude>
++                <pomExclude>${its.osgi}</pomExclude>
++              </pomExcludes>
++            </configuration>
++          </plugin>
++        </plugins>
++      </build>
++    </profile>
++    <profile>
++      <id>wlp</id>
++      <activation>
++        <property>
++          <name>wlp.jar</name>
++        </property>
++      </activation>
++      <build>
++        <plugins>
++          <plugin>
++            <groupId>io.takari.polyglot</groupId>
++            <artifactId>polyglot-maven-plugin</artifactId>
++            <version>0.1.15</version>
++            <executions>
++              <execution>
++                <id>install_wlp</id>
++                <phase>pre-integration-test</phase>
++                <goals>
++                  <goal>execute</goal>
++                </goals>
++                <configuration>
++                  <taskId>install_wlp</taskId>
++                  <nativePom>pom.rb</nativePom>
++                </configuration>
++              </execution>
++            </executions>
++            <dependencies>
++              <dependency>
++                <groupId>io.takari.polyglot</groupId>
++                <artifactId>polyglot-ruby</artifactId>
++                <version>0.1.15</version>
++              </dependency>
++            </dependencies>
++          </plugin>
++        </plugins>
++      </build>
++    </profile>
++  </profiles>
++</project>
+
+--- /dev/null
++++ jruby-9.1.6.0/test/pom.xml
+@@ -0,0 +1,469 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++
++
++DO NOT MODIFIY - GENERATED CODE
++
++
++-->
++<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
++    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
++  <modelVersion>4.0.0</modelVersion>
++  <parent>
++    <groupId>org.jruby</groupId>
++    <artifactId>jruby-parent</artifactId>
++    <version>9.1.6.0</version>
++  </parent>
++  <artifactId>jruby-tests</artifactId>
++  <name>JRuby Integration Tests</name>
++  <properties>
++    <jruby.home>${basedir}/..</jruby.home>
++    <gem.home>${jruby.home}/lib/ruby/gems/shared</gem.home>
++    <polyglot.dump.pom>pom.xml</polyglot.dump.pom>
++  </properties>
++  <dependencies>
++    <dependency>
++      <groupId>junit</groupId>
++      <artifactId>junit</artifactId>
++      <version>4.11</version>
++      <scope>test</scope>
++    </dependency>
++    <dependency>
++      <groupId>commons-logging</groupId>
++      <artifactId>commons-logging</artifactId>
++      <version>1.1.3</version>
++      <scope>test</scope>
++    </dependency>
++    <dependency>
++      <groupId>org.livetribe</groupId>
++      <artifactId>livetribe-jsr223</artifactId>
++      <version>2.0.7</version>
++      <scope>test</scope>
++    </dependency>
++    <dependency>
++      <groupId>org.jruby</groupId>
++      <artifactId>jruby-core</artifactId>
++      <version>${project.version}</version>
++      <scope>test</scope>
++    </dependency>
++    <dependency>
++      <groupId>org.apache.ant</groupId>
++      <artifactId>ant</artifactId>
++      <version>${ant.version}</version>
++      <scope>provided</scope>
++    </dependency>
++    <dependency>
++      <groupId>bsf</groupId>
++      <artifactId>bsf</artifactId>
++      <version>2.4.0</version>
++      <scope>provided</scope>
++    </dependency>
++    <dependency>
++      <groupId>org.jruby</groupId>
++      <artifactId>requireTest</artifactId>
++      <version>1.0</version>
++      <scope>system</scope>
++      <systemPath>${project.basedir}/jruby/requireTest-1.0.jar</systemPath>
++    </dependency>
++    <dependency>
++      <groupId>rubygems</groupId>
++      <artifactId>rspec</artifactId>
++      <version>${rspec.version}</version>
++      <type>gem</type>
++    </dependency>
++  </dependencies>
++  <repositories>
++    <repository>
++      <id>mavengems</id>
++      <url>mavengem:http://rubygems.org</url>
++    </repository>
++  </repositories>
++  <pluginRepositories>
++    <pluginRepository>
++      <id>mavengems</id>
++      <url>mavengem:http://rubygems.org</url>
++    </pluginRepository>
++    <pluginRepository>
++      <releases>
++        <enabled>false</enabled>
++      </releases>
++      <snapshots>
++        <enabled>true</enabled>
++      </snapshots>
++      <id>sonatype</id>
++      <url>https://oss.sonatype.org/content/repositories/snapshots/</url>
++    </pluginRepository>
++  </pluginRepositories>
++  <build>
++    <testSourceDirectory>.</testSourceDirectory>
++    <!--
++    <extensions>
++      <extension>
++        <groupId>org.torquebox.mojo</groupId>
++        <artifactId>mavengem-wagon</artifactId>
++        <version>0.2.0</version>
++      </extension>
++    </extensions>
++    -->
++    <defaultGoal>test</defaultGoal>
++    <pluginManagement>
++      <plugins>
++        <plugin>
++          <groupId>org.eclipse.m2e</groupId>
++          <artifactId>lifecycle-mapping</artifactId>
++          <version>1.0.0</version>
++          <configuration>
++            <lifecycleMappingMetadata>
++              <pluginExecutions>
++                <pluginExecution>
++                  <pluginExecutionFilter>
++                    <groupId>de.saumya.mojo</groupId>
++                    <artifactId>gem-maven-plugin</artifactId>
++                    <versionRange>[1.0.0-rc3,)</versionRange>
++                    <goals>
++                      <goal>initialize</goal>
++                    </goals>
++                  </pluginExecutionFilter>
++                  <action>
++                    <ignore></ignore>
++                  </action>
++                </pluginExecution>
++              </pluginExecutions>
++            </lifecycleMappingMetadata>
++          </configuration>
++        </plugin>
++      </plugins>
++    </pluginManagement>
++    <plugins>
++      <!--
++      <plugin>
++        <groupId>de.saumya.mojo</groupId>
++        <artifactId>gem-maven-plugin</artifactId>
++        <version>${jruby.plugins.version}</version>
++        <executions>
++          <execution>
++            <phase>initialize</phase>
++            <goals>
++              <goal>initialize</goal>
++            </goals>
++            <configuration>
++              <gemPath>${gem.home}</gemPath>
++              <gemHome>${gem.home}</gemHome>
++              <binDirectory>${jruby.home}/bin</binDirectory>
++              <includeRubygemsInTestResources>false</includeRubygemsInTestResources>
++              <libDirectory>${jruby.home}/lib</libDirectory>
++              <jrubyJvmArgs>-Djruby.home=${jruby.home}</jrubyJvmArgs>
++            </configuration>
++          </execution>
++        </executions>
++      </plugin>
++      -->
++      <plugin>
++        <artifactId>maven-compiler-plugin</artifactId>
++        <configuration>
++          <encoding>utf-8</encoding>
++          <debug>true</debug>
++          <verbose>true</verbose>
++          <fork>true</fork>
++          <showWarnings>true</showWarnings>
++          <showDeprecation>true</showDeprecation>
++          <source>${base.java.version}</source>
++          <target>${base.java.version}</target>
++          <testExcludes>
++            <testExclude>truffle/**/*.java</testExclude>
++          </testExcludes>
++        </configuration>
++      </plugin>
++      <plugin>
++        <artifactId>maven-dependency-plugin</artifactId>
++        <executions>
++          <execution>
++            <id>copy jars for testing</id>
++            <phase>process-classes</phase>
++            <goals>
++              <goal>copy</goal>
++            </goals>
++            <configuration>
++              <artifactItems>
++                <artifactItem>
++                  <groupId>junit</groupId>
++                  <artifactId>junit</artifactId>
++                  <version>4.x</version>
++                  <type>jar</type>
++                  <overWrite>false</overWrite>
++                  <outputDirectory>target</outputDirectory>
++                  <destFileName>junit.jar</destFileName>
++                </artifactItem>
++                <artifactItem>
++                  <groupId>com.googlecode.jarjar</groupId>
++                  <artifactId>jarjar</artifactId>
++                  <version>debian</version>
++                  <type>jar</type>
++                  <overWrite>false</overWrite>
++                  <outputDirectory>target</outputDirectory>
++                  <destFileName>jarjar.jar</destFileName>
++                </artifactItem>
++                <artifactItem>
++                  <groupId>bsf</groupId>
++                  <artifactId>bsf</artifactId>
++                  <version>debian</version>
++                  <type>jar</type>
++                  <overWrite>false</overWrite>
++                  <outputDirectory>target</outputDirectory>
++                  <destFileName>bsf.jar</destFileName>
++                </artifactItem>
++              </artifactItems>
++            </configuration>
++          </execution>
++        </executions>
++      </plugin>
++      <plugin>
++        <artifactId>maven-deploy-plugin</artifactId>
++        <configuration>
++          <skip>true</skip>
++        </configuration>
++      </plugin>
++      <plugin>
++        <artifactId>maven-site-plugin</artifactId>
++        <configuration>
++          <skip>true</skip>
++          <skipDeploy>true</skipDeploy>
++        </configuration>
++      </plugin>
++    </plugins>
++  </build>
++  <profiles>
++    <profile>
++      <id>bootstrap</id>
++      <dependencies>
++        <dependency>
++          <groupId>rubygems</groupId>
++          <artifactId>jruby-launcher</artifactId>
++          <version>${jruby-launcher.version}</version>
++          <type>gem</type>
++        </dependency>
++      </dependencies>
++    </profile>
++    <profile>
++      <id>rake</id>
++      <build>
++        <plugins>
++          <plugin>
++            <artifactId>maven-antrun-plugin</artifactId>
++            <executions>
++              <execution>
++                <id>rake</id>
++                <phase>test</phase>
++                <goals>
++                  <goal>run</goal>
++                </goals>
++                <configuration>
++                  <target>
++                    <exec failonerror="true" dir="${jruby.home}" executable="${jruby.home}/bin/jruby">
++                      <env value="" key="JRUBY_OPTS" />
++                      <arg value="-S" />
++                      <arg value="rake" />
++                      <arg value="${task}" />
++                    </exec>
++                  </target>
++                </configuration>
++              </execution>
++            </executions>
++          </plugin>
++        </plugins>
++      </build>
++    </profile>
++    <profile>
++      <id>jruby_complete_jar_extended</id>
++      <build>
++        <plugins>
++          <plugin>
++            <artifactId>maven-antrun-plugin</artifactId>
++            <executions>
++              <execution>
++                <id>jruby_complete_jar_jruby</id>
++                <phase>test</phase>
++                <goals>
++                  <goal>run</goal>
++                </goals>
++                <configuration>
++                  <target>
++                    <exec failonerror="true" dir="${jruby.home}" executable="java">
++                      <arg value="-cp" />
++                      <arg value="core/target/test-classes:test/target/test-classes:maven/jruby-complete/target/jruby-complete-${project.version}.jar" />
++                      <arg value="-Djruby.aot.loadClasses=true" />
++                      <arg value="org.jruby.Main" />
++                      <arg value="-I." />
++                      <arg value="-Itest/mri/ruby" />
++                      <arg value="-Itest/mri" />
++                      <arg value="-Itest" />
++                      <arg value="-rtest/mri_test_env" />
++                      <arg value="lib/ruby/stdlib/rake/rake_test_loader.rb" />
++                      <arg value="test/jruby/test_globals.rb" />
++                      <arg value="test/jruby/test_addrinfo.rb" />
++                      <arg value="test/jruby/test_argf.rb" />
++                      <arg value="test/jruby/test_array.rb" />
++                      <arg value="test/jruby/test_autoload.rb" />
++                      <arg value="test/jruby/test_backquote.rb" />
++                      <arg value="test/jruby/test_backtraces.rb" />
++                      <arg value="test/jruby/test_big_decimal.rb" />
++                      <arg value="test/jruby/test_binding_eval_yield.rb" />
++                      <arg value="test/jruby/test_caller.rb" />
++                      <arg value="test/jruby/test_case.rb" />
++                      <arg value="test/jruby/test_class.rb" />
++                      <arg value="test/jruby/test_comparable.rb" />
++                      <arg value="test/jruby/test_core_arities.rb" />
++                      <arg value="test/jruby/test_custom_enumerable.rb" />
++                      <arg value="test/jruby/test_cvars_in_odd_scopes.rb" />
++                      <arg value="test/jruby/test_date_joda_time.rb" />
++                      <arg value="test/jruby/test_defined.rb" />
++                      <arg value="test/jruby/test_default_constants.rb" />
++                      <arg value="test/jruby/test_delegated_array_equals.rb" />
++                      <arg value="test/jruby/test_dir.rb" />
++                      <arg value="test/jruby/test_dir_with_jar_without_dir_entry.rb" />
++                      <arg value="test/jruby/test_digest_extend.rb" />
++                      <arg value="test/jruby/test_digest2.rb" />
++                      <arg value="test/jruby/test_env.rb" />
++                      <arg value="test/jruby/test_etc.rb" />
++                      <arg value="test/jruby/test_file.rb" />
++                      <arg value="test/jruby/test_frame_self.rb" />
++                      <arg value="test/jruby/test_hash.rb" />
++                      <arg value="test/jruby/test_higher_javasupport.rb" />
++                      <arg value="test/jruby/test_ifaddr.rb" />
++                      <arg value="test/jruby/test_integer_overflows.rb" />
++                      <arg value="test/jruby/test_ivar_table_integrity.rb" />
++                      <arg value="test/jruby/test_io.rb" />
++                      <arg value="test/jruby/test_load.rb" />
++                      <arg value="test/jruby/test_load_gem_extensions.rb" />
++                      <arg value="test/jruby/test_method.rb" />
++                      <arg value="test/jruby/test_method_cache.rb" />
++                      <arg value="test/jruby/test_method_override_and_caching.rb" />
++                      <arg value="test/jruby/test_java_accessible_object.rb" />
++                      <arg value="test/jruby/test_java_extension.rb" />
++                      <arg value="test/jruby/test_java_wrapper_deadlock.rb" />
++                      <arg value="test/jruby/test_jruby_internals.rb" />
++                      <arg value="test/jruby/test_marshal_with_instance_variables.rb" />
++                      <arg value="test/jruby/test_marshal_gemspec.rb" />
++                      <arg value="test/jruby/test_method_missing.rb" />
++                      <arg value="test/jruby/test_name_error.rb" />
++                      <arg value="test/jruby/test_no_stack_trace_stomp.rb" />
++                      <arg value="test/jruby/test_pack.rb" />
++                      <arg value="test/jruby/test_primitive_to_java.rb" />
++                      <arg value="test/jruby/test_process.rb" />
++                      <arg value="test/jruby/test_proc_visibility.rb" />
++                      <arg value="test/jruby/test_parsing.rb" />
++                      <arg value="test/jruby/test_pathname.rb" />
++                      <arg value="test/jruby/test_random.rb" />
++                      <arg value="test/jruby/test_rbconfig.rb" />
++                      <arg value="test/jruby/test_respond_to.rb" />
++                      <arg value="test/jruby/test_socket.rb" />
++                      <arg value="test/jruby/test_string_java_bytes.rb" />
++                      <arg value="test/jruby/test_string_printf.rb" />
++                      <arg value="test/jruby/test_super_call_site_caching.rb" />
++                      <arg value="test/jruby/test_system.rb" />
++                      <arg value="test/jruby/test_system_error.rb" />
++                      <arg value="test/jruby/test_timeout.rb" />
++                      <arg value="test/jruby/test_thread.rb" />
++                      <arg value="test/jruby/test_threaded_nonlocal_return.rb" />
++                      <arg value="test/jruby/test_time_add.rb" />
++                      <arg value="test/jruby/test_time_nil_ops.rb" />
++                      <arg value="test/jruby/test_time_tz.rb" />
++                      <arg value="test/jruby/test_unmarshal.rb" />
++                      <arg value="test/jruby/test_vietnamese_charset.rb" />
++                      <arg value="test/jruby/test_win32.rb" />
++                      <arg value="test/jruby/test_zlib.rb" />
++                      <arg value="test/jruby/test_loading_builtin_libraries.rb" />
++                      <arg value="test/jruby/test_null_channel.rb" />
++                      <arg value="test/jruby/test_irubyobject_java_passing.rb" />
++                      <arg value="test/jruby/test_jruby_object_input_stream.rb" />
++                      <arg value="test/jruby/test_jar_on_load_path.rb" />
++                      <arg value="test/jruby/test_jruby_core_ext.rb" />
++                      <arg value="test/jruby/test_thread_context_frame_dereferences_unreachable_variables.rb" />
++                      <arg value="test/jruby/test_context_classloader.rb" />
++                      <arg value="test/jruby/test_rexml_document.rb" />
++                      <arg value="test/jruby/test_openssl_stub.rb" />
++                      <arg value="test/jruby/test_missing_jruby_home.rb" />
++                      <arg value="test/jruby/test_jarred_gems.rb" />
++                      <arg value="test/jruby/test_kernel.rb" />
++                      <arg value="test/jruby/test_dir_with_plusses.rb" />
++                      <arg value="test/jruby/test_jar_file.rb" />
++                      <arg value="test/jruby/test_jruby_synchronized.rb" />
++                      <arg value="test/jruby/test_instantiating_interfaces.rb" />
++                      <arg value="test/jruby/test_openssl.rb" />
++                      <arg value="test/jruby/test_tempfile_cleanup.rb" />
++                      <arg value="test/jruby/test_reified_variables.rb" />
++                      <arg value="test/jruby/compiler/test_jrubyc.rb" />
++                      <arg value="test/jruby/test_load_compiled_ruby.rb" />
++                      <arg value="test/jruby/test_load_compiled_ruby_class_from_classpath.rb" />
++                      <arg value="-v" />
++                    </exec>
++                  </target>
++                </configuration>
++              </execution>
++              <execution>
++                <id>jruby_complete_jar_objectspace</id>
++                <phase>test</phase>
++                <goals>
++                  <goal>run</goal>
++                </goals>
++                <configuration>
++                  <target>
++                    <exec failonerror="true" dir="${jruby.home}" executable="java">
++                      <arg value="-cp" />
++                      <arg value="core/target/test-classes:test/target/test-classes:maven/jruby-complete/target/jruby-complete-${project.version}.jar" />
++                      <arg value="-Djruby.aot.loadClasses=true" />
++                      <arg value="org.jruby.Main" />
++                      <arg value="-I." />
++                      <arg value="-Itest/mri/ruby" />
++                      <arg value="-Itest/mri" />
++                      <arg value="-Itest" />
++                      <arg value="-rtest/mri_test_env" />
++                      <arg value="lib/ruby/stdlib/rake/rake_test_loader.rb" />
++                      <arg value="test/jruby/test_objectspace.rb" />
++                      <arg value="test/jruby/test_cache_map_leak.rb" />
++                      <arg value="-v" />
++                    </exec>
++                  </target>
++                </configuration>
++              </execution>
++              <execution>
++                <id>jruby_complete_jar_slow</id>
++                <phase>test</phase>
++                <goals>
++                  <goal>run</goal>
++                </goals>
++                <configuration>
++                  <target>
++                    <exec failonerror="true" dir="${jruby.home}" executable="java">
++                      <arg value="-cp" />
++                      <arg value="core/target/test-classes:test/target/test-classes:maven/jruby-complete/target/jruby-complete-${project.version}.jar" />
++                      <arg value="-Djruby.aot.loadClasses=true" />
++                      <arg value="org.jruby.Main" />
++                      <arg value="-I." />
++                      <arg value="-Itest/mri/ruby" />
++                      <arg value="-Itest/mri" />
++                      <arg value="-Itest" />
++                      <arg value="-rtest/mri_test_env" />
++                      <arg value="lib/ruby/stdlib/rake/rake_test_loader.rb" />
++                      <arg value="test/jruby/test_command_line_switches.rb" />
++                      <arg value="test/jruby/test_launching_by_shell_script.rb" />
++                      <arg value="-v" />
++                    </exec>
++                  </target>
++                </configuration>
++              </execution>
++            </executions>
++          </plugin>
++        </plugins>
++      </build>
++      <dependencies>
++        <dependency>
++          <groupId>org.jruby</groupId>
++          <artifactId>jruby-complete</artifactId>
++          <version>${project.version}</version>
++          <scope>provided</scope>
++        </dependency>
++      </dependencies>
++    </profile>
++  </profiles>
++</project>

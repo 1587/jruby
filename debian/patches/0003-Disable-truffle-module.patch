@@ -1,0 +1,59 @@
+Description: Disable truffle module build
+Author: Miguel Landaeta <nomadium@debian.org>
+Forwarded: no
+Last-Update: 2017-01-21
+
+--- jruby-9.1.6.0.orig/pom.xml
++++ jruby-9.1.6.0/pom.xml
+@@ -528,6 +528,7 @@ DO NOT MODIFIY - GENERATED CODE
+     </plugins>
+   </reporting>
+   <profiles>
++    <!-- truffle is disable because it will be packaged in a different package
+     <profile>
+       <id>truffle</id>
+       <activation>
+@@ -537,6 +538,7 @@ DO NOT MODIFIY - GENERATED CODE
+         <module>truffle</module>
+       </modules>
+     </profile>
++    -->
+     <profile>
+       <id>test</id>
+       <modules>
+@@ -727,7 +729,7 @@ DO NOT MODIFIY - GENERATED CODE
+         <defaultGoal>install</defaultGoal>
+       </build>
+       <modules>
+-        <module>truffle</module>
++        <!--<module>truffle</module>-->
+         <module>test</module>
+         <module>maven</module>
+       </modules>
+@@ -738,7 +740,7 @@ DO NOT MODIFIY - GENERATED CODE
+         <defaultGoal>clean</defaultGoal>
+       </build>
+       <modules>
+-        <module>truffle</module>
++        <!--<module>truffle</module>-->
+         <module>test</module>
+         <module>maven</module>
+       </modules>
+@@ -746,7 +748,7 @@ DO NOT MODIFIY - GENERATED CODE
+     <profile>
+       <id>release</id>
+       <modules>
+-        <module>truffle</module>
++        <!--<module>truffle</module>-->
+         <module>test</module>
+         <module>maven</module>
+       </modules>
+@@ -784,7 +786,7 @@ DO NOT MODIFIY - GENERATED CODE
+         </plugins>
+       </build>
+       <modules>
+-        <module>truffle</module>
++        <!--<module>truffle</module>-->
+         <module>maven</module>
+       </modules>
+       <distributionManagement>

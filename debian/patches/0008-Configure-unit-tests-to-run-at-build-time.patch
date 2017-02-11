@@ -1,0 +1,68 @@
+Description: Configure unit tests setup for Debian builds
+Author: Miguel Landaeta <nomadium@debian.org>
+Forwarded: no
+Last-Update: 2017-02-10
+
+--- jruby-9.1.6.0.orig/rakelib/rspec.rake
++++ jruby-9.1.6.0/rakelib/rspec.rake
+@@ -15,8 +15,9 @@
+ 
+ namespace :spec do
+   # Put Rake on the load path for JI specs without requiring rubygems
+-  rake_location = File.join(Gem.loaded_specs['rake'].full_gem_path, "lib")
+-  gem 'rspec'
++  # rake_location = File.join(Gem.loaded_specs['rake'].full_gem_path, "lib")
++  # gem 'rspec'
++  rake_location = '/usr/lib/ruby/vendor_ruby/rake.rb'
+   require 'rspec/core/rake_task'
+ 
+   compile_flags = {
+
+--- jruby-9.1.6.0.orig/bin/rake
++++ jruby-9.1.6.0/bin/rake
+@@ -6,17 +6,23 @@
+ # this file is here to facilitate running it.
+ #
+ 
+-require 'rubygems'
++#require 'rubygems'
++#
++#version = ">= 0.a"
++#
++#if ARGV.first
++#  str = ARGV.first
++#  str = str.dup.force_encoding("BINARY") if str.respond_to? :force_encoding
++#  if str =~ /\A_(.*)_\z/ and Gem::Version.correct?($1) then
++#    version = $1
++#    ARGV.shift
++#  end
++#end
++#
++#load Gem.activate_bin_path('rake', 'rake', version)
+ 
+-version = ">= 0.a"
++$LOAD_PATH << '/usr/lib/ruby/vendor_ruby'
+ 
+-if ARGV.first
+-  str = ARGV.first
+-  str = str.dup.force_encoding("BINARY") if str.respond_to? :force_encoding
+-  if str =~ /\A_(.*)_\z/ and Gem::Version.correct?($1) then
+-    version = $1
+-    ARGV.shift
+-  end
+-end
++require 'rake'
+ 
+-load Gem.activate_bin_path('rake', 'rake', version)
++Rake.application.run
+
+--- jruby-9.1.6.0.orig/rakelib/test.rake
++++ jruby-9.1.6.0/rakelib/test.rake
+@@ -117,6 +117,7 @@ namespace :test do
+     t.verbose = true
+     t.ruby_opts << '-Xaot.loadClasses=true' # disabled by default now
+     t.ruby_opts << '-I.'
++    t.ruby_opts << '-I/usr/lib/ruby/vendor_ruby'
+     t.ruby_opts << '-J-ea'
+     t.ruby_opts << '--headless'
+     classpath = %w[test test/target/test-classes core/target/test-classes].join(File::PATH_SEPARATOR)

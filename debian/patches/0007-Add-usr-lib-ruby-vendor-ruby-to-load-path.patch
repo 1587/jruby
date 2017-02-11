@@ -1,0 +1,78 @@
+Description: Add /usr/lib/ruby/vendor_ruby to default LOAD_PATH
+Author: Miguel Landaeta <nomadium@debian.org>
+Bug-Debian: https://bugs.debian.org/663342
+Forwarded: no
+Last-Update: 2017-02-10
+
+--- a/core/src/main/java/org/jruby/ext/rbconfig/RbConfigLibrary.java
++++ b/core/src/main/java/org/jruby/ext/rbconfig/RbConfigLibrary.java
+@@ -65,6 +65,8 @@ public class RbConfigLibrary implements Library {
+     private static final String RUBY_FREEBSD = "freebsd";
+     private static final String RUBY_AIX = "aix";
+ 
++    private static final String MRI_VENDOR_LIBDIR = "/usr/lib/ruby/vendor_ruby";
++
+     private static String normalizedHome;
+ 
+     /** This is a map from Java's "friendly" OS names to those used by Ruby */
+@@ -186,6 +188,10 @@ public class RbConfigLibrary implements Library {
+         return newFile(getRubyLibDir(runtime), "vendor_ruby").getPath();
+     }
+ 
++    public static String getMRIVendorLibDir(Ruby runtime) {
++        return SafePropertyAccessor.getProperty("debian.mri.vendor.libdir", MRI_VENDOR_LIBDIR);
++    }
++
+     public static String getVendorLibDir(Ruby runtime) {
+         return getVendorDir(runtime);
+     }
+@@ -294,6 +300,7 @@ public class RbConfigLibrary implements Library {
+         String rubyLibDir = getRubyLibDir(runtime);
+         String archDir = getArchDir(runtime);
+         String vendorDir = getVendorDir(runtime);
++        String vendorMRILibDir = getMRIVendorLibDir(runtime);
+         String vendorLibDir = getVendorLibDir(runtime);
+         String vendorArchDir = getVendorArchDir(runtime);
+         String siteDir = getSiteDir(runtime);
+@@ -310,6 +317,7 @@ public class RbConfigLibrary implements Library {
+         setConfig(configHash, "vendorlibdir",   vendorLibDir);
+         setConfig(configHash, "vendorarchdir",    vendorArchDir);
+         }
++        setConfig(configHash, "mri_vendor_libdir", vendorMRILibDir);
+         setConfig(configHash, "sitedir",        siteDir);
+         setConfig(configHash, "sitelibdir",     siteLibDir);
+         setConfig(configHash, "sitearchdir",    siteArchDir);
+
+--- a/core/src/main/java/org/jruby/runtime/load/LoadService.java
++++ b/core/src/main/java/org/jruby/runtime/load/LoadService.java
+@@ -70,6 +70,7 @@ import org.jruby.runtime.Helpers;
+ import org.jruby.runtime.builtin.IRubyObject;
+ import org.jruby.util.FileResource;
+ import org.jruby.util.JRubyFile;
++import org.jruby.util.SafePropertyAccessor;
+ import org.jruby.util.collections.StringArraySet;
+ import org.jruby.util.log.Logger;
+ import org.jruby.util.log.LoggerFactory;
+@@ -251,6 +252,11 @@ public class LoadService {
+                 addPath(RbConfigLibrary.getRubyLibDir(runtime));
+             }
+ 
++            // Allow jruby to load libraries installed in the system
++            if (SafePropertyAccessor.getBoolean("debian.include.mri_vendor_libdir_in_load_path", false)) {
++                addPath(RbConfigLibrary.getMRIVendorLibDir(runtime));
++            }
++
+         } catch(SecurityException ignore) {}
+         addPaths(runtime.getInstanceConfig().getExtraLoadPaths());
+     }
+
+--- a/bin/jruby.bash
++++ b/bin/jruby.bash
+@@ -413,6 +413,7 @@
+       "-Djruby.home=$JRUBY_HOME" \
+       "-Djruby.lib=$JRUBY_HOME/lib" -Djruby.script=jruby \
+       "-Djruby.shell=$JRUBY_SHELL" \
++      "-Ddebian.include.mri_vendor_libdir_in_load_path=true" \
+       $java_class $mode "$@"
+   fi
+ fi

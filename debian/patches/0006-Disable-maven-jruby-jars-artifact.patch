@@ -1,0 +1,49 @@
+Description: Disable jruby-jars maven artifact build
+Author: Miguel Landaeta <nomadium@debian.org>
+Forwarded: no
+Last-Update: 2017-02-02
+
+--- a/maven/pom.xml
++++ b/maven/pom.xml
+@@ -58,7 +58,7 @@
+       <modules>
+         <module>jruby</module>
+         <module>jruby-complete</module>
+-        <module>jruby-jars</module>
++        <!--<module>jruby-jars</module>-->
+         <module>jruby-dist</module>
+       </modules>
+     </profile>
+@@ -73,7 +73,7 @@
+       <modules>
+         <module>jruby</module>
+         <module>jruby-complete</module>
+-        <module>jruby-jars</module>
++        <!--<module>jruby-jars</module>-->
+         <module>jruby-dist</module>
+       </modules>
+     </profile>
+@@ -101,7 +101,7 @@
+       <modules>
+         <module>jruby</module>
+         <module>jruby-complete</module>
+-        <module>jruby-jars</module>
++        <!--<module>jruby-jars</module>-->
+         <module>jruby-dist</module>
+       </modules>
+     </profile>
+@@ -117,12 +117,14 @@
+         <module>jruby-complete</module>
+       </modules>
+     </profile>
++    <!--
+     <profile>
+       <id>jruby-jars</id>
+       <modules>
+         <module>jruby-jars</module>
+       </modules>
+     </profile>
++    -->
+     <profile>
+       <id>dist</id>
+       <modules>
