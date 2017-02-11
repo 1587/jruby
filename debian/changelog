@@ -43,6 +43,7 @@ jruby (9.1.6.0-1~exp1) UNRELEASED; urgency=medium
       + ruby-minitest
       + ruby-minitest-excludes
       + yydebug
+  * Refresh d/copyright file.
 
  -- Miguel Landaeta <nomadium@debian.org>  Sat, 11 Feb 2017 16:18:12 +0000
 
