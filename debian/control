@@ -87,17 +87,15 @@ Recommends: jruby-openssl,
             ruby-rspec,
             ruby-test-unit
 Description: 100% pure-Java implementation of Ruby
- JRuby is a high performance, stable, fully threaded Java implementation
- of the Ruby programming language.
+ JRuby is an implementation of the ruby language using the JVM.
  .
- JRuby is tightly integrated with Java to allow the embedding of the
- interpreter into any Java application with full two-way access
- between the Java and the Ruby code (similar to Jython for the Python
- language).
+ It aims to be a complete, correct and fast implementation of Ruby, at the
+ same time as providing powerful new features such as concurrency without a
+ global interpreter lock, true parallelism and tight integration to the Java
+ language to allow one to use Java classes in Ruby programs and to allow
+ JRuby to be embedded into a Java application.
  .
- JRuby provides a complete set of core "builtin" classes and syntax
- for the Ruby language, as well as most of the Ruby Standard
- Libraries. The standard libraries are mostly Ruby's own complement of
- ".rb" files, but a few that depend on C language-based extensions have
- been reimplemented. Some are still missing, but JRuby hopes to
- implement as many as is feasible.
+ JRuby can be used as a faster version of Ruby, it can be used to run Ruby
+ on the JVM and access powerful JVM libraries such as highly tuned concurrency
+ primitives, it can also be used to embed Ruby as a scripting language in your
+ Java program, or many other possibilities.

@@ -48,6 +48,7 @@ jruby (9.1.6.0-1~exp1) UNRELEASED; urgency=medium
     were not necessary anymore. Also, upstream switched their build system
     to polyglot-maven, so new ones were introduced.
   * Update d/rules.
+  * Update package description.
   * Drop jruby-core-noasm Maven artifact, is not provided by upstream
     anymore.
 
