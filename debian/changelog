@@ -3,8 +3,10 @@ jruby (9.1.6.0-1~exp1) UNRELEASED; urgency=medium
   The "better late than never" release.
 
   * New upstream release. (Closes: #792150)
+  * Update uploaders list.
+    Thanks to Tim Potter for his effort to package 1.7.x releases.
 
- -- Miguel Landaeta <nomadium@debian.org>  Sat, 21 Jan 2017 19:07:47 +0000
+ -- Miguel Landaeta <nomadium@debian.org>  Sat, 11 Feb 2017 16:18:12 +0000
 
 jruby (1.7.26-1) unstable; urgency=medium
 
