@@ -1,5 +1,14 @@
+
+org.jruby yecht jar s/.*/debian/ s/jruby// *
+com.github.jnr jnr-netdb jar s/.*/debian/ * *
+com.headius invokebinder jar s/.*/debian/ * *
+com.headius options jar s/.*/debian/ * *
+com.headius unsafe-mock jar s/.*/debian/ * *
+jline jline jar s/2\..*/2.x/ * *
+joda-time joda-time jar s/.*/debian/ * *
+junit junit jar s/.*/4.x/ * *
 org.jruby.extras bytelist jar s/.*/debian/ * *
 org.yaml snakeyaml jar s/.*/1.x/ * *
-junit junit jar s/.*/4.x/ * *
-jline jline jar s/2\..*/2.x/ * *
-org.jruby yecht jar s/.*/debian/ s/jruby// *
+s/org.apache.felix/org.osgi/ org.osgi.core * * * *
+s/ant/org.apache.ant/ * * s/.*/debian/ * *
+org.ow2.asm * * s/.*/debian/ * *

@@ -1,11 +1,28 @@
-org.apache.maven.plugins maven-scm-publish-plugin * * * *
-org.codehaus.mojo buildnumber-maven-plugin * * * *
-de.saumya.mojo gem-maven-plugin * * * *
-io.tesla.polyglot tesla-polyglot-maven-plugin
-
-org.jruby joda-timezones * * * *
+com.github.jnr jffi jar * native *
 com.headius coro-mock * * * *
 com.headius jsr292-mock * * * *
-com.github.jnr jffi jar * native *
-
+de.saumya.mojo gem-maven-plugin * * * *
+io.tesla.polyglot tesla-polyglot-maven-plugin * s/.*/debian/ * *
+org.apache.maven.plugins maven-assembly-plugin * * * *
+org.apache.maven.plugins maven-changelog-plugin * * * *
+org.apache.maven.plugins maven-checkstyle-plugin * * * *
+org.apache.maven.plugins maven-deploy-plugin * * * *
+org.apache.maven.plugins maven-enforcer-plugin * * * *
+org.apache.maven.plugins maven-javadoc-plugin * * * *
+org.apache.maven.plugins maven-jxr-plugin * * * *
+org.apache.maven.plugins maven-pmd-plugin * * * *
+org.apache.maven.plugins maven-project-info-reports-plugin * * * *
+org.apache.maven.plugins maven-release-plugin * * * *
+org.apache.maven.plugins maven-scm-publish-plugin * * * *
+org.apache.maven.plugins maven-site-plugin * * * *
+org.apache.maven.plugins maven-source-plugin * * * *
+org.apache.maven.plugins maven-surefire-plugin * * * *
+org.apache.maven.plugins maven-surefire-report-plugin * * * *
+org.codehaus.mojo buildnumber-maven-plugin * * * *
+org.codehaus.mojo cobertura-maven-plugin * * * *
+org.codehaus.mojo findbugs-maven-plugin * * * *
+org.codehaus.mojo taglist-maven-plugin * * * *
+org.torquebox.mojo mavengem-wagon * * * *
+org.jruby joda-timezones * * * *
+org.slf4j slf4j-simple * * * *
 rubygems * * * * *
