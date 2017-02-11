@@ -5,6 +5,7 @@ jruby (9.1.6.0-1~exp1) UNRELEASED; urgency=medium
   * New upstream release. (Closes: #792150)
   * Update uploaders list.
     Thanks to Tim Potter for his effort to package 1.7.x releases.
+  * Bump debhelper compat level to 10.
 
  -- Miguel Landaeta <nomadium@debian.org>  Sat, 11 Feb 2017 16:18:12 +0000
 

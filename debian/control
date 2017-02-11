@@ -5,7 +5,7 @@ Maintainer: Debian Java Maintainers <pkg-java-maintainers@lists.alioth.debian.or
 Uploaders: Miguel Landaeta <nomadium@debian.org>
 Build-Depends: ant-optional,
                bnd,
-               debhelper (>= 9~),
+               debhelper (>= 10~),
                default-jdk (>= 2:1.8~),
                jruby-openssl,
                junit4,
