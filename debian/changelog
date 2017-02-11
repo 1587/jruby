@@ -6,6 +6,43 @@ jruby (9.1.6.0-1~exp1) UNRELEASED; urgency=medium
   * Update uploaders list.
     Thanks to Tim Potter for his effort to package 1.7.x releases.
   * Bump debhelper compat level to 10.
+  * Update dependencies lists:
+    - Since 9.0.0.0 release, at least java7-runtime is needed to run jruby.
+    - New dependencies on:
+      + libdirgra-java
+      + libjitescript-java
+      + libjzlib-java
+      + libmaven-source-plugin-java
+      + libosgi-core-java
+      + libruby2.3
+      + rake
+      + ruby-test-unit
+    - Update versioned dependencies on:
+      + debhelper (>= 10~)
+      + libbytelist-java (>= 1.0.13~)
+      + libinvokebinder-java (>= 1.7~)
+      + libjffi-java
+      + libjnr-constants-java (>= 0.9.5~)
+      + libjnr-ffi-java (>= 2.1.1~)
+      + libjnr-netdb-java
+      + libjnr-posix-java (>= 3.0.32~)
+      + libjnr-unixsocket-java (>= 0.14~)
+      + libjnr-x86asm-java
+    - Drop explicit dependencies on:
+      + bnd
+      + libjgrapht0.8-java
+      + libjline2-java
+      + libmaven-compiler-plugin-java (>= 3.2~)
+      + libmaven-install-plugin-java
+      + libproperties-maven-plugin-java
+      + libyaml-snake-java
+      + libyecht-java (>= 1.0~)
+      + locales-all
+      + maven-repo-helper
+      + netbase
+      + ruby-minitest
+      + ruby-minitest-excludes
+      + yydebug
 
  -- Miguel Landaeta <nomadium@debian.org>  Sat, 11 Feb 2017 16:18:12 +0000
 
