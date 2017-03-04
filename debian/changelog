@@ -1,11 +1,11 @@
-jruby (9.1.6.0-1~exp2) UNRELEASED; urgency=medium
+jruby (9.1.6.0-1~exp2) experimental; urgency=medium
 
   * Don't hard-code libyaml-snake-java version in psych stdlib module.
   * Bundle psych Java native extension:
     - Add patch 0009-Bundle-psych-java-extension.patch.
     - Add again dependency on libyaml-snake-java.
 
- -- Miguel Landaeta <nomadium@debian.org>  Sat, 04 Mar 2017 11:23:24 +0000
+ -- Miguel Landaeta <nomadium@debian.org>  Sat, 04 Mar 2017 11:39:19 +0000
 
 jruby (9.1.6.0-1~exp1) experimental; urgency=medium
 
