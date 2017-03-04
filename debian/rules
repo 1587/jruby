@@ -18,6 +18,7 @@ override_dh_auto_clean:
 	-cd ./lib/ruby/stdlib/ && rm -r psych* *openssl* org/ jar* ./rubygems_plugin.rb
 	-rm ./core/dependency-reduced-pom.xml ./link* test/jruby/testapp/testapp
 	-find . -name pom.xml.save -delete
+	-rm -r ./tmp/
 	mh_clean
 
 override_dh_auto_configure:
@@ -32,6 +33,13 @@ override_dh_auto_build:
 	dh_auto_build -- -Pcomplete
 	dh_auto_build -- -Pdist package
 	dh_auto_build -- -Pall
+	# bundle ruby/psych jar with jruby until jruby-psych is packaged
+	mkdir -p tmp/java/psych
+	javac -extdirs "/usr/lib/jvm/java-8-openjdk-amd64/jre/lib/ext"   \
+		-target 1.7 -source 1.7 -Xlint:unchecked                 \
+		-cp "`./debian/psych-java-ext-build-classpath`"          \
+		-d tmp/java/psych `./debian/psych-java-ext-source-files`
+	jar cf tmp/java/psych/psych.jar `./debian/psych-java-ext-class-entries`
 
 DIST_TARBALL=./maven/jruby-dist/target/jruby-dist-$(DEB_VERSION_UPSTREAM)-bin.tar.gz
 DIST_TARGET_DIR=./target/package/
@@ -46,6 +54,7 @@ override_dh_prep:
 		&& mkdir -p ./lib/jni/                                                 \
 		&& find ./lib/ruby/truffle -name LICENSE -delete                       \
 	        && cp -a /usr/lib/ruby/2.3.0/psych* ./lib/ruby/stdlib/                 \
+	        && cp -a ../../tmp/java/psych/psych.jar ./lib/ruby/stdlib/             \
 	        && sed 's/1\.[0-9]\{1,2\}/1.x/' -i ./lib/ruby/stdlib/psych/versions.rb \
 		&& sed '1d' -i ./lib/ruby/truffle/jruby+truffle/bin/jruby+truffle      \
 		&& rm -r ./tool/nailgun/*                                              )

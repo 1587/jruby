@@ -20,3 +20,5 @@ usr/lib/arm-linux-gnueabi/jni/libjffi-1.2.so      usr/share/jruby/lib/jni/arm-Li
 usr/lib/aarch64-linux-gnu/jni/libjffi-1.2.so      usr/share/jruby/lib/jni/aarch64-Linux/libjffi-1.2.so
 usr/lib/powerpc64-linux-gnu/jni/libjffi-1.2.so    usr/share/jruby/lib/jni/ppc64-Linux/libjffi-1.2.so
 usr/lib/powerpc64le-linux-gnu/jni/libjffi-1.2.so  usr/share/jruby/lib/jni/ppc64le-Linux/libjffi-1.2.so
+
+usr/share/maven-repo/org/yaml/snakeyaml/1.x/snakeyaml-1.x.jar  usr/share/jruby/lib/ruby/stdlib/org/yaml/snakeyaml/1.x/snakeyaml-1.x.jar
