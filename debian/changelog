@@ -1,6 +1,7 @@
 jruby (9.1.6.0-1~exp3) UNRELEASED; urgency=medium
 
   * Add versioned dependency on jruby-openssl (>= 0.9.17~).
+  * Add dependency on ruby-jar-dependencies.
 
  -- Miguel Landaeta <nomadium@debian.org>  Tue, 07 Mar 2017 21:54:21 +0000
 

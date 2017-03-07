@@ -82,6 +82,7 @@ Depends: default-jre | java7-runtime,
          libunsafe-mock-java,
          libyaml-snake-java,
          nailgun,
+         ruby-jar-dependencies,
          ${misc:Depends}
 Recommends: jruby-openssl (>= 0.9.17~),
             ri,
