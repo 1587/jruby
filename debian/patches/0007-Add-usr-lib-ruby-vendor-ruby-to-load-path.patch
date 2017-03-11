@@ -2,7 +2,7 @@ Description: Add /usr/lib/ruby/vendor_ruby to default LOAD_PATH
 Author: Miguel Landaeta <nomadium@debian.org>
 Bug-Debian: https://bugs.debian.org/663342
 Forwarded: no
-Last-Update: 2017-02-10
+Last-Update: 2017-03-08
 
 --- a/core/src/main/java/org/jruby/ext/rbconfig/RbConfigLibrary.java
 +++ b/core/src/main/java/org/jruby/ext/rbconfig/RbConfigLibrary.java
@@ -45,7 +45,7 @@ Last-Update: 2017-02-10
 
 --- a/core/src/main/java/org/jruby/runtime/load/LoadService.java
 +++ b/core/src/main/java/org/jruby/runtime/load/LoadService.java
-@@ -70,6 +70,7 @@ import org.jruby.runtime.Helpers;
+@@ -71,6 +71,7 @@ import org.jruby.runtime.ThreadContext;
  import org.jruby.runtime.builtin.IRubyObject;
  import org.jruby.util.FileResource;
  import org.jruby.util.JRubyFile;
@@ -53,7 +53,7 @@ Last-Update: 2017-02-10
  import org.jruby.util.collections.StringArraySet;
  import org.jruby.util.log.Logger;
  import org.jruby.util.log.LoggerFactory;
-@@ -251,6 +252,11 @@ public class LoadService {
+@@ -253,6 +254,11 @@ public class LoadService {
                  addPath(RbConfigLibrary.getRubyLibDir(runtime));
              }
  
@@ -68,7 +68,7 @@ Last-Update: 2017-02-10
 
 --- a/bin/jruby.bash
 +++ b/bin/jruby.bash
-@@ -413,6 +413,7 @@
+@@ -402,6 +402,7 @@ else
        "-Djruby.home=$JRUBY_HOME" \
        "-Djruby.lib=$JRUBY_HOME/lib" -Djruby.script=jruby \
        "-Djruby.shell=$JRUBY_SHELL" \

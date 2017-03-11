@@ -1,11 +1,11 @@
 Description: Disable references to unpackaged maven plugins in lib module
 Author: Miguel Landaeta <nomadium@debian.org>
 Forwarded: no
-Last-Update: 2017-02-01
+Last-Update: 2017-03-08
 
 --- a/lib/pom.xml
 +++ b/lib/pom.xml
-@@ -310,6 +310,7 @@ DO NOT MODIFIY - GENERATED CODE
+@@ -309,6 +309,7 @@ DO NOT MODIFIY - GENERATED CODE
          <groupId>org.codehaus.mojo</groupId>
          <artifactId>build-helper-maven-plugin</artifactId>
        </plugin>
@@ -13,7 +13,7 @@ Last-Update: 2017-02-01
        <plugin>
          <groupId>io.takari.polyglot</groupId>
          <artifactId>polyglot-maven-plugin</artifactId>
-@@ -368,6 +369,7 @@ DO NOT MODIFIY - GENERATED CODE
+@@ -367,6 +368,7 @@ DO NOT MODIFIY - GENERATED CODE
            </dependency>
          </dependencies>
        </plugin>

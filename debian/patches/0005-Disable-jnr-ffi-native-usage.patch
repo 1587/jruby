@@ -2,11 +2,11 @@ Description: Disable jnr-ffi native usage
  There is not a jnr-ffi native jar in Debian
 Author: Miguel Landaeta <nomadium@debian.org>
 Forwarded: no
-Last-Update: 2017-02-01
+Last-Update: 2017-03-03
 
---- jruby-9.1.6.0.orig/core/pom.xml
-+++ jruby-9.1.6.0/core/pom.xml
-@@ -638,6 +638,7 @@ DO NOT MODIFIY - GENERATED CODE
+--- jruby-9.1.7.0.orig/core/pom.xml
++++ jruby-9.1.7.0/core/pom.xml
+@@ -625,6 +625,7 @@ DO NOT MODIFIY - GENERATED CODE
        <plugin>
          <artifactId>maven-dependency-plugin</artifactId>
          <executions>
@@ -14,7 +14,7 @@ Last-Update: 2017-02-01
            <execution>
              <id>unzip native</id>
              <phase>clean</phase>
-@@ -659,6 +660,7 @@ DO NOT MODIFIY - GENERATED CODE
+@@ -646,6 +647,7 @@ DO NOT MODIFIY - GENERATED CODE
                </artifactItems>
              </configuration>
            </execution>
@@ -22,7 +22,7 @@ Last-Update: 2017-02-01
          </executions>
        </plugin>
      </plugins>
-@@ -1044,6 +1046,7 @@ DO NOT MODIFIY - GENERATED CODE
+@@ -1031,6 +1033,7 @@ DO NOT MODIFIY - GENERATED CODE
            <plugin>
              <artifactId>maven-dependency-plugin</artifactId>
              <executions>
@@ -30,7 +30,7 @@ Last-Update: 2017-02-01
                <execution>
                  <phase>process-classes</phase>
                  <goals>
-@@ -1064,6 +1067,7 @@ DO NOT MODIFIY - GENERATED CODE
+@@ -1051,6 +1054,7 @@ DO NOT MODIFIY - GENERATED CODE
                    </artifactItems>
                  </configuration>
                </execution>

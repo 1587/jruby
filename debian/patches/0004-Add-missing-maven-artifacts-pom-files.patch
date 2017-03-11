@@ -5,10 +5,10 @@ Description: Add missing POM files for maven artifacts
  need to add them manually to the source
 Author: Miguel Landaeta <nomadium@debian.org>
 Forwarded: no
-Last-Update: 2017-02-07
+Last-Update: 2017-03-08
 
 --- /dev/null
-+++ jruby-9.1.6.0/maven/pom.xml
++++ jruby-9.1.8.0/maven/pom.xml
 @@ -0,0 +1,133 @@
 +<?xml version="1.0" encoding="UTF-8"?>
 +<!--
@@ -24,7 +24,7 @@ Last-Update: 2017-02-07
 +  <parent>
 +    <groupId>org.jruby</groupId>
 +    <artifactId>jruby-parent</artifactId>
-+    <version>9.1.6.0</version>
++    <version>9.1.8.0</version>
 +  </parent>
 +  <artifactId>jruby-artifacts</artifactId>
 +  <packaging>pom</packaging>
@@ -145,7 +145,7 @@ Last-Update: 2017-02-07
 +</project>
 
 --- /dev/null
-+++ jruby-9.1.6.0/maven/jruby-dist/pom.xml
++++ jruby-9.1.8.0/maven/jruby-dist/pom.xml
 @@ -0,0 +1,210 @@
 +<?xml version="1.0" encoding="UTF-8"?>
 +<!--
@@ -161,7 +161,7 @@ Last-Update: 2017-02-07
 +  <parent>
 +    <groupId>org.jruby</groupId>
 +    <artifactId>jruby-artifacts</artifactId>
-+    <version>9.1.6.0</version>
++    <version>9.1.8.0</version>
 +  </parent>
 +  <artifactId>jruby-dist</artifactId>
 +  <packaging>pom</packaging>
@@ -359,7 +359,7 @@ Last-Update: 2017-02-07
 +</project>
 
 --- /dev/null
-+++ jruby-9.1.6.0/maven/jruby-complete/pom.xml
++++ jruby-9.1.8.0/maven/jruby-complete/pom.xml
 @@ -0,0 +1,313 @@
 +<?xml version="1.0" encoding="UTF-8"?>
 +<!--
@@ -375,7 +375,7 @@ Last-Update: 2017-02-07
 +  <parent>
 +    <groupId>org.jruby</groupId>
 +    <artifactId>jruby-artifacts</artifactId>
-+    <version>9.1.6.0</version>
++    <version>9.1.8.0</version>
 +  </parent>
 +  <artifactId>jruby-complete</artifactId>
 +  <packaging>bundle</packaging>
@@ -676,7 +676,7 @@ Last-Update: 2017-02-07
 +</project>
 
 --- /dev/null
-+++ jruby-9.1.6.0/maven/jruby/pom.xml
++++ jruby-9.1.8.0/maven/jruby/pom.xml
 @@ -0,0 +1,226 @@
 +<?xml version="1.0" encoding="UTF-8"?>
 +<!--
@@ -692,7 +692,7 @@ Last-Update: 2017-02-07
 +  <parent>
 +    <groupId>org.jruby</groupId>
 +    <artifactId>jruby-artifacts</artifactId>
-+    <version>9.1.6.0</version>
++    <version>9.1.8.0</version>
 +  </parent>
 +  <artifactId>jruby</artifactId>
 +  <name>JRuby Main Maven Artifact</name>
@@ -906,7 +906,7 @@ Last-Update: 2017-02-07
 +</project>
 
 --- /dev/null
-+++ jruby-9.1.6.0/test/pom.xml
++++ jruby-9.1.8.0/test/pom.xml
 @@ -0,0 +1,469 @@
 +<?xml version="1.0" encoding="UTF-8"?>
 +<!--
@@ -922,7 +922,7 @@ Last-Update: 2017-02-07
 +  <parent>
 +    <groupId>org.jruby</groupId>
 +    <artifactId>jruby-parent</artifactId>
-+    <version>9.1.6.0</version>
++    <version>9.1.8.0</version>
 +  </parent>
 +  <artifactId>jruby-tests</artifactId>
 +  <name>JRuby Integration Tests</name>
