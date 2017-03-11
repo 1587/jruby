@@ -67,11 +67,14 @@ override_dh_auto_install:
 	mh_installjar -pjruby ./maven/jruby/pom.xml \
 		./maven/jruby/target/jruby-$(DEB_VERSION_UPSTREAM).jar
 
+export CI:="true"
 override_dh_auto_test:
 ifeq (,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
-	cp -a /usr/lib/ruby/2.3.0/psych* ./lib/ruby/stdlib/
 	# to-do: package psych java extension
-	-dh_auto_build -- package -B -Dinvoker.skip=false -Prake -Dtask=test:mri
+	cp -a /usr/lib/ruby/2.3.0/psych* ./lib/ruby/stdlib/
+	cp -a ./tmp/java/psych/psych.jar ./lib/ruby/stdlib/
+	sed 's/1\.[0-9]\{1,2\}/1.x/' -i ./lib/ruby/stdlib/psych/versions.rb
+	dh_auto_build -- package -B -Dinvoker.skip=false -Prake -Dtask=test:mri
 	# these tests will be enabled once the following gems are packaged:
         # jar-dependencies and recent jruby-openssl (>= 0.9.17)
 #	-dh_auto_build -- package -B -Dinvoker.skip=false -Prake -Dtask=test:jruby
