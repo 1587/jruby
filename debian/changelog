@@ -4,6 +4,7 @@ jruby (9.1.8.0-1~exp1) UNRELEASED; urgency=medium
   * Refresh patches.
     Drop patch 0003-Disable-truffle-module.patch since is no longer needed.
   * Add dependency on libunsafe-fences-java.
+  * Update versioned dependency on libjnr-posix-java to (>= 3.0.36~).
 
  -- Miguel Landaeta <nomadium@debian.org>  Sat, 11 Mar 2017 12:17:07 +0000
 
