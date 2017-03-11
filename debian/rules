@@ -7,7 +7,7 @@ include /usr/share/dpkg/default.mk
 
 override_dh_auto_clean:
 	dh_auto_clean
-	@rm -f ./lib/jruby.jar ./lib/jruby-truffle.jar
+	@rm -f ./lib/jruby.jar
 	@rm -f ./bin/jruby ./core/src/main/java/org/jruby/runtime/Constants.java
 	# restore POM files to a pre-patched state if there are backups
 	-test -d ./bak && ( cd ./bak \
@@ -52,11 +52,9 @@ override_dh_prep:
 		&& cp ./bin/jruby ../../bin                                            \
 		&& chmod 0755 ./bin/*                                                  \
 		&& mkdir -p ./lib/jni/                                                 \
-		&& find ./lib/ruby/truffle -name LICENSE -delete                       \
 	        && cp -a /usr/lib/ruby/2.3.0/psych* ./lib/ruby/stdlib/                 \
 	        && cp -a ../../tmp/java/psych/psych.jar ./lib/ruby/stdlib/             \
 	        && sed 's/1\.[0-9]\{1,2\}/1.x/' -i ./lib/ruby/stdlib/psych/versions.rb \
-		&& sed '1d' -i ./lib/ruby/truffle/jruby+truffle/bin/jruby+truffle      \
 		&& rm -r ./tool/nailgun/*                                              )
 
 override_dh_auto_install:
