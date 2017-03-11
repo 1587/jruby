@@ -64,3 +64,13 @@ Last-Update: 2017-03-11
 +exclude :test_ancestors, "needs investigation"
 +exclude :test_included_module, "needs investigation"
 +exclude :test_included_modules, "needs investigation"
+--- jruby-9.1.8.0/test/mri/excludes/TestFileExhaustive.rb
++++ jruby-9.1.8.0/test/mri/excludes/TestFileExhaustive.rb
+@@ -7,4 +7,5 @@ exclude :test_expand_path_returns_tainted_strings_or_not, "needs investigation"
+ exclude :test_extname, "needs investigation"
+ exclude :test_join_ascii_incompatible, "needs investigation"
+ exclude :test_lchmod, "Fails on Linux"
+-exclude :test_readlink_long_path, "needs investigation"
+\ No newline at end of file
++exclude :test_readlink_long_path, "needs investigation"
++exclude :test_expand_path_for_existent_username, "sbuild breaks this test since it modifies the environment"
