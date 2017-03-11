@@ -16,6 +16,14 @@
 *.tokens
 *.su
 *.ll
+*.bc
+extconf.h
+mkmf.log
+Makefile
+cext-output.txt
+bench-results.json
+bench-results-processed.json
+failures
 
 .DS_Store
 .debug.properties
@@ -75,8 +83,6 @@ test/pom.xml
 test/prawn
 test/rails
 test/testapp/testapp
-test/truffle/*.methods
-test/truffle/integration/gem-testing
 tool/nailgun/Makefile
 tool/nailgun/config.log
 tool/nailgun/config.status
@@ -84,8 +90,6 @@ tool/nailgun/ng
 reference.txt
 rubyspec_temp
 .polyglot.pom.rb
-tool/truffle/jruby_truffle_runner/jruby+truffle_runner-*.gem
-test/truffle/cexts/**/Makefile
 
 # binaries
 !bin/gem
@@ -125,11 +129,7 @@ build.eclipse
 /mxbuild
 /mx.imports
 /RUBY.dist
-
-# Truffle findbugs
-truffle-findbugs-report.html
-findbugs-noUpdateChecks-3.0.0.tar.gz
-findbugs-3.0.0
+/RUBY-TEST.dist
 
 # Vagrant
 .vagrant

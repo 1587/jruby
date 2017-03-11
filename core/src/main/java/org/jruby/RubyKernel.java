@@ -621,7 +621,7 @@ public class RubyKernel {
 
     /** Returns value of $_.
      *
-     * @throws TypeError if $_ is not a String or nil.
+     * @throws RaiseException TypeError if $_ is not a String or nil.
      * @return value of $_ as String.
      */
     private static RubyString getLastlineString(ThreadContext context, Ruby runtime) {
@@ -815,6 +815,7 @@ public class RubyKernel {
     public static IRubyObject raise(ThreadContext context, IRubyObject recv, IRubyObject[] args, Block block) {
         final Ruby runtime = context.runtime;
         int argc = args.length;
+        boolean forceCause = false;
 
         // semi extract_raise_opts :
         IRubyObject cause = null;
@@ -822,8 +823,9 @@ public class RubyKernel {
             IRubyObject last = args[argc - 1];
             if ( last instanceof RubyHash ) {
                 RubyHash opt = (RubyHash) last; RubySymbol key;
-                if ( ! opt.isEmpty() && ( opt.has_key_p( key = runtime.newSymbol("cause") ) == runtime.getTrue() ) ) {
+                if ( ! opt.isEmpty() && ( opt.has_key_p( context, key = runtime.newSymbol("cause") ) == runtime.getTrue() ) ) {
                     cause = opt.delete(context, key, Block.NULL_BLOCK);
+                    forceCause = true;
                     if ( opt.isEmpty() && --argc == 0 ) { // more opts will be passed along
                         throw runtime.newArgumentError("only cause is given with no arguments");
                     }
@@ -868,7 +870,7 @@ public class RubyKernel {
             printExceptionSummary(context, runtime, raise.getException());
         }
 
-        if (argc > 0 && raise.getException().getCause() == UNDEF && cause != raise.getException()) {
+        if (forceCause || argc > 0 && raise.getException().getCause() == UNDEF && cause != raise.getException()) {
             raise.getException().setCause(cause);
         }
 
@@ -1172,15 +1174,12 @@ public class RubyKernel {
     public static IRubyObject warn(ThreadContext context, IRubyObject recv, IRubyObject message) {
         final Ruby runtime = context.runtime;
 
-        if (runtime.warningsEnabled()) {
-            IRubyObject out = runtime.getGlobalVariables().get("$stderr");
-            sites(context).write.call(context, out, out, message);
-            sites(context).write.call(context, out, out, runtime.getGlobalVariables().getDefaultSeparator());
-        }
+        if (runtime.warningsEnabled()) RubyIO.puts1(context, runtime.getGlobalVariables().get("$stderr"), message);
+
         return context.nil;
     }
 
-    @JRubyMethod(module = true, required = 1, rest = true, visibility = PRIVATE)
+    @JRubyMethod(module = true, rest = true, visibility = PRIVATE)
     public static IRubyObject warn(ThreadContext context, IRubyObject recv, IRubyObject... messages) {
         for (IRubyObject message : messages) warn(context, recv, message);
         return context.nil;
@@ -1535,7 +1534,7 @@ public class RubyKernel {
         if (!needChdir && runtime.getPosix().isNative() && !Platform.IS_WINDOWS) {
             // MRI: rb_f_system
             long pid;
-            int[] status = new int[1];
+            int status;
 
 //            #if defined(SIGCLD) && !defined(SIGCHLD)
 //            # define SIGCHLD SIGCLD
@@ -1563,8 +1562,8 @@ public class RubyKernel {
             if (pid < 0) {
                 return runtime.getNil();
             }
-            status[0] = (int)((RubyProcess.RubyStatus) context.getLastExitStatus()).getStatus();
-            if (status[0] == 0) return runtime.getTrue();
+            status = (int)((RubyProcess.RubyStatus) context.getLastExitStatus()).getStatus();
+            if (status == 0) return runtime.getTrue();
             return runtime.getFalse();
         }
 

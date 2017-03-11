@@ -47,6 +47,7 @@ import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.Visibility;
 import org.jruby.runtime.builtin.InternalVariables;
 import org.jruby.runtime.builtin.IRubyObject;
+import org.jruby.util.ArraySupport;
 import org.jruby.util.TypeConverter;
 
 import java.util.ArrayList;
@@ -1097,12 +1098,14 @@ public class RubyEnumerable {
 
     @JRubyMethod(name = "each_slice")
     public static IRubyObject each_slice(ThreadContext context, IRubyObject self, IRubyObject arg, final Block block) {
-        return block.isGiven() ? each_sliceCommon(context, self, arg, block) :
+        int size = (int) RubyNumeric.num2long(arg);
+        if (size <= 0) throw context.runtime.newArgumentError("invalid size");
+
+        return block.isGiven() ? each_sliceCommon(context, self, size, block) :
                 enumeratorizeWithSize(context, self, "each_slice", new IRubyObject[]{arg}, eachSliceSizeFn(context, self));
     }
 
-    static IRubyObject each_sliceCommon(ThreadContext context, IRubyObject self, IRubyObject arg, final Block block) {
-        final int size = RubyNumeric.num2int(arg);
+    static IRubyObject each_sliceCommon(ThreadContext context, IRubyObject self, final int size, final Block block) {
         final Ruby runtime = context.runtime;
         if (size <= 0) throw runtime.newArgumentError("invalid slice size");
 
@@ -1152,14 +1155,13 @@ public class RubyEnumerable {
 
     @JRubyMethod(name = "each_cons")
     public static IRubyObject each_cons(ThreadContext context, IRubyObject self, IRubyObject arg, final Block block) {
-        return block.isGiven() ? each_consCommon(context, self, arg, block) : enumeratorizeWithSize(context, self, "each_cons", new IRubyObject[] { arg }, eachConsSizeFn(context, self));
+        int size = (int) RubyNumeric.num2long(arg);
+        if (size <= 0) throw context.runtime.newArgumentError("invalid size");
+        return block.isGiven() ? each_consCommon(context, self, size, block) : enumeratorizeWithSize(context, self, "each_cons", new IRubyObject[] { arg }, eachConsSizeFn(context, self));
     }
 
-    static IRubyObject each_consCommon(ThreadContext context, IRubyObject self, IRubyObject arg, final Block block) {
-        final int size = (int) RubyNumeric.num2long(arg);
+    static IRubyObject each_consCommon(ThreadContext context, IRubyObject self, final int size, final Block block) {
         final Ruby runtime = context.runtime;
-        if (size <= 0) throw runtime.newArgumentError("invalid size");
-
         final RubyArray result = runtime.newArray(size);
 
         RubyEnumerable.callEach(runtime, context, self, Signature.OPTIONAL, new BlockCallback() {
@@ -1245,6 +1247,7 @@ public class RubyEnumerable {
     public static IRubyObject max(ThreadContext context, IRubyObject self, IRubyObject arg, final Block block) {
         // TODO: Replace with an implementation (quickselect, etc) which requires O(k) memory rather than O(n) memory
         RubyArray sorted = (RubyArray)sort(context, self, block);
+        if (arg.isNil()) return sorted.last();
         return ((RubyArray) sorted.last(arg)).reverse();
     }
 
@@ -1257,6 +1260,7 @@ public class RubyEnumerable {
     public static IRubyObject min(ThreadContext context, IRubyObject self, IRubyObject arg, final Block block) {
         // TODO: Replace with an implementation (quickselect, etc) which requires O(k) memory rather than O(n) memory
         RubyArray sorted = (RubyArray)sort(context, self, block);
+        if (arg.isNil()) return sorted.first();
         return sorted.first(arg);
     }
 
@@ -1268,6 +1272,9 @@ public class RubyEnumerable {
     @JRubyMethod
     public static IRubyObject max_by(ThreadContext context, IRubyObject self, IRubyObject arg, final Block block) {
         if (arg == context.nil) return singleExtentBy(context, self, "max", SORT_MAX, block);
+
+        if (!block.isGiven()) return enumeratorizeWithSize(context, self, "max_by", enumSizeFn(context, self));
+
         // TODO: Replace with an implementation (quickselect, etc) which requires O(k) memory rather than O(n) memory
         RubyArray sorted = (RubyArray)sort_by(context, self, block);
         return ((RubyArray) sorted.last(arg)).reverse();
@@ -1281,6 +1288,9 @@ public class RubyEnumerable {
     @JRubyMethod
     public static IRubyObject min_by(ThreadContext context, IRubyObject self, IRubyObject arg, final Block block) {
         if (arg == context.nil) return singleExtentBy(context, self, "min", SORT_MIN, block);
+
+        if (!block.isGiven()) return enumeratorizeWithSize(context, self, "min_by", enumSizeFn(context, self));
+
         // TODO: Replace with an implementation (quickselect, etc) which requires O(k) memory rather than O(n) memory
         RubyArray sorted = (RubyArray)sort_by(context, self, block);
         return sorted.first(arg);
@@ -1922,7 +1932,8 @@ public class RubyEnumerable {
         return new SizeFn() {
             @Override
             public IRubyObject size(IRubyObject[] args) {
-                return self.checkCallMethod(context, sites(context).size_checked);
+                IRubyObject size = self.checkCallMethod(context, sites(context).size_checked);
+                return size == null ? context.nil : size;
             }
         };
     }

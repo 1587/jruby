@@ -2,20 +2,21 @@
 // skeleton Java 1.0 (c) 2002 ats@cs.rit.edu
 
 					// line 2 "RipperParser.y"
-/***** BEGIN LICENSE BLOCK *****
+/*
+ ***** BEGIN LICENSE BLOCK *****
  * Version: EPL 1.0/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Common Public
+ * The contents of this file are subject to the Eclipse Public
  * License Version 1.0 (the "License"); you may not use this file
  * except in compliance with the License. You may obtain a copy of
- * the License at http://www.eclipse.org/legal/cpl-v10.html
+ * the License at http://www.eclipse.org/legal/epl-v10.html
  *
  * Software distributed under the License is distributed on an "AS
  * IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or
  * implied. See the License for the specific language governing
  * rights and limitations under the License.
  *
- * Copyright (C) 2013 The JRuby Team (jruby@jruby.org)
+ * Copyright (C) 2013-2017 The JRuby Team (jruby@jruby.org)
  * 
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
@@ -36,6 +37,7 @@ import org.jruby.lexer.LexerSource;
 import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 import static org.jruby.lexer.LexingCommon.EXPR_BEG;
+import static org.jruby.lexer.LexingCommon.EXPR_FITEM;
 import static org.jruby.lexer.LexingCommon.EXPR_FNAME;
 import static org.jruby.lexer.LexingCommon.EXPR_ENDFN;
 import static org.jruby.lexer.LexingCommon.EXPR_ENDARG;
@@ -46,7 +48,7 @@ public class RipperParser extends RipperParserBase {
     public RipperParser(ThreadContext context, IRubyObject ripper, LexerSource source) {
         super(context, ripper, source);
     }
-					// line 50 "-"
+					// line 51 "-"
   // %token constants
   public static final int kCLASS = 257;
   public static final int kMODULE = 258;
@@ -1720,7 +1722,7 @@ states[19] = new RipperParserState() {
 };
 states[20] = new RipperParserState() {
   @Override public Object execute(RipperParser p, Object yyVal, Object[] yyVals, int yyTop) {
-                    p.setState(EXPR_FNAME);
+                    p.setState(EXPR_FNAME|EXPR_FITEM);
     return yyVal;
   }
 };
@@ -2447,7 +2449,7 @@ states[143] = new RipperParserState() {
 };
 states[144] = new RipperParserState() {
   @Override public Object execute(RipperParser p, Object yyVal, Object[] yyVals, int yyTop) {
-                    p.setState(EXPR_FNAME);
+                    p.setState(EXPR_FNAME|EXPR_FITEM);
     return yyVal;
   }
 };
@@ -4736,6 +4738,6 @@ states[640] = new RipperParserState() {
   }
 };
 }
-					// line 2115 "RipperParser.y"
+					// line 2116 "RipperParser.y"
 }
-					// line 9497 "-"
+					// line 9498 "-"

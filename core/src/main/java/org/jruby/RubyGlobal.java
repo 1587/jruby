@@ -73,6 +73,9 @@ import java.io.OutputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.channels.Channel;
 import java.nio.channels.Channels;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
 /** This class initializes global variables and constants.
@@ -666,7 +669,6 @@ public class RubyGlobal {
         public IRubyObject set(IRubyObject value) {
             int line = (int)value.convertToInteger().getLongValue();
             runtime.setCurrentLine(line);
-            RubyArgsFile.setCurrentLineNumber(runtime.getArgsFile(), line);
             return value;
         }
 
@@ -721,12 +723,13 @@ public class RubyGlobal {
 
         @Override
         public IRubyObject get() {
-            return runtime.getKCode().kcode(runtime);
+            String kcode = runtime.getKCode().getKCode();
+            return kcode == null ? runtime.getNil() : runtime.newString(kcode);
         }
 
         @Override
         public IRubyObject set(IRubyObject value) {
-            runtime.setKCode(KCode.create(runtime, value.convertToString().toString()));
+            runtime.setKCode(KCode.create(value.convertToString().toString()));
             return value;
         }
     }
@@ -931,4 +934,14 @@ public class RubyGlobal {
             throw runtime.newRuntimeError("cannot assign to $$");
         }
     }
+
+    /**
+     * Globals that generally should not be cached, because they are expected to change frequently if used.
+     *
+     * See jruby/jruby#4508.
+     */
+    public static final List<String> UNCACHED_GLOBALS = Collections.unmodifiableList(Arrays.asList(
+            "$.", "$INPUT_LINE_NUMBER", // ARGF current line number
+            "$FILENAME" // ARGF current file name
+    ));
 }
