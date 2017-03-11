@@ -302,16 +302,20 @@ public class RubyRange extends RubyObject {
     }
 
     private IRubyObject inspectValue(final ThreadContext context, IRubyObject value) {
-        return context.runtime.execRecursiveOuter(new Ruby.RecursiveFunction() {
-            public IRubyObject call(IRubyObject obj, boolean recur) {
-                if (recur) {
-                    return RubyString.newString(context.runtime, isExclusive ? "(... ... ...)" : "(... .. ...)");
-                } else {
-                    return inspect(context, obj);
-                }
-            }
-        }, value);
+        return context.safeRecurse(INSPECT_RECURSIVE, value, value, "inspect", true);
     }
+
+    private static class InspectRecursive implements ThreadContext.RecursiveFunctionEx<IRubyObject> {
+        @Override
+        public IRubyObject call(ThreadContext context, IRubyObject state, IRubyObject obj, boolean recur) {
+            if (recur) {
+                return RubyString.newString(context.runtime, ((RubyRange) obj).isExclusive ? "(... ... ...)" : "(... .. ...)");
+            } else {
+                return inspect(context, obj);
+            }
+        }
+    }
+    private static final InspectRecursive INSPECT_RECURSIVE = new InspectRecursive();
 
     private static final byte[] DOTDOTDOT = new byte[]{'.', '.', '.'};
 
@@ -341,26 +345,26 @@ public class RubyRange extends RubyObject {
     public RubyBoolean exclude_end_p() {
         return getRuntime().newBoolean(isExclusive);
     }
+    
+    @JRubyMethod(name = "eql?", required = 1)
+    public IRubyObject eql_p(ThreadContext context, IRubyObject other) {
+        return equalityInner(context, other, MethodNames.EQL);
+    }
 
-    @JRubyMethod(name = {"==", "eql?"}, required = 1)
+    @JRubyMethod(name = "==", required = 1)
     public IRubyObject op_equal(ThreadContext context, IRubyObject other) {
-        if (this == other) {
-            return context.runtime.getTrue();
-        }
-        if (!(other instanceof RubyRange)) {
-            return context.runtime.getFalse();
-        }
+        return equalityInner(context, other, MethodNames.OP_EQUAL);
+    }
+
+    private IRubyObject equalityInner(ThreadContext context, IRubyObject other, MethodNames equalityCheck) {
+        if (this == other) return context.runtime.getTrue();
+        if (!(other instanceof RubyRange)) return context.runtime.getFalse();
+
         RubyRange otherRange = (RubyRange) other;
-        if (isExclusive != otherRange.isExclusive) {
-            return context.runtime.getFalse();
-        }
-        if (!invokedynamic(context, this.begin, MethodNames.EQL, otherRange.begin).isTrue()) {
-            return context.runtime.getFalse();
-        }
-        if (invokedynamic(context, this.end, MethodNames.EQL, otherRange.end).isTrue()) {
-            return context.runtime.getTrue();
-        }
-        return context.runtime.getFalse();
+
+        return context.runtime.newBoolean(isExclusive == otherRange.isExclusive &&
+                invokedynamic(context, this.begin, equalityCheck, otherRange.begin).isTrue() &&
+                invokedynamic(context, this.end, equalityCheck, otherRange.end).isTrue());
     }
 
     private static abstract class RangeCallBack {
@@ -477,9 +481,8 @@ public class RubyRange extends RubyObject {
         if (!block.isGiven()) {
             return enumeratorizeWithSize(context, this, "each", enumSizeFn(context));
         }
-        final Ruby runtime = context.runtime;
         if (begin instanceof RubyFixnum && end instanceof RubyFixnum) {
-            fixnumEach(context, runtime, block);
+            fixnumEach(context, block);
         } else if (begin instanceof RubySymbol && end instanceof RubySymbol) {
             begin.asString().uptoCommon(context, end.asString(), isExclusive, block, true);
         } else {
@@ -488,8 +491,7 @@ public class RubyRange extends RubyObject {
                 ((RubyString) tmp).uptoCommon(context, end, isExclusive, block);
             } else {
                 if (!discreteObject(context, begin)) {
-                    throw runtime.newTypeError("can't iterate from "
-                            + begin.getMetaClass().getName());
+                    throw context.runtime.newTypeError("can't iterate from " + begin.getMetaClass().getName());
                 }
                 rangeEach(context, new RangeCallBack() {
                     @Override
@@ -502,7 +504,7 @@ public class RubyRange extends RubyObject {
         return this;
     }
 
-    private void fixnumEach(ThreadContext context, Ruby runtime, Block block) {
+    private void fixnumEach(ThreadContext context, Block block) {
         // We must avoid integer overflows.
         long to = ((RubyFixnum) end).getLongValue();
         if (isExclusive) {
@@ -513,7 +515,7 @@ public class RubyRange extends RubyObject {
         }
         long from = ((RubyFixnum) begin).getLongValue();
         if (block.getSignature() == Signature.NO_ARGUMENTS) {
-            IRubyObject nil = runtime.getNil();
+            final IRubyObject nil = context.nil;
             long i;
             for (i = from; i < to; i++) {
                 block.yield(context, nil);
@@ -522,6 +524,7 @@ public class RubyRange extends RubyObject {
                 block.yield(context, nil);
             }
         } else {
+            final Ruby runtime = context.runtime;
             long i;
             for (i = from; i < to; i++) {
                 block.yield(context, RubyFixnum.newFixnum(runtime, i));

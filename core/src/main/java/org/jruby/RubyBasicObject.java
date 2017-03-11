@@ -30,7 +30,6 @@ package org.jruby;
 import org.jcodings.Encoding;
 import org.jcodings.specific.UTF8Encoding;
 import org.jruby.ir.interpreter.Interpreter;
-import org.jruby.runtime.Constants;
 import org.jruby.runtime.JavaSites;
 import org.jruby.runtime.JavaSites.BasicObjectSites;
 import org.jruby.runtime.ivars.VariableAccessor;
@@ -143,7 +142,7 @@ public class RubyBasicObject implements Cloneable, IRubyObject, Serializable, Co
     public static final String ERR_INSECURE_SET_INST_VAR  = "Insecure: can't modify instance variable";
 
     public static final int ALL_F = -1;
-    public static final int FALSE_F = Constants.FALSE_F;
+    public static final int FALSE_F = ObjectFlags.FALSE_F;
     /**
      * This flag is a bit funny. It's used to denote that this value
      * is nil. It's a bit counterintuitive for a Java programmer to
@@ -154,9 +153,9 @@ public class RubyBasicObject implements Cloneable, IRubyObject, Serializable, Co
      * final. It turns out using a flag for this actually gives us
      * better performance than having a polymorphic {@link #isNil()} method.
      */
-    public static final int NIL_F = Constants.NIL_F;
-    public static final int FROZEN_F = Constants.FROZEN_F;
-    public static final int TAINTED_F = Constants.TAINTED_F;
+    public static final int NIL_F = ObjectFlags.NIL_F;
+    public static final int FROZEN_F = ObjectFlags.FROZEN_F;
+    public static final int TAINTED_F = ObjectFlags.TAINTED_F;
 
     /**
      *  A value that is used as a null sentinel in among other places
@@ -569,8 +568,8 @@ public class RubyBasicObject implements Cloneable, IRubyObject, Serializable, Co
      * @see org.jruby.runtime.builtin.IRubyObject#getType()
      */
     @Override
-    public RubyClass getType() {
-        return getMetaClass().getRealClass();
+    public final RubyClass getType() {
+        return metaClass.getRealClass();
     }
 
     /**
@@ -581,13 +580,12 @@ public class RubyBasicObject implements Cloneable, IRubyObject, Serializable, Co
     @Override
     public final boolean respondsTo(String name) {
         final Ruby runtime = getRuntime();
-
         final DynamicMethod respondTo = getMetaClass().searchMethod("respond_to?");
 
         // fastest path; builtin respond_to? and respond_to_missing? so we just check isMethodBound
         if ( respondTo.equals(runtime.getRespondToMethod()) &&
              getMetaClass().searchMethod("respond_to_missing?").equals(runtime.getRespondToMissingMethod()) ) {
-            return getMetaClass().isMethodBound(name, false);
+            return getMetaClass().respondsToMethod(name, false);
         }
 
         final ThreadContext context = runtime.getCurrentContext();
@@ -1761,8 +1759,16 @@ public class RubyBasicObject implements Cloneable, IRubyObject, Serializable, Co
     }
 
     private Block setupBlock(Block block, EvalType evalType) {
-        // FIXME: This is an ugly hack to resolve JRUBY-1381; I'm not proud of it
-        return block.cloneBlockForEval(this, evalType);
+        if (block.getProcObject() == null) {
+            // FIXME: This is an ugly hack to resolve JRUBY-1381; I'm not proud of it
+            block = block.cloneBlockForEval(this, evalType);
+        } else {
+            block = block.deepCloneBlockForEval(this, evalType);
+        }
+
+        block.getBinding().setVisibility(PUBLIC);
+
+        return block;
     }
 
     /**
@@ -1777,18 +1783,9 @@ public class RubyBasicObject implements Cloneable, IRubyObject, Serializable, Co
     protected IRubyObject yieldUnder(final ThreadContext context, RubyModule under, Block block, EvalType evalType) {
         context.preExecuteUnder(this, under, block);
 
-        IRubyObject savedBindingSelf = block.getBinding().getSelf();
-        IRubyObject savedFrameSelf = block.getBinding().getFrame().getSelf();
-        Visibility savedVisibility = block.getBinding().getVisibility();
-        block.getBinding().setVisibility(PUBLIC);
-
         try {
             return setupBlock(block, evalType).yieldNonArray(context, this, this); //, context.getRubyClass());
         } finally {
-            block.getBinding().setVisibility(savedVisibility);
-            block.getBinding().setSelf(savedBindingSelf);
-            block.getBinding().getFrame().setSelf(savedFrameSelf);
-
             context.postExecuteUnder();
         }
     }
@@ -2048,8 +2045,7 @@ public class RubyBasicObject implements Cloneable, IRubyObject, Serializable, Co
      * benefit is important for this method.
      */
     public final RubyBoolean respond_to_p(IRubyObject mname) {
-        final String name = mname.asJavaString();
-        return getRuntime().newBoolean(getMetaClass().isMethodBound(name, true));
+        return getRuntime().newBoolean(getMetaClass().respondsToMethod(mname.asJavaString(), true));
     }
 
     public final RubyBoolean respond_to_p19(IRubyObject mname) {
@@ -2068,7 +2064,7 @@ public class RubyBasicObject implements Cloneable, IRubyObject, Serializable, Co
     private RubyBoolean respond_to_p19(IRubyObject mname, final boolean includePrivate) {
         final Ruby runtime = getRuntime();
         final String name = mname.asJavaString();
-        if ( getMetaClass().isMethodBound(name, !includePrivate, true) ) return runtime.getTrue();
+        if (getMetaClass().respondsToMethod(name, !includePrivate)) return runtime.getTrue();
         // MRI (1.9) always passes down a symbol when calling respond_to_missing?
         if ( ! (mname instanceof RubySymbol) ) mname = runtime.newSymbol(name);
         ThreadContext context = runtime.getCurrentContext();

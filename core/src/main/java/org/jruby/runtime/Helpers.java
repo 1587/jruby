@@ -27,6 +27,8 @@ import org.jruby.exceptions.RaiseException;
 import org.jruby.exceptions.Unrescuable;
 import org.jruby.internal.runtime.methods.*;
 import org.jruby.ir.IRScopeType;
+import org.jruby.ir.Interp;
+import org.jruby.ir.JIT;
 import org.jruby.ir.operands.UndefinedValue;
 import org.jruby.ir.runtime.IRRuntimeHelpers;
 import org.jruby.javasupport.JavaClass;
@@ -51,6 +53,8 @@ import org.jcodings.specific.USASCIIEncoding;
 import org.jcodings.specific.UTF8Encoding;
 import org.jcodings.unicode.UnicodeEncoding;
 
+import static org.jruby.runtime.Visibility.PRIVATE;
+import static org.jruby.runtime.Visibility.PROTECTED;
 import static org.jruby.runtime.invokedynamic.MethodNames.EQL;
 import static org.jruby.runtime.invokedynamic.MethodNames.OP_EQUAL;
 import static org.jruby.util.CodegenUtils.sig;
@@ -255,31 +259,25 @@ public class Helpers {
             return Errno.EBADF;
         }
 
+        final String errorMessage = t.getMessage();
         // TODO: this is kinda gross
-        if(t.getMessage() != null) {
-            String errorMessage = t.getMessage();
-
+        if (errorMessage != null) {
             // All errors to sysread should be SystemCallErrors, but on a closed stream
             // Ruby returns an IOError.  Java throws same exception for all errors so
             // we resort to this hack...
+            switch (errorMessage) {
+                case "Bad file descriptor" : return Errno.EBADF;
+                case "File not open" : return null;
+                case "An established connection was aborted by the software in your host machine" : return Errno.ECONNABORTED;
+                case "Broken pipe" : return Errno.EPIPE;
 
-            if ("Bad file descriptor".equals(errorMessage)) {
-                return Errno.EBADF;
-            } else if ("File not open".equals(errorMessage)) {
-                return null;
-            } else if ("An established connection was aborted by the software in your host machine".equals(errorMessage)) {
-                return Errno.ECONNABORTED;
-            } else if (t.getMessage().equals("Broken pipe")) {
-                return Errno.EPIPE;
-            } else if ("Connection reset by peer".equals(errorMessage) ||
-                       "An existing connection was forcibly closed by the remote host".equals(errorMessage) ||
-                    (Platform.IS_WINDOWS && errorMessage.contains("connection was aborted"))) {
-                return Errno.ECONNRESET;
-            } else if (errorMessage.equals("No space left on device")) {
-                return Errno.ENOSPC;
-            } else if (errorMessage.equals("Too many open files")) {
-                return Errno.EMFILE;
+                case "Connection reset by peer" : return Errno.ECONNRESET;
+                case "An existing connection was forcibly closed by the remote host" : return Errno.ECONNRESET;
+
+                case "No space left on device" : return Errno.ENOSPC;
+                case "Too many open files" : return Errno.EMFILE;
             }
+            if (Platform.IS_WINDOWS && errorMessage.contains("connection was aborted")) return Errno.ECONNRESET;
         }
         return null;
     }
@@ -494,6 +492,18 @@ public class Helpers {
             return callMethodMissing(context, self, method.getVisibility(), name, CallType.SUPER, args, block);
         }
         return method.call(context, self, superClass, name, args, block);
+    }
+
+    public static IRubyObject invokeSuper(ThreadContext context, IRubyObject self, RubyModule klass, String name, IRubyObject arg0, Block block) {
+        checkSuperDisabledOrOutOfMethod(context, klass, name);
+
+        RubyClass superClass = findImplementerIfNecessary(self.getMetaClass(), klass).getSuperClass();
+        DynamicMethod method = superClass != null ? superClass.searchMethod(name) : UndefinedMethod.INSTANCE;
+
+        if (method.isUndefined()) {
+            return callMethodMissing(context, self, method.getVisibility(), name, CallType.SUPER, arg0, block);
+        }
+        return method.call(context, self, superClass, name, arg0, block);
     }
 
     public static IRubyObject invokeSuper(ThreadContext context, IRubyObject self, Block block) {
@@ -974,9 +984,10 @@ public class Helpers {
         if (klass == null) {
             if (name != null) {
                 throw context.runtime.newNameError("superclass method '" + name + "' disabled", name);
-            } else {
-                throw context.runtime.newNoMethodError("super called outside of method", null, context.nil);
             }
+        }
+        if (name == null) {
+            throw context.runtime.newNoMethodError("super called outside of method", null, context.nil);
         }
     }
 
@@ -2154,9 +2165,10 @@ public class Helpers {
         return left instanceof RubyModule && ((RubyModule) left).getConstantFromNoConstMissing(name, false) != null;
     }
 
-    public static RubyString getDefinedConstantOrBoundMethod(IRubyObject left, String name) {
-        if (isModuleAndHasConstant(left, name)) return left.getRuntime().getDefinedMessage(DefinedMessage.CONSTANT);
-        if (left.getMetaClass().isMethodBound(name, true)) return left.getRuntime().getDefinedMessage(DefinedMessage.METHOD);
+    @JIT @Interp
+    public static IRubyObject getDefinedConstantOrBoundMethod(IRubyObject left, String name, IRubyObject definedConstantMessage, IRubyObject definedMethodMessage) {
+        if (isModuleAndHasConstant(left, name)) return definedConstantMessage;
+        if (left.getMetaClass().isMethodBound(name, true)) return definedMethodMessage;
         return null;
     }
 
@@ -2429,19 +2441,19 @@ public class Helpers {
         return argumentDescriptorsToParameters(runtime, methodToArgumentDescriptors(method), true);
     }
 
-    public static RubyString getDefinedCall(ThreadContext context, IRubyObject self, IRubyObject receiver, String name) {
+    public static IRubyObject getDefinedCall(ThreadContext context, IRubyObject self, IRubyObject receiver, String name, IRubyObject definedMessage) {
         RubyClass metaClass = receiver.getMetaClass();
         DynamicMethod method = metaClass.searchMethod(name);
         Visibility visibility = method.getVisibility();
 
         if (visibility != Visibility.PRIVATE &&
                 (visibility != Visibility.PROTECTED || metaClass.getRealClass().isInstance(self)) && !method.isUndefined()) {
-            return context.runtime.getDefinedMessage(DefinedMessage.METHOD);
+            return definedMessage;
         }
 
         if (receiver.callMethod(context, "respond_to_missing?",
             new IRubyObject[]{context.runtime.newSymbol(name), context.runtime.getFalse()}).isTrue()) {
-            return context.runtime.getDefinedMessage(DefinedMessage.METHOD);
+            return definedMessage;
         }
         return null;
     }
@@ -2735,7 +2747,7 @@ public class Helpers {
     // MRI: rb_hash
     public static RubyFixnum safeHash(final ThreadContext context, IRubyObject obj) {
         Ruby runtime = context.runtime;
-        IRubyObject hval = runtime.safeRecurse(sites(context).recursive_hash, context, runtime, obj, "hash", true);
+        IRubyObject hval = context.safeRecurse(sites(context).recursive_hash, runtime, obj, "hash", true);
 
         while (!(hval instanceof RubyFixnum)) {
             if (hval instanceof RubyBignum) {
@@ -2843,4 +2855,15 @@ public class Helpers {
         return Helpers.invoke(context, self, name, IRubyObject.NULL_ARRAY, callType, Block.NULL_BLOCK);
     }
 
+    /**
+     *
+     * We have respondTo logic in RubyModule and we have a special callsite for respond_to?.
+     * This method is just so we can share that logic.
+     */
+    public static boolean respondsToMethod(DynamicMethod method, boolean checkVisibility) {
+        if (method.isUndefined() || method.isNotImplemented()) return false;
+
+        return !(checkVisibility &&
+                (method.getVisibility() == PRIVATE || method.getVisibility() == PROTECTED));
+    }
 }

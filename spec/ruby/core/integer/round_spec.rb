@@ -19,13 +19,16 @@ describe "Integer#round" do
   # redmine:5228
   it "returns itself rounded if passed a negative value" do
     +249.round(-2).should eql(+200)
-    +250.round(-2).should eql(+300)
     -249.round(-2).should eql(-200)
+    (+25 * 10**70 - 1).round(-71).should eql(+20 * 10**70)
+    (-25 * 10**70 + 1).round(-71).should eql(-20 * 10**70)
+  end
+
+  it "returns itself rounded to nearest if passed a negative value" do
+    +250.round(-2).should eql(+300)
     -250.round(-2).should eql(-300)
     (+25 * 10**70).round(-71).should eql(+30 * 10**70)
     (-25 * 10**70).round(-71).should eql(-30 * 10**70)
-    (+25 * 10**70 - 1).round(-71).should eql(+20 * 10**70)
-    (-25 * 10**70 + 1).round(-71).should eql(-20 * 10**70)
   end
 
   platform_is_not wordsize: 32 do

@@ -240,16 +240,12 @@ public class StaticScope implements Serializable {
      * @return index of variable
      */
     public int addVariableThisScope(String name) {
-        // Ignore duplicate "_" args in blocks
-        // (duplicate _ args are named "_$0")
-        // Dont allocate slots for them.
-        if (name.equals("_$0")) {
-            return -1;
-        }
-
         int slot = exists(name);
 
         if (slot >= 0) return slot;
+
+        // Clear constructor since we are adding a name
+        constructor = null;
 
         // This is perhaps innefficient timewise?  Optimal spacewise
         growVariableNames(name);
@@ -284,6 +280,9 @@ public class StaticScope implements Serializable {
 
         if (slot >= 0) return slot;
 
+        // Clear constructor since we are adding a name
+        constructor = null;
+
         // This is perhaps innefficient timewise?  Optimal spacewise
         growVariableNames(name);
 
@@ -302,6 +301,9 @@ public class StaticScope implements Serializable {
     public void setVariables(String[] names) {
         assert names != null : "names is not null";
         assert namesAreInterned(names);
+
+        // Clear constructor since we are changing names
+        constructor = null;
 
         variableNames = new String[names.length];
         variableNamesLength = names.length;

@@ -70,11 +70,14 @@ describe "Float#round" do
     0.42.round(2.0**30).should == 0.42
   end
 
+  it "returns big values rounded to nearest" do
+    +2.5e20.round(-20).should   eql( +3 * 10 ** 20  )
+    -2.5e20.round(-20).should   eql( -3 * 10 ** 20  )
+  end
+
   # redmine #5272
   it "returns rounded values for big values" do
-    +2.5e20.round(-20).should   eql( +3 * 10 ** 20  )
     +2.4e20.round(-20).should   eql( +2 * 10 ** 20  )
-    -2.5e20.round(-20).should   eql( -3 * 10 ** 20  )
     -2.4e20.round(-20).should   eql( -2 * 10 ** 20  )
     +2.5e200.round(-200).should eql( +3 * 10 ** 200 )
     +2.4e200.round(-200).should eql( +2 * 10 ** 200 )

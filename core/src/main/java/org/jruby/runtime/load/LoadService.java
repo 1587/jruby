@@ -67,6 +67,7 @@ import org.jruby.exceptions.Unrescuable;
 import org.jruby.ext.rbconfig.RbConfigLibrary;
 import org.jruby.platform.Platform;
 import org.jruby.runtime.Helpers;
+import org.jruby.runtime.ThreadContext;
 import org.jruby.runtime.builtin.IRubyObject;
 import org.jruby.util.FileResource;
 import org.jruby.util.JRubyFile;
@@ -220,8 +221,9 @@ public class LoadService {
         // add $RUBYLIB paths
         RubyHash env = (RubyHash) runtime.getObject().getConstant("ENV");
         RubyString env_rubylib = runtime.newString("RUBYLIB");
-        if (env.has_key_p(env_rubylib).isTrue()) {
-            String rubylib = env.op_aref(runtime.getCurrentContext(), env_rubylib).toString();
+        ThreadContext currentContext = runtime.getCurrentContext();
+        if (env.has_key_p(currentContext, env_rubylib).isTrue()) {
+            String rubylib = env.op_aref(currentContext, env_rubylib).toString();
             String[] paths = rubylib.split(File.pathSeparator);
             addPaths(paths);
         }
@@ -317,6 +319,7 @@ public class LoadService {
 
     public void load(String file, boolean wrap) {
         long startTime = loadTimer.startLoad(file);
+        int currentLine = runtime.getCurrentLine();
         try {
             if(!runtime.getProfile().allowLoad(file)) {
                 throw runtime.newLoadError("no such file to load -- " + file, file);
@@ -343,12 +346,14 @@ public class LoadService {
                 throw newLoadErrorFromThrowable(runtime, file, e);
             }
         } finally {
+            runtime.setCurrentLine(currentLine);
             loadTimer.endLoad(file, startTime);
         }
     }
 
     public void loadFromClassLoader(ClassLoader classLoader, String file, boolean wrap) {
         long startTime = loadTimer.startLoad("classloader:" + file);
+        int currentLine = runtime.getCurrentLine();
         try {
             SearchState state = new SearchState(file);
             state.prepareLoadSearch(file);
@@ -369,6 +374,7 @@ public class LoadService {
                 throw newLoadErrorFromThrowable(runtime, file, e);
             }
         } finally {
+            runtime.setCurrentLine(currentLine);
             loadTimer.endLoad("classloader:" + file, startTime);
         }
     }
