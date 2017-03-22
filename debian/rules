@@ -3,6 +3,7 @@
 include /usr/share/dpkg/default.mk
 
 export LC_ALL=en_US.UTF-8
+export CI=true
 
 %:
 	dh $@ --buildsystem=maven
@@ -17,16 +18,17 @@ override_dh_auto_clean:
 				&& cp ./core/pom.xml ../core \
 				&& cp ./lib/pom.xml  ../lib  )
 	@rm -rf ./bak
-	-cd ./lib/ruby/stdlib/ && rm -r psych* *openssl* org/ jar* ./rubygems_plugin.rb
+	-cd ./lib/ruby/stdlib/ && rm -r psych* *openssl* org/ jar* json* test* rake* ./rubygems_plugin.rb
 	-rm ./core/dependency-reduced-pom.xml ./link* test/jruby/testapp/testapp
 	-find . -name pom.xml.save -delete
 	-rm -r ./tmp/
+	-cd ./spec/ffi/fixtures/ && rm -f *.o *.so
 	mh_clean
 
 override_dh_auto_configure:
 	mkdir -p ./bak/lib ./bak/core
 	# save POM files before being patched, otherwise sometimes they are not cleanly
-	# restored this prevent twice in a row builds
+	# restored and this will prevent twice in a row builds to work
 	cp ./pom.xml ./bak && cp ./core/pom.xml ./bak/core && cp ./lib/pom.xml ./bak/lib
 	dh_auto_configure
 
@@ -35,13 +37,6 @@ override_dh_auto_build:
 	dh_auto_build -- -Pcomplete
 	dh_auto_build -- -Pdist package
 	dh_auto_build -- -Pall
-	# bundle ruby/psych jar with jruby until jruby-psych is packaged
-	mkdir -p tmp/java/psych
-	javac -extdirs "/usr/lib/jvm/java-8-openjdk-amd64/jre/lib/ext"   \
-		-target 1.7 -source 1.7 -Xlint:unchecked                 \
-		-cp "`./debian/psych-java-ext-build-classpath`"          \
-		-d tmp/java/psych `./debian/psych-java-ext-source-files`
-	jar cf tmp/java/psych/psych.jar `./debian/psych-java-ext-class-entries`
 
 DIST_TARBALL=./maven/jruby-dist/target/jruby-dist-$(DEB_VERSION_UPSTREAM)-bin.tar.gz
 DIST_TARGET_DIR=./target/package/
@@ -49,15 +44,12 @@ override_dh_prep:
 	dh_prep
 	mkdir -p $(DIST_TARGET_DIR)
 	tar zxf $(DIST_TARBALL) -C $(DIST_TARGET_DIR) --strip-components=1
-	cd $(DIST_TARGET_DIR) && (                                                     \
-		mv ./bin/jruby.bash ./bin/jruby                                        \
-		&& cp ./bin/jruby ../../bin                                            \
-		&& chmod 0755 ./bin/*                                                  \
-		&& mkdir -p ./lib/jni/                                                 \
-	        && cp -a /usr/lib/ruby/2.3.0/psych* ./lib/ruby/stdlib/                 \
-	        && cp -a ../../tmp/java/psych/psych.jar ./lib/ruby/stdlib/             \
-	        && sed 's/1\.[0-9]\{1,2\}/1.x/' -i ./lib/ruby/stdlib/psych/versions.rb \
-		&& rm -r ./tool/nailgun/*                                              )
+	cd $(DIST_TARGET_DIR) && (              \
+		mv ./bin/jruby.bash ./bin/jruby \
+		&& cp ./bin/jruby ../../bin     \
+		&& chmod 0755 ./bin/*           \
+		&& mkdir -p ./lib/jni/          \
+		&& rm -r ./tool/nailgun/*       )
 
 override_dh_auto_install:
 	dh_auto_install
@@ -69,18 +61,35 @@ override_dh_auto_install:
 	mh_installjar -pjruby ./maven/jruby/pom.xml \
 		./maven/jruby/target/jruby-$(DEB_VERSION_UPSTREAM).jar
 
-export CI:="true"
-override_dh_auto_test:
+RUBY_LIB_PATH=/usr/lib/ruby/vendor_ruby
+MAVEN_REPO=/usr/share/maven-repo
+prepare-tests:
 ifeq (,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
-	# to-do: package psych java extension
-	cp -a /usr/lib/ruby/2.3.0/psych* ./lib/ruby/stdlib/
-	cp -a ./tmp/java/psych/psych.jar ./lib/ruby/stdlib/
-	sed 's/1\.[0-9]\{1,2\}/1.x/' -i ./lib/ruby/stdlib/psych/versions.rb
-	dh_auto_build -- package -B -Dinvoker.skip=false -Prake -Dtask=test:mri
-	# these tests will be enabled once the following gems are packaged:
-        # jar-dependencies and recent jruby-openssl (>= 0.9.17)
-#	-dh_auto_build -- package -B -Dinvoker.skip=false -Prake -Dtask=test:jruby
-	dh_auto_build -- package -B -Dinvoker.skip=false -Prake -Dtask=spec:jruby
+	# this just copies some needed gems and their dependencies to the
+	# lib directory, so tests can load all their needed dependencies
+	cd ./lib/ruby/stdlib/ && for gem in psych test json rake jar; do \
+		cp -a $(RUBY_LIB_PATH)/$$gem* ./ ; \
+	done
+	cd ./lib/ruby/stdlib/ && \
+		cp -aL /usr/share/jruby/lib/ruby/stdlib/*openssl* ./ \
+		&& for lib in bouncycastle/bcpkix/debian bouncycastle/bcprov/debian yaml/snakeyaml/1.x; do \
+			mkdir -p ./org/$$lib ; \
+			cp $(MAVEN_REPO)/org/$$lib/$$(echo $$lib | cut -f2-3 -d/ --output-delimiter=-).jar ./org/$$lib ; \
+		done
+endif
+	
+
+TEST_CMD = dh_auto_build -- package -B -Dinvoker.skip=false
+override_dh_auto_test: prepare-tests
+ifeq (,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
+	$(TEST_CMD) -Ptest
+	for task in $$(cat ./debian/test-tasks.txt | grep -v ^#); do \
+		echo "*** Running '$$task' tests..." ; \
+		$(TEST_CMD) -Prake -Dtask=$$task ; \
+	done
+	# this last set of tests is run outside the loop because is the only one using JRUBY_OPTS env var
+	echo "*** Running 'spec:compiler' tests (JRUBY_OPTS=-Xcompile.invokedynamic)..."
+	JRUBY_OPTS=-Xcompile.invokedynamic $(TEST_CMD) -Prake -Dtask=spec:compiler
 endif
 
 get-orig-source:

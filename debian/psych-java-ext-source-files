@@ -1,6 +1,0 @@
-#!/bin/sh
-set -e
-
-for FILE in PsychEmitter.java PsychLibrary.java PsychParser.java PsychToRuby.java PsychYamlTree.java; do
-    echo -n "ext/java/${FILE} "
-done

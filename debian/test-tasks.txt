@@ -1,0 +1,17 @@
+# test:mri:jit   # many broken tests
+test:jruby
+test:jruby:fullint
+test:jruby:jit
+test:jruby:aot
+test:mri
+test:mri:fullint
+test:slow_suites
+test:tracing
+spec:ji
+spec:compiler
+spec:ffi
+spec:regression
+# spec:ruby:fast # it hangs with OpenSSL tests, research is needed
+# spec:jruby     # it hangs, it shows no progress, research is needed
+spec:jrubyc
+spec:profiler

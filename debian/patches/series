@@ -5,5 +5,4 @@
 0006-Disable-maven-jruby-jars-artifact.patch
 0007-Add-usr-lib-ruby-vendor-ruby-to-load-path.patch
 0008-Configure-unit-tests-to-run-at-build-time.patch
-0009-Bundle-psych-java-extension.patch
 0010-Exclude-mri-tests-failing-in-debian.patch
