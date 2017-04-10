@@ -4,6 +4,7 @@ include /usr/share/dpkg/default.mk
 
 export LC_ALL=en_US.UTF-8
 export CI=true
+export CCACHE_DISABLE=true
 
 %:
 	dh $@ --buildsystem=maven
