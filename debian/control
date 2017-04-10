@@ -51,6 +51,7 @@ Build-Depends: ant-optional,
                ruby-psych,
                ruby-rspec,
                ruby-test-unit
+Build-Conflicts: open-infrastructure-locales-c.utf-8
 Standards-Version: 3.9.8
 Homepage: http://jruby.org/
 Vcs-Git: https://anonscm.debian.org/git/pkg-java/jruby.git

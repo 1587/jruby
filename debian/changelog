@@ -4,15 +4,16 @@ jruby (9.1.8.0-1~exp2) UNRELEASED; urgency=medium
     However, a few tests were excluded, so an additional patch was introduced:
     0010-Exclude-mri-tests-failing-in-debian.patch
   * Reintroduce B-D on locales-all.
-  * Enable additional JRuby tests tasks.
+  * Enable additional JRuby tests tasks:
     - Drop patch 0009-Bundle-psych-java-extension.patch.
     - Add dependencies on:
       + ruby-jar-dependencies
       + ruby-json (>= 2.0.1+dfsg-4~)
       + ruby-psych
+    - Add Build-Conflicts on open-infrastructure-locales-c.utf-8.
     - Simplify several d/rules targets.
 
- -- Miguel Landaeta <nomadium@debian.org>  Wed, 22 Mar 2017 22:37:49 +0000
+ -- Miguel Landaeta <nomadium@debian.org>  Mon, 10 Apr 2017 22:32:52 +0100
 
 jruby (9.1.8.0-1~exp1) experimental; urgency=medium
 
