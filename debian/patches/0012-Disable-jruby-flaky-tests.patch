@@ -1,0 +1,42 @@
+Description: Disable flaky tests in jruby test suite
+Author: Miguel Landaeta <nomadium@debian.org>
+Forwarded: no
+Last-Update: 2017-04-04
+
+--- jruby-9.1.8.0.orig/test/jruby/test_thread.rb
++++ jruby-9.1.8.0/test/jruby/test_thread.rb
+@@ -178,20 +178,21 @@ class TestThread < Test::Unit::TestCase
+   end
+ 
+   # JRUBY-2021
+-  def test_multithreaded_method_definition
+-    def run_me
+-      sleep 0.1
+-      def do_stuff
+-        sleep 0.1
+-      end
+-    end
++  # flaky test in Debian
++  # def test_multithreaded_method_definition
++  #   def run_me
++  #     sleep 0.1
++  #     def do_stuff
++  #       sleep 0.1
++  #     end
++  #   end
+ 
+-    threads = []
+-    100.times {
+-      threads << Thread.new { run_me }
+-    }
+-    threads.each { |t| t.join }
+-  end
++  #   threads = []
++  #   100.times {
++  #     threads << Thread.new { run_me }
++  #   }
++  #   threads.each { |t| t.join }
++  # end
+ 
+   def test_socket_accept_can_be_interrupted
+     require 'socket'
