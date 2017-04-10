@@ -8,3 +8,4 @@
 0010-Exclude-mri-tests-failing-in-debian.patch
 0011-Disable-failed-tests-in-sbuild.patch
 0012-Disable-jruby-flaky-tests.patch
+0013-Disable-regression-flaky-tests.patch
