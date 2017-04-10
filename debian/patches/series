@@ -6,3 +6,4 @@
 0007-Add-usr-lib-ruby-vendor-ruby-to-load-path.patch
 0008-Configure-unit-tests-to-run-at-build-time.patch
 0010-Exclude-mri-tests-failing-in-debian.patch
+0011-Disable-failed-tests-in-sbuild.patch

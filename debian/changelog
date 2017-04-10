@@ -12,6 +12,8 @@ jruby (9.1.8.0-1~exp2) UNRELEASED; urgency=medium
       + ruby-psych
     - Add Build-Conflicts on open-infrastructure-locales-c.utf-8.
     - Simplify several d/rules targets.
+    - Add more patches:
+      + 0011-Disable-failed-tests-in-sbuild.patch
 
  -- Miguel Landaeta <nomadium@debian.org>  Mon, 10 Apr 2017 22:32:52 +0100
 
