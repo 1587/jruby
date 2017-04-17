@@ -1,4 +1,4 @@
-jruby (9.1.8.0-1~exp2) UNRELEASED; urgency=medium
+jruby (9.1.8.0-1~exp2) experimental; urgency=medium
 
   * Don't ignore failures from MRI tests suite.
     However, a few tests were excluded, so an additional patch was introduced:
@@ -18,7 +18,7 @@ jruby (9.1.8.0-1~exp2) UNRELEASED; urgency=medium
       + 0012-Disable-jruby-flaky-tests.patch
       + 0013-Disable-regression-flaky-tests.patch
 
- -- Miguel Landaeta <nomadium@debian.org>  Mon, 10 Apr 2017 22:54:36 +0100
+ -- Miguel Landaeta <nomadium@debian.org>  Mon, 17 Apr 2017 21:09:18 +0100
 
 jruby (9.1.8.0-1~exp1) experimental; urgency=medium
 
