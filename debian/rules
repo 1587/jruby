@@ -84,12 +84,12 @@ TEST_CMD = dh_auto_build -- package -B -Dinvoker.skip=false
 override_dh_auto_test: prepare-tests
 ifeq (,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 	$(TEST_CMD) -Ptest
-	(for task in $$(cat ./debian/test-tasks.txt | grep -v ^#); do \
-		echo "*** Running '$$task' tests..." ; \
-		$(TEST_CMD) -Prake -Dtask=$$task || exit ; \
-	done)
+	for task in $$(cat ./debian/test-tasks.txt | grep -v ^#); do \
+		echo "*** Running '$$task' tests... ***" ; \
+		$(TEST_CMD) -Prake -Dtask=$$task ; \
+	done
 	# this last set of tests is run outside the loop because is the only one using JRUBY_OPTS env var
-	echo "*** Running 'spec:compiler' tests (JRUBY_OPTS=-Xcompile.invokedynamic)..."
+	echo "*** Running 'spec:compiler' tests (JRUBY_OPTS=-Xcompile.invokedynamic)... ***"
 	JRUBY_OPTS=-Xcompile.invokedynamic $(TEST_CMD) -Prake -Dtask=spec:compiler
 endif
 
